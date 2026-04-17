@@ -5,7 +5,6 @@ diedit parsial (per section/heading) lewat webview**, disimpan ke database
 dengan tracking histori, lalu dimerge kembali menjadi .docx.
 
 ---
-
 ## Arsitektur (ringkas)
 
 ```
