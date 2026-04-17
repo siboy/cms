@@ -6,7 +6,6 @@ dengan tracking histori, lalu dimerge kembali menjadi .docx.
 
 ---
 ## Arsitektur (ringkas)
-
 ```
 cms/
 ├── app.py                # Flask entry (routes: upload, split, toc, edit, merge)
