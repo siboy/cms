@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Daftar Dokumen · CMS{% endblock %}
+{% block content %}
+<h1>Upload dokumen Word</h1>
+
+<form class="upload" action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+  <input type="file" name="docx" accept=".docx" required />
+  <button type="submit">Upload</button>
+</form>
+
+<h2>Daftar dokumen</h2>
+{% if not docs %}
+  <p class="muted">Belum ada dokumen.</p>
+{% else %}
+<table class="doc-list">
+  <thead>
+    <tr>
+      <th>ID</th><th>Nama File</th><th>Status</th>
+      <th>Uploaded</th><th>Updated</th><th>Aksi</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in docs %}
+    <tr>
+      <td>{{ d.id }}</td>
+      <td>{{ d.filename }}</td>
+      <td><span class="status status-{{ d.status }}">{{ d.status }}</span></td>
+      <td>{{ d.uploaded_at }}</td>
+      <td>{{ d.updated_at }}</td>
+      <td class="actions">
+        {% if d.status == 'uploaded' %}
+          <form method="post" action="{{ url_for('do_split', doc_id=d.id) }}" style="display:inline">
+            <button class="btn-primary">Split</button>
+          </form>
+        {% else %}
+          <a href="{{ url_for('doc_view', doc_id=d.id) }}" class="btn">TOC</a>
+          <form method="post" action="{{ url_for('do_split', doc_id=d.id) }}" style="display:inline">
+            <button class="btn" title="Re-split (overwrite chunks)">Re-split</button>
+          </form>
+          <a href="{{ url_for('merge', doc_id=d.id) }}" class="btn-primary">Merge&nbsp;→&nbsp;.docx</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}TOC · {{ doc.filename }}{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="{{ url_for('index') }}">← Dokumen</a></nav>
+<h1>{{ doc.filename }}</h1>
+<p class="muted">
+  Status: <span class="status status-{{ doc.status }}">{{ doc.status }}</span>
+  · Uploaded: {{ doc.uploaded_at }} · Updated: {{ doc.updated_at }}
+</p>
+
+<div class="toolbar">
+  <form method="post" action="{{ url_for('do_split', doc_id=doc.id) }}" style="display:inline">
+    <button class="btn" title="Re-split: overwrite semua chunk">Re-split</button>
+  </form>
+  <a class="btn-primary" href="{{ url_for('merge', doc_id=doc.id) }}">Merge → Download .docx</a>
+</div>
+
+<h2>Daftar Isi ({{ chunks|length }} chunk)</h2>
+{% if not chunks %}
+  <p class="muted">Belum ada chunk. Klik Split untuk memotong dokumen.</p>
+{% else %}
+<ol class="toc">
+  {% for ch in chunks %}
+    <li class="toc-item toc-lvl-{{ ch.heading_level }}">
+      <span class="toc-idx">#{{ ch.order_idx }}</span>
+      <a href="{{ url_for('chunk_view', chunk_id=ch.id) }}" class="toc-link">
+        {{ ch.heading_text or '(no heading)' }}
+      </a>
+      <span class="toc-meta">
+        v{{ ch.version }} · {{ ch.size }}b · h{{ ch.heading_level }}
+      </span>
+      <span class="toc-actions">
+        <a href="{{ url_for('chunk_edit', chunk_id=ch.id) }}" class="btn-sm">Edit</a>
+        <a href="{{ url_for('chunk_history', chunk_id=ch.id) }}" class="btn-sm">History</a>
+      </span>
+    </li>
+  {% endfor %}
+</ol>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}History Chunk #{{ chunk.id }}{% endblock %}
+{% block content %}
+<nav class="crumbs">
+  <a href="{{ url_for('index') }}">Dokumen</a>
+  · <a href="{{ url_for('doc_view', doc_id=chunk.doc_id) }}">TOC</a>
+  · <a href="{{ url_for('chunk_view', chunk_id=chunk.id) }}">View</a>
+</nav>
+<h1>History: {{ chunk.heading_text }}</h1>
+<p class="muted">Current: v{{ chunk.version }}</p>
+
+{% if not history %}
+<p class="muted">Belum ada histori perubahan.</p>
+{% else %}
+<table class="doc-list">
+  <thead><tr><th>Version</th><th>By</th><th>At</th><th>Size</th><th>Aksi</th></tr></thead>
+  <tbody>
+    {% for h in history %}
+    <tr>
+      <td>v{{ h.version }}</td>
+      <td>{{ h.changed_by }}</td>
+      <td>{{ h.changed_at }}</td>
+      <td>{{ h.size }}b</td>
+      <td><a class="btn-sm" href="{{ url_for('history_view', hist_id=h.id) }}">Lihat</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

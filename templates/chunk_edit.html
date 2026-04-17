@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Edit Chunk #{{ chunk.id }}{% endblock %}
+{% block content %}
+<nav class="crumbs">
+  <a href="{{ url_for('index') }}">Dokumen</a>
+  · <a href="{{ url_for('doc_view', doc_id=chunk.doc_id) }}">TOC</a>
+  · <a href="{{ url_for('chunk_view', chunk_id=chunk.id) }}">View</a>
+</nav>
+<h1>Edit: {{ chunk.heading_text }}</h1>
+<p class="muted">Chunk #{{ chunk.id }} · v{{ chunk.version }}</p>
+
+<form id="chunkForm" method="post" action="{{ url_for('chunk_save', chunk_id=chunk.id) }}">
+  <div class="editor-toolbar">
+    <button type="button" onclick="fmt('bold')"><b>B</b></button>
+    <button type="button" onclick="fmt('italic')"><i>I</i></button>
+    <button type="button" onclick="fmt('underline')"><u>U</u></button>
+    <button type="button" onclick="fmt('formatBlock','h1')">H1</button>
+    <button type="button" onclick="fmt('formatBlock','h2')">H2</button>
+    <button type="button" onclick="fmt('formatBlock','h3')">H3</button>
+    <button type="button" onclick="fmt('formatBlock','p')">¶</button>
+    <button type="button" onclick="fmt('insertUnorderedList')">• List</button>
+    <button type="button" onclick="fmt('insertOrderedList')">1. List</button>
+    <button type="button" onclick="fmt('removeFormat')">Clear</button>
+  </div>
+
+  <div id="editor" class="editor" contenteditable="true">{{ html|safe }}</div>
+  <input type="hidden" name="content_html" id="content_html" />
+  <input type="hidden" name="user" value="{{ request.args.get('user','anonymous') }}" />
+
+  <div class="toolbar">
+    <button type="submit" class="btn-primary">Simpan</button>
+    <a href="{{ url_for('chunk_view', chunk_id=chunk.id) }}" class="btn">Batal</a>
+  </div>
+</form>
+
+<script>
+function fmt(cmd, val){ document.execCommand(cmd, false, val || null); document.getElementById('editor').focus(); }
+document.getElementById('chunkForm').addEventListener('submit', function(){
+  document.getElementById('content_html').value = document.getElementById('editor').innerHTML;
+});
+</script>
+{% endblock %}

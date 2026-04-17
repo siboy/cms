@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Chunk #{{ chunk.id }} · {{ chunk.heading_text }}{% endblock %}
+{% block content %}
+<nav class="crumbs">
+  <a href="{{ url_for('index') }}">Dokumen</a>
+  {% if chunk.doc_id %} · <a href="{{ url_for('doc_view', doc_id=chunk.doc_id) }}">TOC</a>{% endif %}
+</nav>
+<h1>{{ chunk.heading_text or '(no heading)' }}</h1>
+<p class="muted">
+  Chunk #{{ chunk.id }} · v{{ chunk.version }}
+  {% if is_history %}<span class="badge badge-hist">history</span>{% endif %}
+</p>
+
+{% if not is_history %}
+<div class="toolbar">
+  <a class="btn-primary" href="{{ url_for('chunk_edit', chunk_id=chunk.id) }}">Edit</a>
+  <a class="btn" href="{{ url_for('chunk_history', chunk_id=chunk.id) }}">History</a>
+</div>
+{% endif %}
+
+<article class="chunk-view">
+  {{ html|safe }}
+</article>
+{% endblock %}

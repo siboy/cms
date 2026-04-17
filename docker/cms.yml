@@ -1,0 +1,71 @@
+services:
+  cms:
+    container_name: cms
+    hostname: cms
+    image: xcms:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8879:8879"
+    environment:
+      - TZ=Asia/Jakarta
+      - CONTAINER_ROLE=cms
+      - PYTHONPATH=/home/databoks/flask
+      - CMS_FLASK_ROOT=/home/databoks/flask
+    env_file:
+      - /home/databoks/flask/.env
+    volumes:
+      - ..:/home/databoks/cms
+      - /home/databoks/flask:/home/databoks/flask:ro
+    working_dir: /home/databoks/cms
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "=========================================="
+        echo "  CMS - Collaborative DOCX Editor"
+        echo "=========================================="
+        echo "Starting at $$(date)"
+
+        if [ ! -d "/home/databoks/flask/razan" ]; then
+          echo "[FATAL] /home/databoks/flask/razan not found"; exit 1
+        fi
+        if [ ! -f "/home/databoks/flask/.env" ]; then
+          echo "[FATAL] /home/databoks/flask/.env not found"; exit 1
+        fi
+
+        export PYTHONPATH="/home/databoks/flask"
+        cd /home/databoks/cms
+        pip install gunicorn 2>/dev/null || true
+
+        gunicorn app:app \
+          --bind 0.0.0.0:8879 \
+          --workers 2 \
+          --threads 4 \
+          --worker-class gthread \
+          --timeout 180 \
+          --keep-alive 5 \
+          --max-requests 500 \
+          --max-requests-jitter 50 \
+          --access-logfile - \
+          --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s' \
+          --error-logfile -
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8879/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - cms-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+networks:
+  cms-network:
+    external: true
+    name: ${NETWORK}

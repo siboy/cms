@@ -1,0 +1,29 @@
+# Flask & Web
+flask>=3.0
+werkzeug>=3.0
+gunicorn>=21.2
+jinja2>=3.1
+
+# DOCX processing
+python-docx>=1.1
+lxml>=5.1
+beautifulsoup4>=4.12
+bleach>=6.1
+Pillow>=10.2
+
+# Database (reuse flask/razan/cfg pool)
+pymysql>=1.1
+mysql-connector-python>=8.0
+sqlalchemy>=2.0
+
+# Core data (dipakai razan/cfg.py saat import)
+pandas>=2.1
+numpy>=1.26
+python-dotenv>=1.0
+pytz>=2024.1
+
+# Storage (razan/ccg.py imports)
+minio>=7.2
+
+# HTTP
+requests>=2.31
