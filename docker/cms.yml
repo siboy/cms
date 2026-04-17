@@ -14,10 +14,10 @@ services:
       - PYTHONPATH=/home/databoks/flask
       - CMS_FLASK_ROOT=/home/databoks/flask
     env_file:
-      - /home/databoks/flask/.env
+      - ${HOME}/flask/.env
     volumes:
       - ..:/home/databoks/cms
-      - /home/databoks/flask:/home/databoks/flask:ro
+      - ${HOME}/flask:/home/databoks/flask:ro
     working_dir: /home/databoks/cms
     entrypoint: ["/bin/bash", "-c"]
     command:

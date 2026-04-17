@@ -10,7 +10,7 @@ import os
 import sys
 
 # Pastikan flask/ ada di PYTHONPATH sebelum import razan
-FLASK_ROOT = os.environ.get("CMS_FLASK_ROOT", "/home/databoks/flask")
+FLASK_ROOT = os.environ.get("CMS_FLASK_ROOT", os.path.expanduser("~/flask"))
 if FLASK_ROOT not in sys.path:
     sys.path.insert(0, FLASK_ROOT)
 

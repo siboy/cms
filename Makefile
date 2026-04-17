@@ -1,13 +1,14 @@
 # ============================================================
 # CMS Makefile
-# Engine terpisah dari flask/sekda. Dependensi: /home/databoks/flask
+# Engine terpisah dari flask/sekda. Dependensi: $(HOME)/flask
 # ============================================================
 
 USER := $(shell whoami)
-FLASK_ENV := /home/databoks/flask/.env
+FLASK_DIR := $(HOME)/flask
+FLASK_ENV := $(FLASK_DIR)/.env
 include $(FLASK_ENV)
 
-GITTOKEN = $(shell python3 /home/databoks/flask/razan/get_gittoken.py 2>/dev/null)
+GITTOKEN = $(shell python3 $(FLASK_DIR)/razan/get_gittoken.py 2>/dev/null)
 
 COMPOSE_FILE = docker/cms.yml
 PROJECT_NAME = cms
@@ -15,13 +16,13 @@ DC = docker compose --env-file $(FLASK_ENV) -f $(COMPOSE_FILE) -p $(PROJECT_NAME
 
 # ---- Preflight ----
 check:
-	@if [ ! -d /home/databoks/flask/razan ]; then \
-		echo "[FATAL] /home/databoks/flask/razan tidak ada. CMS butuh flask sebagai core."; exit 1; \
+	@if [ ! -d $(FLASK_DIR)/razan ]; then \
+		echo "[FATAL] $(FLASK_DIR)/razan tidak ada. CMS butuh flask sebagai core."; exit 1; \
 	fi
 	@if [ ! -f $(FLASK_ENV) ]; then \
 		echo "[FATAL] $(FLASK_ENV) tidak ada."; exit 1; \
 	fi
-	@echo "[OK] Flask core tersedia: /home/databoks/flask/razan"
+	@echo "[OK] Flask core tersedia: $(FLASK_DIR)/razan"
 
 # ---- Docker Commands ----
 up: check
@@ -74,7 +75,7 @@ build:
 
 # ---- Local Development ----
 dev: check
-	PYTHONPATH=/home/databoks/flask flask --app app run -h 0.0.0.0 -p 8879 --with-threads --reload
+	PYTHONPATH=$(FLASK_DIR) flask --app app run -h 0.0.0.0 -p 8879 --with-threads --reload
 
 # ---- Status ----
 status:
@@ -88,14 +89,14 @@ status:
 	echo "  Started   : $$UPTIME"; \
 	echo "  Port      : 8879"; \
 	echo "  URL       : http://localhost:8879"; \
-	echo "  Flask core: /home/databoks/flask (bind-mount ro)"; \
+	echo "  Flask core: $(FLASK_DIR) (bind-mount ro)"; \
 	echo "=========================================="
 	@$(DC) ps
 
 # ---- DB Schema ----
 init-schema:
 	@echo "=== Init CMS schema (dsc/databoks) ==="
-	@PYTHONPATH=/home/databoks/flask python3 scripts/init_schema.py
+	@PYTHONPATH=$(FLASK_DIR) python3 scripts/init_schema.py
 
 init-schema-docker:
 	@docker exec cms python3 -u /home/databoks/cms/scripts/init_schema.py
@@ -103,7 +104,7 @@ init-schema-docker:
 drop-schema:
 	@echo "=== DROP CMS tables (IRREVERSIBLE) ==="
 	@read -p "Ketik 'yes' untuk lanjut: " ans && [ "$$ans" = "yes" ] || exit 1
-	@PYTHONPATH=/home/databoks/flask python3 scripts/init_schema.py --drop
+	@PYTHONPATH=$(FLASK_DIR) python3 scripts/init_schema.py --drop
 
 # ---- Git Commands ----
 pull:

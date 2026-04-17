@@ -38,14 +38,12 @@ cms/
 **CMS TIDAK berdiri sendiri.** Engine ini adalah project terpisah dari
 `../flask`, tetapi **bergantung secara read-only** pada:
 
-| Path | Dipakai untuk |
-|------|----------------|
-| `/home/databoks/flask/razan/`   | import module core: `cfg` (DB pool), `ccg` (TOS/S3), `rzn` (data utils) |
-| `/home/databoks/flask/.env`     | semua credential (DB, TOS, dll) |
+- `$HOME/flask/razan/` — import module core: `cfg` (DB pool), `ccg` (TOS/S3), `rzn` (data utils)
+- `$HOME/flask/.env` — semua credential (DB, TOS, dll)
 
-Di Docker, folder `flask/` di-bind-mount `:ro` ke dalam container, dan
-`PYTHONPATH=/home/databoks/flask` diset supaya `from razan import cfg`
-bekerja tanpa menyalin source.
+Di Docker, folder `flask/` di-bind-mount `:ro` dari `$HOME/flask` (host) ke
+`/home/databoks/flask` (container, fixed), dan `PYTHONPATH` diset ke path
+container tersebut supaya `from razan import cfg` bekerja tanpa menyalin source.
 
 Kalau folder `flask/` tidak ada → startup akan **fail fast**
 (`make check` / `docker startup.sh`).
@@ -58,13 +56,13 @@ Kalau folder `flask/` tidak ada → startup akan **fail fast**
 ## Quick Start
 
 ### 1. Prasyarat
-- `/home/databoks/flask` tersedia dengan `razan/` dan `.env`
+- `$HOME/flask` tersedia dengan `razan/` dan `.env`
 - Docker + docker compose
 - Network Docker `${NETWORK}` sudah dibuat (ambil dari `flask/.env`)
 
 ### 2. Init schema (sekali saja)
 ```bash
-cd /home/databoks/cms
+cd $HOME/cms
 make init-schema
 ```
 Akan membuat 4 tabel di database `databoks`:
@@ -84,7 +82,7 @@ Dashboard: **http://localhost:8879**
 ### 4. Dev lokal (tanpa docker)
 ```bash
 make dev
-# = PYTHONPATH=/home/databoks/flask flask --app app run -h 0.0.0.0 -p 8879 --reload
+# = PYTHONPATH=$HOME/flask flask --app app run -h 0.0.0.0 -p 8879 --reload
 ```
 
 ---

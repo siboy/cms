@@ -29,7 +29,7 @@ from flask import (Flask, abort, jsonify, redirect, render_template, request,
 from werkzeug.utils import secure_filename
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FLASK_ROOT = os.environ.get("CMS_FLASK_ROOT", "/home/databoks/flask")
+FLASK_ROOT = os.environ.get("CMS_FLASK_ROOT", os.path.expanduser("~/flask"))
 if FLASK_ROOT not in sys.path:
     sys.path.insert(0, FLASK_ROOT)
 sys.path.insert(0, HERE)
