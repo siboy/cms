@@ -24,6 +24,14 @@ check:
 	fi
 	@echo "[OK] Flask core tersedia: $(FLASK_DIR)/razan"
 
+# ---- Docker Network ----
+nw:
+	@if docker network inspect $(NETWORK) >/dev/null 2>&1; then \
+		echo "[OK] network '$(NETWORK)' sudah ada"; \
+	else \
+		docker network create $(NETWORK) && echo "[OK] network '$(NETWORK)' dibuat"; \
+	fi
+
 # ---- Docker Commands ----
 up: check
 	$(DC) up -d
@@ -127,4 +135,4 @@ cal:
 %:
 	@:
 
-.PHONY: check up down rr logs bash build dev status init-schema init-schema-docker drop-schema pull cmd cal
+.PHONY: check nw up down rr logs bash build dev status init-schema init-schema-docker drop-schema pull cmd cal
