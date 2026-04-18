@@ -388,6 +388,104 @@ Editor per chunk (`/chunk/<id>/edit`) mendukung:
 
 ---
 
+## Tips & Best Practices
+
+### Menambahkan Gambar dan Tabel di Antara Chunks
+
+**Skenario:** Anda ingin insert 3 gambar dan beberapa tabel di antara H6 dan H7.
+
+#### **Cara 1: Insert di Dalam Chunk Existing** (Paling Mudah)
+
+Jika gambar/tabel adalah bagian dari konten heading:
+
+1. Buka chunk H6 untuk edit (`/chunk/<id>/edit`)
+2. Posisikan cursor di akhir konten
+3. Click button **🖼 Image** → upload gambar (ulangi 3x untuk 3 gambar)
+4. Click button **📊 Table** → insert tabel (ulangi sesuai kebutuhan)
+5. Save
+
+**Hasil:** Gambar dan tabel jadi bagian dari chunk H6, tidak perlu chunk baru.
+
+#### **Cara 2: Buat Chunk Terpisah untuk Media** (Organisasi Lebih Baik)
+
+Jika gambar/tabel ingin punya chunk sendiri (mudah di-manage):
+
+1. Di TOC page, click button **"+"** di chunk H6 (atau "+ Add Section")
+2. Heading text: "Daftar Gambar dan Tabel" atau "Media"
+3. Heading level: Pilih H7 (atau sesuai kebutuhan)
+4. Click **Create**
+5. Edit chunk baru → upload gambar & insert tabel
+6. Jika urutan salah, **drag-drop** chunk ke posisi yang tepat
+
+**Keuntungan Cara 2:**
+- ✅ Organisasi lebih jelas (media terpisah dari konten)
+- ✅ Mudah di-reorder dengan drag-drop
+- ✅ Punya version history sendiri
+- ✅ Mudah dicari di TOC
+
+#### **Cara 3: Paste HTML Langsung** (Advanced)
+
+Jika punya HTML yang sudah siap:
+
+1. Copy HTML gambar/tabel
+2. Paste langsung di editor (contenteditable)
+3. Save
+
+**Contoh HTML:**
+```html
+<h7>Daftar Gambar</h7>
+<img src="/media/1/foto1.jpg" style="max-width:100%">
+<p>Gambar 1: Deskripsi</p>
+
+<img src="/media/1/foto2.jpg" style="max-width:100%">
+<p>Gambar 2: Deskripsi</p>
+
+<table class="docx-table">
+  <tr><td>Header 1</td><td>Header 2</td></tr>
+  <tr><td>Data 1</td><td>Data 2</td></tr>
+</table>
+```
+
+### Upload Multiple Images
+
+Saat ini upload gambar satu per satu. Untuk upload banyak gambar:
+- Gunakan button **🖼 Image** berkali-kali, atau
+- Paste HTML `<img>` tags dengan URL yang sudah di-upload sebelumnya
+
+### Reorder Chunks dengan Drag-Drop
+
+Jika urutan chunks tidak sesuai keinginan:
+1. Buka TOC page (`/doc/<id>`)
+2. Drag icon **⋮⋮** di chunk yang ingin dipindah
+3. Drop ke posisi baru
+4. Order otomatis tersimpan
+
+**Contoh:**
+```
+Sebelum:
+#5  Chapter 6 (H6)
+#6  Chapter 7 (H7)
+#7  Daftar Gambar (H7)  ← ingin pindah
+
+Drag "Daftar Gambar" ke atas:
+
+Setelah:
+#5  Chapter 6 (H6)
+#6  Daftar Gambar (H7)  ← dipindah
+#7  Chapter 7 (H7)      ← shifted down
+```
+
+### Insert Chunk di Posisi Tertentu
+
+Untuk insert chunk baru di posisi spesifik:
+
+1. Click button **"+"** di chunk yang **sebelum** posisi insert
+2. Atau click **"+ Add Section"** → akan ada option `insert_after`
+3. Chunk baru akan muncul setelah chunk yang dipilih
+4. Jika perlu adjust, gunakan drag-drop
+
+---
+
 ## Alur PoC
 
 1. **Upload** — di `/`, pilih `.docx` (max 200MB) → masuk `cms_documents` (status `uploaded`)
