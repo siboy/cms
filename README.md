@@ -282,10 +282,59 @@ make mysql-logs        # Follow MySQL logs
 
 ---
 
+## Kapasitas & Konfigurasi File Besar
+
+CMS sudah dikonfigurasi untuk menangani file DOCX besar (500+ halaman, ~116MB)
+dengan tabel dan gambar.
+
+### Konfigurasi saat ini
+
+| Setting | Nilai | File |
+|---------|-------|------|
+| Upload limit | **200 MB** | `app.py` → `MAX_CONTENT_LENGTH` |
+| Gunicorn timeout | **600s** (10 menit) | `docker/cms.yml` |
+| Gunicorn graceful-timeout | **300s** | `docker/cms.yml` |
+| Split boundary | **Heading 1 + Heading 2** | `utils/docx_split.py` → `split_level=2` |
+| Media extract buffer | **1 MB** streaming | `utils/docx_split.py` |
+| MySQL max_allowed_packet | **256 MB** | `~/flask/containers/flask-mysql/my.cnf` |
+| MySQL innodb_buffer_pool | **1 GB** | `~/flask/containers/flask-mysql/my.cnf` |
+| Container memory limit | **4 GB** | `docker/cms.yml` |
+| Container CPU limit | **2 core** | `docker/cms.yml` |
+
+### Minimum resource server
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| RAM | 4 GB | **8 GB** |
+| CPU | 2 core | **4 core** |
+| Disk free | 1 GB | **2 GB** (temp files + media extract) |
+
+### Split strategy
+
+File DOCX dipotong berdasarkan **Heading 1 dan Heading 2** menjadi chunk-chunk
+yang manageable untuk diedit di browser. Parameter `split_level` di `split_docx()`
+mengontrol level heading mana yang menjadi boundary:
+
+| `split_level` | Boundary | Cocok untuk |
+|---------------|----------|-------------|
+| `1` | Heading 1 saja | Dokumen kecil (<50 halaman) |
+| `2` (default) | Heading 1 + Heading 2 | Dokumen besar (50-500 halaman) |
+| `3` | Heading 1 + 2 + 3 | Dokumen sangat besar (500+ halaman, chunk kecil) |
+
+### Catatan performa untuk file 116MB
+
+- **Upload**: ~2-5 detik (tergantung koneksi)
+- **Split**: ~30-120 detik (parse XML + extract media + insert DB)
+- **Edit per chunk**: ringan (hanya load 1 chunk HTML)
+- **Merge**: ~30-60 detik (rebuild docx dari semua chunk)
+- **RAM usage saat split**: file 116MB bisa expand ~3-5x di memory (~350-580 MB)
+
+---
+
 ## Alur PoC
 
-1. **Upload** — di `/`, pilih `.docx` → masuk `cms_documents` (status `uploaded`)
-2. **Split** — klik Split → `docx_split.py` potong per Heading 1, extract media,
+1. **Upload** — di `/`, pilih `.docx` (max 200MB) → masuk `cms_documents` (status `uploaded`)
+2. **Split** — klik Split → `docx_split.py` potong per Heading 1 & 2, extract media,
    isi `cms_chunks` + `cms_media`, status jadi `split`
 3. **TOC** — `/doc/<id>` menampilkan daftar isi (order_idx, heading, version)
 4. **View / Edit per chunk** — `/chunk/<id>`, `/chunk/<id>/edit`
@@ -311,9 +360,9 @@ docx original (untuk opsi merge fidelitas tinggi di iterasi berikutnya).
 
 ## Tradeoff & Batasan PoC
 
-- **Round-trip fidelity**: split by Heading 1 (level 2..6 tetap di dalam chunk).
-  Nested table, tracked changes, komentar, footer/header kompleks **tidak
-  dijamin** pulih setelah merge.
+- **Round-trip fidelity**: split by Heading 1 & 2 (level 3..6 tetap di dalam chunk,
+  configurable via `split_level`). Nested table, tracked changes, komentar,
+  footer/header kompleks **tidak dijamin** pulih setelah merge.
 - **Editor**: `contenteditable` sederhana (tanpa TipTap/Quill). Cukup untuk
   edit teks, heading, list, formatting dasar. Bisa diupgrade belakangan.
 - **Auth**: belum ada (PoC single-user local). Tambahkan sebelum production.
