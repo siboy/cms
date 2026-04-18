@@ -65,6 +65,35 @@ services:
           cpus: '2'
           memory: 4G
 
+  code-server:
+    container_name: cms-code-server
+    hostname: cms-code-server
+    image: linuxserver/code-server:latest
+    ports:
+      - "${CMS_CODE_SERVER_PORT:-8881}:8443"
+    environment:
+      - PUID=${HOST_UID:-1000}
+      - PGID=${HOST_GID:-1000}
+      - TZ=Asia/Jakarta
+      - PASSWORD=${CODE_SERVER_PASSWORD}
+      - DEFAULT_WORKSPACE=/home/databoks/cms
+    env_file:
+      - ${HOME}/flask/.env
+    volumes:
+      - ..:/home/databoks/cms
+      - ${HOME}/flask:/home/databoks/flask:ro
+      - cms-code-server-config:/config
+      - ${HOME}/.gitconfig:/config/.gitconfig:ro
+      - ${HOME}/.git-credentials:/config/.git-credentials:ro
+    working_dir: /home/databoks/cms
+    networks:
+      - cms-network
+    restart: unless-stopped
+
+volumes:
+  cms-code-server-config:
+    driver: local
+
 networks:
   cms-network:
     external: true

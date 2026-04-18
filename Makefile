@@ -37,7 +37,8 @@ up: check
 		if [ "$$STATUS" = "healthy" ]; then \
 			echo ""; \
 			echo "  CMS UP & RUNNING"; \
-			echo "  http://localhost:8879"; \
+			echo "  CMS app    : http://localhost:8879"; \
+			echo "  Code-server: http://localhost:$(CMS_CODE_SERVER_PORT)"; \
 			echo "  (startup: $${i}s)"; \
 			echo "=========================================="; \
 			break; \
@@ -57,11 +58,11 @@ up: check
 
 down:
 	$(DC) down
-	@docker rm -f cms 2>/dev/null || true
+	@docker rm -f cms cms-code-server 2>/dev/null || true
 
 rr:
 	$(DC) down
-	@docker rm -f cms 2>/dev/null || true
+	@docker rm -f cms cms-code-server 2>/dev/null || true
 	@$(MAKE) up
 
 logs:
@@ -84,12 +85,14 @@ status:
 	@echo "=========================================="
 	@STATUS=$$(docker inspect --format='{{.State.Health.Status}}' cms 2>/dev/null || echo "not running"); \
 	UPTIME=$$(docker inspect --format='{{.State.StartedAt}}' cms 2>/dev/null || echo "-"); \
-	echo "  Container : cms"; \
-	echo "  Health    : $$STATUS"; \
-	echo "  Started   : $$UPTIME"; \
-	echo "  Port      : 8879"; \
-	echo "  URL       : http://localhost:8879"; \
-	echo "  Flask core: $(FLASK_DIR) (bind-mount ro)"; \
+	CS_STATE=$$(docker inspect --format='{{.State.Status}}' cms-code-server 2>/dev/null || echo "not running"); \
+	echo "  CMS container : cms"; \
+	echo "  CMS health    : $$STATUS"; \
+	echo "  CMS started   : $$UPTIME"; \
+	echo "  CMS URL       : http://localhost:8879"; \
+	echo "  Code-server   : cms-code-server ($$CS_STATE)"; \
+	echo "  Code-server URL: http://localhost:$(CMS_CODE_SERVER_PORT)"; \
+	echo "  Flask core    : $(FLASK_DIR) (bind-mount ro)"; \
 	echo "=========================================="
 	@$(DC) ps
 
