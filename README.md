@@ -167,6 +167,121 @@ make dev
 
 ---
 
+## Command Reference
+
+Semua command di bawah dijalankan dari folder `~/cms`.
+
+### Startup & Shutdown
+
+| Command | Deskripsi |
+|---------|-----------|
+| `make start-all` | **Start MySQL + CMS sekaligus** (RECOMMENDED untuk startup) |
+| `make stop-all` | Stop MySQL + CMS sekaligus |
+| `make restart-all` | Restart MySQL + CMS (stop-all → start-all) |
+| `make up` | Start CMS saja (asumsi MySQL sudah running) |
+| `make down` | Stop CMS saja |
+| `make rr` | Restart CMS (down → up) |
+
+### MySQL Management
+
+| Command | Deskripsi |
+|---------|-----------|
+| `make mysql-up` | Start MySQL container dari ~/flask |
+| `make mysql-down` | Stop MySQL container |
+| `make mysql-status` | Cek status & port MySQL |
+| `make mysql-logs` | Tail logs MySQL (follow mode) |
+
+**Catatan**: Command MySQL ini men-delegate ke `~/flask/Makefile`, jadi tidak perlu `cd ~/flask` lagi.
+
+### Monitoring & Debugging
+
+| Command | Deskripsi |
+|---------|-----------|
+| `make status` | Cek health & uptime CMS + code-server |
+| `make logs` | Tail logs CMS (follow mode) |
+| `make bash` | Masuk ke shell container CMS |
+| `make check` | Preflight check (cek flask/ dependensi) |
+
+### Database Schema
+
+| Command | Deskripsi |
+|---------|-----------|
+| `make init-schema-docker` | Buat 4 tabel CMS di database `databoks` (exec di container) |
+| `make init-schema` | Buat schema dari host (perlu PYTHONPATH) |
+| `make drop-schema` | **DROP semua tabel CMS** (IRREVERSIBLE, confirm 'yes') |
+
+### Development
+
+| Command | Deskripsi |
+|---------|-----------|
+| `make dev` | Run Flask dev server di host (port 8879, auto-reload) |
+| `make build` | Rebuild Docker image (no-cache) |
+
+### Git Operations
+
+| Command | Deskripsi |
+|---------|-----------|
+| `make pull` | Git pull + show last 6 commits |
+| `make cmd m="pesan"` | Commit + push (author: agusdd) |
+| `make cal m="pesan"` | Git add all + commit + push |
+
+**Contoh penggunaan Git:**
+```bash
+make cmd m="Fix bug in chunk editor"
+make cal m="Add new feature"
+```
+
+### Workflow Harian
+
+**Pertama kali (setup awal):**
+```bash
+cd ~/cms
+
+# 1. Setup MySQL password file (sekali saja)
+mkdir -p ~/flask/containers/flask-mysql/db
+echo "databoks" > ~/flask/containers/flask-mysql/db/password.txt
+
+# 2. Update ~/flask/.env dengan kredensial yang benar
+#    (lihat section "Setup MySQL" di atas)
+
+# 3. Start MySQL + CMS
+make start-all
+
+# 4. Buat database & schema (sekali saja)
+docker exec mysql-8 mysql -uroot -pdataboks -e "CREATE DATABASE IF NOT EXISTS databoks;"
+make init-schema-docker
+```
+
+**Startup rutin:**
+```bash
+cd ~/cms
+make start-all         # Start MySQL + CMS
+# Akses: http://localhost:8879
+```
+
+**Shutdown:**
+```bash
+cd ~/cms
+make stop-all          # Stop MySQL + CMS
+```
+
+**Restart setelah code change:**
+```bash
+make rr                # Restart CMS saja
+# Atau
+make restart-all       # Restart MySQL + CMS
+```
+
+**Monitoring:**
+```bash
+make status            # Lihat health CMS
+make mysql-status      # Lihat health MySQL
+make logs              # Follow CMS logs
+make mysql-logs        # Follow MySQL logs
+```
+
+---
+
 ## Alur PoC
 
 1. **Upload** — di `/`, pilih `.docx` → masuk `cms_documents` (status `uploaded`)
