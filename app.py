@@ -13,6 +13,27 @@ Fitur:
   GET  /merge/<id>    rebuild docx dari chunks → download
   GET  /media/<doc_id>/<filename>  serve gambar
   GET  /health        healthcheck
+
+Setup Notes:
+  1. Requires MySQL 8.x container running (mysql-8)
+  2. Database 'databoks' must exist
+  3. Flask core from ~/flask must be mounted (read-only bind mount)
+  4. Package 'cryptography' required for MySQL 8.x caching_sha2_password auth
+
+  Environment variables in ~/flask/.env:
+    - host_databoks=mysql-8 (container name, not IP)
+    - user_databoks=root
+    - pass_databoks=databoks
+    - database_databoks=databoks
+    - DB_HOST_dbs=mysql-8
+    - DB_HOST_dbs_aws=mysql-8
+    - DB_HOST_dbs_mysql=mysql-8
+
+  Start MySQL first:
+    cd ~/flask && make mysql-up
+
+  Then start CMS:
+    cd ~/cms && make up
 """
 from __future__ import annotations
 

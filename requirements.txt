@@ -15,6 +15,7 @@ Pillow>=10.2
 pymysql>=1.1
 mysql-connector-python>=8.0
 sqlalchemy>=2.0
+cryptography>=41.0
 
 # Core data (dipakai razan/cfg.py saat import)
 pandas>=2.1

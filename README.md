@@ -57,16 +57,69 @@ Kalau folder `flask/` tidak ada → startup akan **fail fast**
 - `$HOME/flask` tersedia dengan `razan/` dan `.env`
 - Docker + docker compose
 - Network Docker `${NETWORK}` sudah dibuat (ambil dari `flask/.env`)
+- **MySQL 8.x container harus running** (lihat Setup MySQL di bawah)
 
-### 2. Init schema (sekali saja)
+### 2. Setup MySQL (WAJIB - sekali saja)
+
+#### a. Buat file password untuk MySQL
 ```bash
-cd $HOME/cms
-make init-schema
+mkdir -p ~/flask/containers/flask-mysql/db
+echo "databoks" > ~/flask/containers/flask-mysql/db/password.txt
+```
+
+#### b. Update konfigurasi di `~/flask/.env`
+Pastikan variabel berikut sudah diset dengan benar:
+```bash
+# MySQL databoks credentials
+user_databoks=root
+pass_databoks=databoks
+host_databoks=mysql-8        # Container name, bukan IP!
+port_databoks=3306
+database_databoks=databoks
+
+# DB_HOST untuk 'dbs' pool (digunakan oleh razan/cfg.py)
+DB_HOST_dbs='mysql-8'
+DB_HOST_dbs_aws='mysql-8'
+DB_HOST_dbs_mysql='mysql-8'
+```
+
+⚠️ **PENTING**: Gunakan hostname container `mysql-8`, **BUKAN IP** seperti `172.20.0.17`!
+IP container bisa berubah, hostname stabil.
+
+#### c. Start MySQL container
+```bash
+cd ~/flask
+make mysql-up
+```
+
+Tunggu sampai MySQL healthy (~30 detik). Cek dengan:
+```bash
+docker ps --filter "name=mysql-8"
+```
+
+#### d. Buat database `databoks`
+```bash
+docker exec mysql-8 mysql -uroot -pdataboks -e \
+  "CREATE DATABASE IF NOT EXISTS databoks CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+### 3. Install dependencies (untuk MySQL 8.x auth)
+
+CMS membutuhkan package `cryptography` untuk autentikasi MySQL 8.x (caching_sha2_password).
+Sudah termasuk di [requirements.txt](requirements.txt), tapi jika update existing container:
+```bash
+docker exec cms pip install cryptography
+```
+
+### 4. Init schema CMS (sekali saja)
+```bash
+cd ~/cms
+make init-schema-docker  # Atau: make init-schema (untuk lokal)
 ```
 Akan membuat 4 tabel di database `databoks`:
 `cms_documents`, `cms_chunks`, `cms_chunk_history`, `cms_media`.
 
-### 3. Jalankan container
+### 5. Jalankan CMS container
 ```bash
 make up        # build & up, tunggu healthy, tail logs
 make status    # cek state
@@ -76,8 +129,9 @@ make rr        # restart (down + up)
 make down      # stop
 ```
 Dashboard: **http://localhost:8879**
+Code-server: **http://localhost:8881** (optional IDE, password: `orioriori3x`)
 
-### 4. Dev lokal (tanpa docker)
+### 6. Dev lokal (tanpa docker)
 ```bash
 make dev
 # = PYTHONPATH=$HOME/flask flask --app app run -h 0.0.0.0 -p 8879 --reload
@@ -128,6 +182,7 @@ docx original (untuk opsi merge fidelitas tinggi di iterasi berikutnya).
 
 ## Troubleshooting
 
+### Perintah diagnostik
 ```bash
 make check          # preflight: cek flask/ dependensi
 make status         # cek container health
@@ -136,7 +191,67 @@ make drop-schema    # DROP tabel (IRREVERSIBLE, confirm 'yes')
 make build          # rebuild image no-cache
 ```
 
-- `[FATAL] /home/databoks/flask/razan not found` → pastikan project
-  `flask` ada di path yang sama dengan `cms/`.
-- Health check fail → `make logs`, umumnya DB pool tidak bisa connect
-  (cek `DB_*` di `flask/.env`).
+### Error umum dan solusi
+
+#### 1. `[FATAL] /home/databoks/flask/razan not found`
+**Penyebab**: Project `flask` tidak ada atau tidak di-mount dengan benar.
+**Solusi**: Pastikan `$HOME/flask` exists dan berisi folder `razan/`.
+
+#### 2. Container status `unhealthy` atau terus restart
+**Penyebab**: Healthcheck endpoint `/health` gagal (biasanya koneksi DB).
+**Solusi**:
+```bash
+make logs  # Lihat error detail
+
+# Error umum:
+# - "Can't connect to MySQL server on '172.20.0.17'"
+#   → MySQL container tidak running atau IP salah
+#   → Solusi: Pastikan MySQL running dan gunakan hostname, bukan IP
+#   → cd ~/flask && make mysql-up
+#   → Update ~/flask/.env: host_databoks=mysql-8
+
+# - "Access denied for user 'timdata'"
+#   → Kredensial MySQL salah
+#   → Solusi: Update ~/flask/.env:
+#     user_databoks=root
+#     pass_databoks=databoks
+
+# - "Unknown database 'databoks'"
+#   → Database belum dibuat
+#   → Solusi: docker exec mysql-8 mysql -uroot -pdataboks \
+#              -e "CREATE DATABASE IF NOT EXISTS databoks;"
+
+# - "'cryptography' package is required"
+#   → Package cryptography belum terinstall
+#   → Solusi: docker exec cms pip install cryptography
+#   → Atau rebuild: make build && make up
+```
+
+#### 3. MySQL container tidak bisa start
+**Error**: `bind source path does not exist: .../db/password.txt`
+**Solusi**:
+```bash
+mkdir -p ~/flask/containers/flask-mysql/db
+echo "databoks" > ~/flask/containers/flask-mysql/db/password.txt
+cd ~/flask && make mysql-up
+```
+
+#### 4. Healthcheck timeout setelah 90 detik
+**Penyebab**: Container start tapi healthcheck (`curl /health`) gagal.
+**Solusi**:
+1. Cek logs: `docker logs cms --tail 50`
+2. Test manual: `curl http://localhost:8879/health`
+3. Pastikan MySQL sudah healthy: `docker ps --filter "name=mysql"`
+4. Pastikan variabel environment di `~/flask/.env` sudah benar (lihat poin 2b di Quick Start)
+
+#### 5. Network error antara CMS dan MySQL
+**Penyebab**: Container tidak di network yang sama.
+**Solusi**:
+```bash
+# Cek network
+docker inspect cms --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+docker inspect mysql-8 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}'
+
+# Jika berbeda, pastikan NETWORK di ~/flask/.env sama
+# Lalu restart: make rr
+```
