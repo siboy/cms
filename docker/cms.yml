@@ -43,10 +43,11 @@ services:
           --workers 2 \
           --threads 4 \
           --worker-class gthread \
-          --timeout 180 \
+          --timeout 600 \
           --keep-alive 5 \
           --max-requests 500 \
           --max-requests-jitter 50 \
+          --graceful-timeout 300 \
           --access-logfile - \
           --access-logformat '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s' \
           --error-logfile -

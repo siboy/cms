@@ -1,5 +1,5 @@
 """
-Split .docx menjadi chunk-chunk berdasarkan Heading 1.
+Split .docx menjadi chunk-chunk berdasarkan Heading.
 
 Setiap chunk berisi:
   - order_idx, heading_level, heading_text
@@ -7,8 +7,9 @@ Setiap chunk berisi:
   - content_raw    (serialized XML fragment dari body - untuk merge fidelity)
   - list media ref (gambar di dalam chunk)
 
-Strategi potong: Heading 1 = boundary chunk baru.
-Paragraf sebelum Heading 1 pertama masuk ke chunk "preamble" (order_idx=0).
+Strategi potong: Heading 1 dan Heading 2 = boundary chunk baru.
+Paragraf sebelum Heading pertama masuk ke chunk "preamble" (order_idx=0).
+Ini memungkinkan file besar (500+ halaman) dipecah menjadi chunk yang manageable.
 """
 from __future__ import annotations
 
@@ -135,6 +136,7 @@ def _extract_media(docx_path: str, out_dir: str) -> dict[str, MediaRef]:
     Extract semua file di word/media/ → out_dir.
     Return dict: rid → MediaRef (rid diisi belakangan dari document.xml.rels).
     Untuk sekarang kembalikan dict filename → MediaRef.
+    Streaming copy: gunakan buffer 1MB agar tidak load seluruh gambar ke RAM.
     """
     os.makedirs(out_dir, exist_ok=True)
     out: dict[str, MediaRef] = {}
@@ -144,7 +146,7 @@ def _extract_media(docx_path: str, out_dir: str) -> dict[str, MediaRef]:
             base = os.path.basename(name)
             save_path = os.path.join(out_dir, base)
             with z.open(name) as src, open(save_path, "wb") as dst:
-                shutil.copyfileobj(src, dst)
+                shutil.copyfileobj(src, dst, length=1024 * 1024)
             out[name] = MediaRef(
                 rid="",
                 filename=base,
@@ -175,12 +177,18 @@ def _build_rid_map(docx_path: str) -> dict[str, str]:
     return rid_map
 
 
-def split_docx(docx_path: str, media_out_dir: str) -> tuple[list[Chunk], dict[str, MediaRef]]:
+def split_docx(
+    docx_path: str,
+    media_out_dir: str,
+    split_level: int = 2,
+) -> tuple[list[Chunk], dict[str, MediaRef]]:
     """
     Main entry. Return (chunks, media_by_rid).
 
     chunks: sorted by order_idx
     media_by_rid: {rid: MediaRef} — semua gambar di doc, rid asli docx
+    split_level: heading level yang menjadi boundary chunk (default 2 = H1 & H2)
+                 1 = hanya H1, 2 = H1+H2, 3 = H1+H2+H3, dst.
     """
     doc = Document(docx_path)
     files_by_target = _extract_media(docx_path, media_out_dir)
@@ -212,13 +220,13 @@ def split_docx(docx_path: str, media_out_dir: str) -> tuple[list[Chunk], dict[st
 
         if isinstance(block, Paragraph):
             lvl = _heading_level(block)
-            if lvl == 1:
+            if 1 <= lvl <= split_level:
                 # boundary: flush current + start baru
                 flush()
                 idx_counter += 1
                 current = Chunk(
                     order_idx=idx_counter,
-                    heading_level=1,
+                    heading_level=lvl,
                     heading_text=_para_text(block) or f"Section {idx_counter}",
                 )
                 html_buf = [_para_to_html(block)]

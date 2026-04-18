@@ -63,7 +63,7 @@ UPLOAD_DIR = Path(HERE) / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_EXT = {".docx"}
-MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50 MB
+MAX_CONTENT_LENGTH = 200 * 1024 * 1024  # 200 MB
 
 ALLOWED_TAGS = [
     "p", "h1", "h2", "h3", "h4", "h5", "h6",
@@ -339,7 +339,7 @@ def media(doc_id, filename):
 
 @app.errorhandler(413)
 def too_large(e):
-    return "File terlalu besar (max 50MB)", 413
+    return "File terlalu besar (max 200MB)", 413
 
 
 if __name__ == "__main__":
