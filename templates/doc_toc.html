@@ -79,6 +79,10 @@
         <option value="4">H4</option>
         <option value="5">H5</option>
         <option value="6">H6</option>
+        <option value="7">H7</option>
+        <option value="8">H8</option>
+        <option value="9">H9</option>
+        <option value="10">H10</option>
       </select>
 
       <div class="modal-actions">
@@ -208,7 +212,7 @@ function showAddChunkModal() {
 function addChildChunk(parentChunkId, parentLevel, parentOrderIdx) {
   document.getElementById('insert_after').value = parentOrderIdx;
   document.getElementById('new_heading_text').value = '';
-  document.getElementById('new_heading_level').value = Math.min(parentLevel + 1, 6);
+  document.getElementById('new_heading_level').value = Math.min(parentLevel + 1, 10);
   document.getElementById('add-chunk-modal').style.display = 'flex';
 }
 

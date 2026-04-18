@@ -73,6 +73,10 @@ h2 { font-size:1.2rem; margin-top:2rem; }
 .toc-lvl-4 .toc-row { padding-left:5.5rem; font-size:.92rem; }
 .toc-lvl-5 .toc-row { padding-left:7rem; font-size:.9rem; }
 .toc-lvl-6 .toc-row { padding-left:8.5rem; font-size:.88rem; }
+.toc-lvl-7 .toc-row { padding-left:10rem; font-size:.86rem; }
+.toc-lvl-8 .toc-row { padding-left:11.5rem; font-size:.84rem; }
+.toc-lvl-9 .toc-row { padding-left:13rem; font-size:.82rem; }
+.toc-lvl-10 .toc-row { padding-left:14.5rem; font-size:.8rem; }
 
 .toc-idx { font-family:ui-monospace,monospace; color:var(--muted); font-size:.8rem; min-width:3rem; }
 
