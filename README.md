@@ -331,14 +331,76 @@ mengontrol level heading mana yang menjadi boundary:
 
 ---
 
+## Fitur TOC Management (Interactive)
+
+CMS mendukung **full TOC (Table of Contents) management** dengan UI interaktif:
+
+### 1. Tree View & Hierarchy
+
+- Layout daftar isi dengan **indentasi hierarkis** (H1-H6)
+- Visual tree structure seperti file explorer
+- Toggle expand/collapse untuk section dengan children
+
+### 2. Rename Chunks
+
+- Klik icon **✎ Rename** di setiap chunk
+- Inline editing dengan Enter (save) / Esc (cancel)
+- Update real-time via AJAX
+
+### 3. Delete Chunks
+
+- Klik icon **🗑 Delete** dengan confirmation dialog
+- Auto-reorder chunks setelah delete
+- Hapus juga edit history chunk tersebut
+
+### 4. Reorder with Drag-Drop
+
+- Drag handle **⋮⋮** di setiap chunk
+- Drag-and-drop untuk mengubah urutan
+- Auto-save order ke database (via Sortable.js)
+
+### 5. Add New Chunks
+
+- Button **+ Add Section** untuk insert chunk baru
+- Modal form: pilih heading text & level (H1-H6)
+- Button **+** per chunk untuk add child (auto-increment level)
+- Insert di posisi tertentu (setelah chunk tertentu)
+
+### 6. Media Management
+
+- Upload gambar langsung dari chunk editor (button **🖼 Image**)
+- Insert tabel dengan prompt rows/cols (button **📊 Table**)
+- Delete media files (akan ditambahkan ke UI chunk view)
+
+### 7. Rich Editor Toolbar
+
+Editor per chunk (`/chunk/<id>/edit`) mendukung:
+
+| Button | Fungsi |
+|--------|--------|
+| **B**, **I**, **U** | Bold, Italic, Underline |
+| **H1-H6** | Heading level 1-6 |
+| **¶** | Paragraph |
+| **• List**, **1. List** | Bullet / Numbered list |
+| **📊 Table** | Insert table (prompt size) |
+| **🖼 Image** | Upload image (modal) |
+| **Clear** | Remove formatting |
+
+---
+
 ## Alur PoC
 
 1. **Upload** — di `/`, pilih `.docx` (max 200MB) → masuk `cms_documents` (status `uploaded`)
 2. **Split** — klik Split → `docx_split.py` potong per Heading 1 & 2, extract media,
    isi `cms_chunks` + `cms_media`, status jadi `split`
-3. **TOC** — `/doc/<id>` menampilkan daftar isi (order_idx, heading, version)
+3. **TOC Management** — `/doc/<id>` tampilkan tree view TOC, bisa:
+   - Drag-drop reorder chunks
+   - Rename heading (inline edit)
+   - Delete chunk
+   - Add new chunk/section
 4. **View / Edit per chunk** — `/chunk/<id>`, `/chunk/<id>/edit`
-   (contenteditable + toolbar sederhana, sanitize via bleach)
+   - Rich editor dengan H1-H6, table, image upload
+   - Sanitize HTML via bleach
 5. **Save** — insert row di `cms_chunk_history` (versi lama) lalu update
    `cms_chunks` (+version, updated_by). Status dokumen → `edited`
 6. **Merge** — `/merge/<id>` → `docx_merge.py` rebuild .docx pakai docx asli
@@ -355,6 +417,61 @@ mengontrol level heading mana yang menjadi boundary:
 
 `content_html` dipakai editor webview. `content_raw` menyimpan XML fragment
 docx original (untuk opsi merge fidelitas tinggi di iterasi berikutnya).
+
+---
+
+## API Reference (TOC Management)
+
+Endpoint baru untuk TOC management (semua support AJAX):
+
+| Endpoint | Method | Params | Deskripsi |
+|----------|--------|--------|-----------|
+| `/chunk/<id>/rename` | POST | `heading_text` | Rename chunk heading |
+| `/chunk/<id>/delete` | POST | - | Delete chunk + auto-reorder |
+| `/doc/<id>/reorder` | POST | `{"chunk_ids": [...])}` JSON | Bulk update order_idx |
+| `/chunk/new` | POST | `doc_id`, `heading_text`, `heading_level`, `insert_after` | Create new chunk |
+| `/chunk/<id>/media/upload` | POST | `image` (file) | Upload image ke chunk |
+| `/media/<id>/delete` | POST | - | Delete media file |
+
+### Example Usage
+
+**Rename chunk (AJAX):**
+```javascript
+fetch('/chunk/123/rename', {
+  method: 'POST',
+  headers: {'X-Requested-With': 'XMLHttpRequest'},
+  body: new FormData().append('heading_text', 'New Heading')
+})
+.then(r => r.json())
+.then(data => console.log(data.heading_text));
+```
+
+**Reorder chunks (drag-drop):**
+```javascript
+const chunkIds = [3, 1, 2, 4]; // New order
+fetch('/doc/5/reorder', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({chunk_ids: chunkIds})
+})
+.then(r => r.json());
+```
+
+**Add new chunk:**
+```javascript
+const formData = new FormData();
+formData.append('doc_id', '5');
+formData.append('heading_text', 'New Section');
+formData.append('heading_level', '2');
+formData.append('insert_after', '3'); // Insert after chunk #3
+
+fetch('/chunk/new', {
+  method: 'POST',
+  body: formData
+})
+.then(r => r.json())
+.then(data => console.log('Created chunk:', data.chunk_id));
+```
 
 ---
 
