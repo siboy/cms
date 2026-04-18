@@ -49,18 +49,47 @@ h2 { font-size:1.2rem; margin-top:2rem; }
 .toolbar { display:flex; gap:.5rem; margin:1rem 0; }
 .actions form { margin:0 .2rem 0 0; }
 
+/* TOC Tree View */
 .toc { list-style:none; padding:0; margin:1rem 0; }
-.toc-item { display:flex; align-items:baseline; gap:.6rem; padding:.5rem .7rem;
-            border-bottom:1px solid var(--border); background:var(--card); }
+.toc-item { border-bottom:1px solid var(--border); background:var(--card);
+            transition: background-color 0.2s; }
 .toc-item:first-child { border-top:1px solid var(--border); }
+.toc-item.collapsed { opacity:0.6; }
+.toc-item:hover { background:#f9fafb; }
+
+.toc-row { display:flex; align-items:center; gap:.6rem; padding:.5rem .7rem; }
+
+.toc-drag-handle { cursor:move; color:var(--muted); font-size:1rem; padding:.2rem .4rem;
+                   user-select:none; }
+.toc-drag-handle:hover { color:var(--accent); }
+
+.toc-toggle { cursor:pointer; color:var(--muted); font-size:.9rem; min-width:1.2rem;
+              user-select:none; }
+.toc-toggle:hover { color:var(--accent); }
+
 .toc-lvl-1 { font-weight:600; }
-.toc-lvl-2 { padding-left:1.8rem; }
-.toc-lvl-3 { padding-left:3rem; font-size:.95rem; }
+.toc-lvl-2 .toc-row { padding-left:2.5rem; }
+.toc-lvl-3 .toc-row { padding-left:4rem; font-size:.95rem; }
+.toc-lvl-4 .toc-row { padding-left:5.5rem; font-size:.92rem; }
+.toc-lvl-5 .toc-row { padding-left:7rem; font-size:.9rem; }
+.toc-lvl-6 .toc-row { padding-left:8.5rem; font-size:.88rem; }
+
 .toc-idx { font-family:ui-monospace,monospace; color:var(--muted); font-size:.8rem; min-width:3rem; }
-.toc-link { color:var(--fg); text-decoration:none; flex:1; }
-.toc-link:hover { color:var(--accent); }
-.toc-meta { color:var(--muted); font-size:.8rem; font-family:ui-monospace,monospace; }
+
+.toc-heading-wrapper { flex:1; display:flex; align-items:center; }
+.toc-heading { color:var(--fg); }
+.toc-heading-edit { flex:1; padding:.3rem .5rem; border:1px solid var(--accent);
+                    border-radius:4px; font-size:.9rem; }
+
+.toc-meta { color:var(--muted); font-size:.8rem; font-family:ui-monospace,monospace;
+            margin-left:auto; }
 .toc-actions { margin-left:.8rem; display:flex; gap:.3rem; }
+
+.toc-controls { margin:1rem 0; padding:.6rem; background:var(--card);
+                border:1px solid var(--border); border-radius:6px; }
+
+.btn-danger { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
+.btn-danger:hover { background:#fecaca; }
 
 .chunk-view { background:var(--card); border:1px solid var(--border); border-radius:8px;
               padding:1.2rem 1.6rem; }
@@ -72,6 +101,8 @@ h2 { font-size:1.2rem; margin-top:2rem; }
                   border:1px solid var(--border); border-bottom:0; border-radius:8px 8px 0 0; }
 .editor-toolbar button { padding:.3rem .6rem; background:#fff; border:1px solid var(--border);
                          border-radius:4px; cursor:pointer; }
+.editor-toolbar button:hover { background:#f3f4f6; }
+.toolbar-separator { color:var(--border); margin:0 .2rem; }
 .editor { background:var(--card); border:1px solid var(--border); border-radius:0 0 8px 8px;
           padding:1.2rem 1.6rem; min-height:300px; outline:none; }
 .editor img { max-width:100%; height:auto; }
@@ -83,6 +114,24 @@ h2 { font-size:1.2rem; margin-top:2rem; }
 
 .badge { display:inline-block; padding:.1rem .4rem; border-radius:4px; font-size:.75rem; }
 .badge-hist { background:#fde68a; color:#92400e; }
+
+/* Modal */
+.modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:1000;
+         background:rgba(0,0,0,0.5); justify-content:center; align-items:center; }
+.modal-content { background:var(--card); border-radius:8px; padding:1.5rem 2rem;
+                 max-width:500px; width:90%; box-shadow:0 4px 20px rgba(0,0,0,0.15); }
+.modal-content h3 { margin-top:0; }
+.modal-content label { display:block; margin-top:1rem; font-weight:500; }
+.modal-content input[type="text"],
+.modal-content input[type="file"],
+.modal-content select { width:100%; padding:.5rem; margin-top:.3rem;
+                        border:1px solid var(--border); border-radius:4px; }
+.modal-actions { display:flex; gap:.5rem; margin-top:1.5rem; justify-content:flex-end; }
+
+/* Table in editor */
+.docx-table { border-collapse:collapse; width:100%; margin:1rem 0; }
+.docx-table td, .docx-table th { border:1px solid var(--border); padding:.4rem .6rem; }
+.docx-table th { background:#f3f4f6; font-weight:600; }
 
 .footer { text-align:center; padding:2rem 1rem; color:var(--muted); font-size:.85rem; }
 code { font-family:ui-monospace,monospace; background:#eef1f5; padding:.1rem .3rem; border-radius:3px; }

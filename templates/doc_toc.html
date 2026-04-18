@@ -12,6 +12,7 @@
   <form method="post" action="{{ url_for('do_split', doc_id=doc.id) }}" style="display:inline">
     <button class="btn" title="Re-split: overwrite semua chunk">Re-split</button>
   </form>
+  <button class="btn" onclick="showAddChunkModal()">+ Add Section</button>
   <a class="btn-primary" href="{{ url_for('merge', doc_id=doc.id) }}">Merge → Download .docx</a>
 </div>
 
@@ -19,22 +20,241 @@
 {% if not chunks %}
   <p class="muted">Belum ada chunk. Klik Split untuk memotong dokumen.</p>
 {% else %}
-<ol class="toc">
+<div class="toc-controls">
+  <label>
+    <input type="checkbox" id="toggle-all" onchange="toggleAllChunks(this.checked)">
+    Expand/Collapse All
+  </label>
+</div>
+
+<ol class="toc" id="toc-list">
   {% for ch in chunks %}
-    <li class="toc-item toc-lvl-{{ ch.heading_level }}">
-      <span class="toc-idx">#{{ ch.order_idx }}</span>
-      <a href="{{ url_for('chunk_view', chunk_id=ch.id) }}" class="toc-link">
-        {{ ch.heading_text or '(no heading)' }}
-      </a>
-      <span class="toc-meta">
-        v{{ ch.version }} · {{ ch.size }}b · h{{ ch.heading_level }}
-      </span>
-      <span class="toc-actions">
-        <a href="{{ url_for('chunk_edit', chunk_id=ch.id) }}" class="btn-sm">Edit</a>
-        <a href="{{ url_for('chunk_history', chunk_id=ch.id) }}" class="btn-sm">History</a>
-      </span>
+    <li class="toc-item toc-lvl-{{ ch.heading_level }}" data-chunk-id="{{ ch.id }}" data-order-idx="{{ ch.order_idx }}" data-level="{{ ch.heading_level }}">
+      <div class="toc-row">
+        <span class="toc-drag-handle" title="Drag to reorder">⋮⋮</span>
+        <span class="toc-toggle" onclick="toggleChildren({{ ch.id }})">
+          {% if ch.heading_level < 3 %}▼{% endif %}
+        </span>
+        <span class="toc-idx">#{{ ch.order_idx }}</span>
+
+        <div class="toc-heading-wrapper">
+          <span class="toc-heading" id="heading-{{ ch.id }}">{{ ch.heading_text or '(no heading)' }}</span>
+          <input type="text" class="toc-heading-edit" id="heading-edit-{{ ch.id }}" style="display:none" value="{{ ch.heading_text }}" />
+        </div>
+
+        <span class="toc-meta">
+          v{{ ch.version }} · {{ ch.size }}b · h{{ ch.heading_level }}
+        </span>
+
+        <span class="toc-actions">
+          <a href="{{ url_for('chunk_view', chunk_id=ch.id) }}" class="btn-sm" title="View">👁</a>
+          <a href="{{ url_for('chunk_edit', chunk_id=ch.id) }}" class="btn-sm" title="Edit">✏️</a>
+          <button class="btn-sm" onclick="startRename({{ ch.id }})" title="Rename">✎</button>
+          <button class="btn-sm" onclick="addChildChunk({{ ch.id }}, {{ ch.heading_level }}, {{ ch.order_idx }})" title="Add child">+</button>
+          <button class="btn-sm btn-danger" onclick="deleteChunk({{ ch.id }}, '{{ ch.heading_text|replace("'", "\\'") }}')" title="Delete">🗑</button>
+          <a href="{{ url_for('chunk_history', chunk_id=ch.id) }}" class="btn-sm" title="History">⏱</a>
+        </span>
+      </div>
     </li>
   {% endfor %}
 </ol>
 {% endif %}
+
+<!-- Modal for Add Chunk -->
+<div id="add-chunk-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <h3>Add New Section</h3>
+    <form id="add-chunk-form" onsubmit="return submitAddChunk(event)">
+      <input type="hidden" name="doc_id" value="{{ doc.id }}">
+      <input type="hidden" name="insert_after" id="insert_after">
+
+      <label>Heading Text:</label>
+      <input type="text" name="heading_text" id="new_heading_text" required placeholder="New Section Title">
+
+      <label>Heading Level:</label>
+      <select name="heading_level" id="new_heading_level">
+        <option value="1">H1 - Main Section</option>
+        <option value="2" selected>H2 - Subsection</option>
+        <option value="3">H3 - Sub-subsection</option>
+        <option value="4">H4</option>
+        <option value="5">H5</option>
+        <option value="6">H6</option>
+      </select>
+
+      <div class="modal-actions">
+        <button type="submit" class="btn-primary">Create</button>
+        <button type="button" class="btn" onclick="closeAddChunkModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script>
+const docId = {{ doc.id }};
+
+// Initialize Sortable for drag-drop
+const tocList = document.getElementById('toc-list');
+if (tocList) {
+  new Sortable(tocList, {
+    animation: 150,
+    handle: '.toc-drag-handle',
+    onEnd: function(evt) {
+      updateOrder();
+    }
+  });
+}
+
+function updateOrder() {
+  const items = document.querySelectorAll('.toc-item');
+  const chunkIds = Array.from(items).map(item => parseInt(item.dataset.chunkId));
+
+  fetch(`/doc/${docId}/reorder`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({chunk_ids: chunkIds})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      // Update order_idx display
+      items.forEach((item, idx) => {
+        item.dataset.orderIdx = idx;
+        item.querySelector('.toc-idx').textContent = '#' + idx;
+      });
+    }
+  })
+  .catch(err => console.error('Reorder failed:', err));
+}
+
+function startRename(chunkId) {
+  const heading = document.getElementById('heading-' + chunkId);
+  const input = document.getElementById('heading-edit-' + chunkId);
+  heading.style.display = 'none';
+  input.style.display = 'inline-block';
+  input.focus();
+  input.select();
+
+  input.onblur = function() {
+    saveRename(chunkId, input.value);
+  };
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveRename(chunkId, input.value);
+    } else if (e.key === 'Escape') {
+      cancelRename(chunkId);
+    }
+  };
+}
+
+function saveRename(chunkId, newHeading) {
+  const heading = document.getElementById('heading-' + chunkId);
+  const input = document.getElementById('heading-edit-' + chunkId);
+
+  const formData = new FormData();
+  formData.append('heading_text', newHeading);
+
+  fetch(`/chunk/${chunkId}/rename`, {
+    method: 'POST',
+    headers: {'X-Requested-With': 'XMLHttpRequest'},
+    body: formData
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      heading.textContent = data.heading_text;
+      input.style.display = 'none';
+      heading.style.display = 'inline';
+    }
+  })
+  .catch(err => {
+    console.error('Rename failed:', err);
+    cancelRename(chunkId);
+  });
+}
+
+function cancelRename(chunkId) {
+  const heading = document.getElementById('heading-' + chunkId);
+  const input = document.getElementById('heading-edit-' + chunkId);
+  input.style.display = 'none';
+  heading.style.display = 'inline';
+}
+
+function deleteChunk(chunkId, headingText) {
+  if (!confirm(`Delete chunk "${headingText}"?\n\nThis will also delete its edit history.`)) {
+    return;
+  }
+
+  fetch(`/chunk/${chunkId}/delete`, {
+    method: 'POST',
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      location.reload();
+    }
+  })
+  .catch(err => console.error('Delete failed:', err));
+}
+
+function showAddChunkModal() {
+  document.getElementById('insert_after').value = '';
+  document.getElementById('new_heading_text').value = '';
+  document.getElementById('add-chunk-modal').style.display = 'flex';
+}
+
+function addChildChunk(parentChunkId, parentLevel, parentOrderIdx) {
+  document.getElementById('insert_after').value = parentOrderIdx;
+  document.getElementById('new_heading_text').value = '';
+  document.getElementById('new_heading_level').value = Math.min(parentLevel + 1, 6);
+  document.getElementById('add-chunk-modal').style.display = 'flex';
+}
+
+function closeAddChunkModal() {
+  document.getElementById('add-chunk-modal').style.display = 'none';
+}
+
+function submitAddChunk(event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+
+  fetch('/chunk/new', {
+    method: 'POST',
+    headers: {'X-Requested-With': 'XMLHttpRequest'},
+    body: formData
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      location.reload();
+    }
+  })
+  .catch(err => console.error('Add chunk failed:', err));
+
+  return false;
+}
+
+function toggleChildren(chunkId) {
+  // Simple toggle for demo - can be enhanced with proper tree logic
+  const item = document.querySelector(`[data-chunk-id="${chunkId}"]`);
+  if (item) {
+    item.classList.toggle('collapsed');
+  }
+}
+
+function toggleAllChunks(expand) {
+  const items = document.querySelectorAll('.toc-item');
+  items.forEach(item => {
+    if (expand) {
+      item.classList.remove('collapsed');
+    } else {
+      item.classList.add('collapsed');
+    }
+  });
+}
+</script>
+
 {% endblock %}

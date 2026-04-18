@@ -337,6 +337,198 @@ def media(doc_id, filename):
     return send_from_directory(doc["media_dir"], filename)
 
 
+# ============================================================
+# TOC Management API
+# ============================================================
+
+@app.route("/chunk/<int:chunk_id>/rename", methods=["POST"])
+def chunk_rename(chunk_id):
+    """Rename chunk heading text."""
+    ch = db.fetchone("SELECT * FROM cms_chunks WHERE id=%s", (chunk_id,))
+    if not ch:
+        abort(404)
+
+    new_heading = request.form.get("heading_text", "").strip()
+    if not new_heading:
+        return jsonify(ok=False, error="Heading text required"), 400
+
+    db.execute(
+        "UPDATE cms_chunks SET heading_text=%s WHERE id=%s",
+        (new_heading[:500], chunk_id)
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(ok=True, chunk_id=chunk_id, heading_text=new_heading)
+
+    flash(f"Heading updated: {new_heading}", "ok")
+    return redirect(url_for("doc_view", doc_id=ch["doc_id"]))
+
+
+@app.route("/chunk/<int:chunk_id>/delete", methods=["POST"])
+def chunk_delete(chunk_id):
+    """Delete chunk and reorder remaining chunks."""
+    ch = db.fetchone("SELECT * FROM cms_chunks WHERE id=%s", (chunk_id,))
+    if not ch:
+        abort(404)
+
+    doc_id = ch["doc_id"]
+    deleted_order = ch["order_idx"]
+
+    # Delete chunk history first (FK constraint)
+    db.execute("DELETE FROM cms_chunk_history WHERE chunk_id=%s", (chunk_id,))
+
+    # Delete chunk
+    db.execute("DELETE FROM cms_chunks WHERE id=%s", (chunk_id,))
+
+    # Reorder: decrement order_idx untuk chunk setelah yang dihapus
+    db.execute(
+        "UPDATE cms_chunks SET order_idx = order_idx - 1 "
+        "WHERE doc_id=%s AND order_idx > %s",
+        (doc_id, deleted_order)
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(ok=True, deleted_chunk_id=chunk_id)
+
+    flash(f"Chunk #{chunk_id} deleted", "ok")
+    return redirect(url_for("doc_view", doc_id=doc_id))
+
+
+@app.route("/doc/<int:doc_id>/reorder", methods=["POST"])
+def doc_reorder(doc_id):
+    """
+    Reorder chunks based on new order.
+    Expects JSON: {"chunk_ids": [3, 1, 2, 4]} - array of chunk IDs in new order
+    """
+    doc = db.fetchone("SELECT * FROM cms_documents WHERE id=%s", (doc_id,))
+    if not doc:
+        abort(404)
+
+    data = request.get_json()
+    if not data or "chunk_ids" not in data:
+        return jsonify(ok=False, error="chunk_ids required"), 400
+
+    chunk_ids = data["chunk_ids"]
+
+    # Update order_idx for each chunk
+    for new_idx, chunk_id in enumerate(chunk_ids):
+        db.execute(
+            "UPDATE cms_chunks SET order_idx=%s WHERE id=%s AND doc_id=%s",
+            (new_idx, chunk_id, doc_id)
+        )
+
+    return jsonify(ok=True, reordered=len(chunk_ids))
+
+
+@app.route("/chunk/new", methods=["POST"])
+def chunk_new():
+    """
+    Create new chunk.
+    Form params: doc_id, heading_text, heading_level, insert_after (order_idx)
+    """
+    doc_id = request.form.get("doc_id", type=int)
+    if not doc_id:
+        return jsonify(ok=False, error="doc_id required"), 400
+
+    heading_text = request.form.get("heading_text", "New Section").strip()
+    heading_level = request.form.get("heading_level", 2, type=int)  # default H2
+    insert_after = request.form.get("insert_after", type=int)  # order_idx to insert after
+
+    # Get max order_idx
+    if insert_after is not None:
+        # Insert after specific position: shift semua yang setelahnya
+        db.execute(
+            "UPDATE cms_chunks SET order_idx = order_idx + 1 "
+            "WHERE doc_id=%s AND order_idx > %s",
+            (doc_id, insert_after)
+        )
+        new_order_idx = insert_after + 1
+    else:
+        # Append di akhir
+        max_row = db.fetchone(
+            "SELECT MAX(order_idx) AS max_idx FROM cms_chunks WHERE doc_id=%s",
+            (doc_id,)
+        )
+        new_order_idx = (max_row["max_idx"] or 0) + 1
+
+    # Insert new chunk
+    chunk_id = db.execute(
+        "INSERT INTO cms_chunks "
+        "(doc_id, order_idx, heading_level, heading_text, content_html, content_raw, version) "
+        "VALUES (%s, %s, %s, %s, %s, %s, 1)",
+        (doc_id, new_order_idx, heading_level, heading_text[:500],
+         f"<h{heading_level}>{heading_text}</h{heading_level}>\n<p>New content...</p>", "")
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(ok=True, chunk_id=chunk_id, order_idx=new_order_idx)
+
+    flash(f"New chunk created: {heading_text}", "ok")
+    return redirect(url_for("chunk_edit", chunk_id=chunk_id))
+
+
+@app.route("/chunk/<int:chunk_id>/media/upload", methods=["POST"])
+def chunk_media_upload(chunk_id):
+    """Upload image to chunk."""
+    ch = db.fetchone("SELECT * FROM cms_chunks WHERE id=%s", (chunk_id,))
+    if not ch:
+        abort(404)
+
+    f = request.files.get("image")
+    if not f or not f.filename:
+        return jsonify(ok=False, error="No file uploaded"), 400
+
+    # Get doc media_dir
+    doc = db.fetchone("SELECT media_dir FROM cms_documents WHERE id=%s", (ch["doc_id"],))
+    if not doc or not doc["media_dir"]:
+        return jsonify(ok=False, error="No media dir"), 400
+
+    media_dir = Path(doc["media_dir"])
+    media_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = secure_filename(f.filename)
+    # Add timestamp to avoid collision
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{ts}_{safe_name}"
+    save_path = media_dir / filename
+    f.save(save_path)
+
+    # Insert to cms_media
+    media_id = db.execute(
+        "INSERT INTO cms_media (doc_id, chunk_id, filename, path, rid) "
+        "VALUES (%s, %s, %s, %s, %s)",
+        (ch["doc_id"], chunk_id, filename, str(save_path), f"upload_{media_id}")
+    )
+
+    return jsonify(
+        ok=True,
+        media_id=media_id,
+        filename=filename,
+        url=url_for("media", doc_id=ch["doc_id"], filename=filename)
+    )
+
+
+@app.route("/media/<int:media_id>/delete", methods=["POST"])
+def media_delete(media_id):
+    """Delete media file and DB record."""
+    m = db.fetchone("SELECT * FROM cms_media WHERE id=%s", (media_id,))
+    if not m:
+        abort(404)
+
+    # Delete file if exists
+    if m["path"] and os.path.exists(m["path"]):
+        os.remove(m["path"])
+
+    # Delete DB record
+    db.execute("DELETE FROM cms_media WHERE id=%s", (media_id,))
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(ok=True, deleted_media_id=media_id)
+
+    flash(f"Media deleted: {m['filename']}", "ok")
+    return redirect(request.referrer or url_for("index"))
+
+
 @app.errorhandler(413)
 def too_large(e):
     return "File terlalu besar (max 200MB)", 413

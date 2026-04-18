@@ -11,16 +11,25 @@
 
 <form id="chunkForm" method="post" action="{{ url_for('chunk_save', chunk_id=chunk.id) }}">
   <div class="editor-toolbar">
-    <button type="button" onclick="fmt('bold')"><b>B</b></button>
-    <button type="button" onclick="fmt('italic')"><i>I</i></button>
-    <button type="button" onclick="fmt('underline')"><u>U</u></button>
-    <button type="button" onclick="fmt('formatBlock','h1')">H1</button>
-    <button type="button" onclick="fmt('formatBlock','h2')">H2</button>
-    <button type="button" onclick="fmt('formatBlock','h3')">H3</button>
-    <button type="button" onclick="fmt('formatBlock','p')">¶</button>
-    <button type="button" onclick="fmt('insertUnorderedList')">• List</button>
-    <button type="button" onclick="fmt('insertOrderedList')">1. List</button>
-    <button type="button" onclick="fmt('removeFormat')">Clear</button>
+    <button type="button" onclick="fmt('bold')" title="Bold"><b>B</b></button>
+    <button type="button" onclick="fmt('italic')" title="Italic"><i>I</i></button>
+    <button type="button" onclick="fmt('underline')" title="Underline"><u>U</u></button>
+    <span class="toolbar-separator">|</span>
+    <button type="button" onclick="fmt('formatBlock','h1')" title="Heading 1">H1</button>
+    <button type="button" onclick="fmt('formatBlock','h2')" title="Heading 2">H2</button>
+    <button type="button" onclick="fmt('formatBlock','h3')" title="Heading 3">H3</button>
+    <button type="button" onclick="fmt('formatBlock','h4')" title="Heading 4">H4</button>
+    <button type="button" onclick="fmt('formatBlock','h5')" title="Heading 5">H5</button>
+    <button type="button" onclick="fmt('formatBlock','h6')" title="Heading 6">H6</button>
+    <button type="button" onclick="fmt('formatBlock','p')" title="Paragraph">¶</button>
+    <span class="toolbar-separator">|</span>
+    <button type="button" onclick="fmt('insertUnorderedList')" title="Bullet List">• List</button>
+    <button type="button" onclick="fmt('insertOrderedList')" title="Numbered List">1. List</button>
+    <span class="toolbar-separator">|</span>
+    <button type="button" onclick="insertTable()" title="Insert Table">📊 Table</button>
+    <button type="button" onclick="showImageUpload()" title="Upload Image">🖼 Image</button>
+    <span class="toolbar-separator">|</span>
+    <button type="button" onclick="fmt('removeFormat')" title="Clear Formatting">Clear</button>
   </div>
 
   <div id="editor" class="editor" contenteditable="true">{{ html|safe }}</div>
@@ -33,10 +42,92 @@
   </div>
 </form>
 
+<!-- Image Upload Modal -->
+<div id="image-upload-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <h3>Upload Image</h3>
+    <form id="image-upload-form" onsubmit="return submitImageUpload(event)">
+      <input type="file" name="image" id="image-file" accept="image/*" required>
+      <div class="modal-actions">
+        <button type="submit" class="btn-primary">Upload</button>
+        <button type="button" class="btn" onclick="closeImageUpload()">Cancel</button>
+      </div>
+    </form>
+    <div id="upload-progress" style="display:none">Uploading...</div>
+  </div>
+</div>
+
 <script>
-function fmt(cmd, val){ document.execCommand(cmd, false, val || null); document.getElementById('editor').focus(); }
+const chunkId = {{ chunk.id }};
+const docId = {{ chunk.doc_id }};
+
+function fmt(cmd, val){
+  document.execCommand(cmd, false, val || null);
+  document.getElementById('editor').focus();
+}
+
 document.getElementById('chunkForm').addEventListener('submit', function(){
   document.getElementById('content_html').value = document.getElementById('editor').innerHTML;
 });
+
+function insertTable() {
+  const rows = prompt('Number of rows:', '3');
+  const cols = prompt('Number of columns:', '3');
+  if (!rows || !cols) return;
+
+  let html = '<table class="docx-table"><tbody>';
+  for (let r = 0; r < parseInt(rows); r++) {
+    html += '<tr>';
+    for (let c = 0; c < parseInt(cols); c++) {
+      html += '<td>Cell</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table><p><br></p>';
+
+  document.execCommand('insertHTML', false, html);
+}
+
+function showImageUpload() {
+  document.getElementById('image-upload-modal').style.display = 'flex';
+}
+
+function closeImageUpload() {
+  document.getElementById('image-upload-modal').style.display = 'none';
+  document.getElementById('image-file').value = '';
+}
+
+function submitImageUpload(event) {
+  event.preventDefault();
+  const form = event.target;
+  const formData = new FormData(form);
+  const progress = document.getElementById('upload-progress');
+
+  progress.style.display = 'block';
+
+  fetch(`/chunk/${chunkId}/media/upload`, {
+    method: 'POST',
+    body: formData
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      // Insert image into editor
+      const imgHtml = `<img src="${data.url}" alt="${data.filename}" style="max-width:100%"><br>`;
+      document.execCommand('insertHTML', false, imgHtml);
+      closeImageUpload();
+    } else {
+      alert('Upload failed: ' + (data.error || 'Unknown error'));
+    }
+    progress.style.display = 'none';
+  })
+  .catch(err => {
+    console.error('Upload failed:', err);
+    alert('Upload failed');
+    progress.style.display = 'none';
+  });
+
+  return false;
+}
 </script>
 {% endblock %}
