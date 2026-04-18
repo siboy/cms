@@ -87,6 +87,14 @@ DB_HOST_dbs_mysql='mysql-8'
 IP container bisa berubah, hostname stabil.
 
 #### c. Start MySQL container
+
+**Opsi 1: Dari folder CMS (RECOMMENDED)**
+```bash
+cd ~/cms
+make mysql-up
+```
+
+**Opsi 2: Dari folder Flask**
 ```bash
 cd ~/flask
 make mysql-up
@@ -94,7 +102,8 @@ make mysql-up
 
 Tunggu sampai MySQL healthy (~30 detik). Cek dengan:
 ```bash
-docker ps --filter "name=mysql-8"
+make mysql-status
+# Atau: docker ps --filter "name=mysql-8"
 ```
 
 #### d. Buat database `databoks`
@@ -120,14 +129,33 @@ Akan membuat 4 tabel di database `databoks`:
 `cms_documents`, `cms_chunks`, `cms_chunk_history`, `cms_media`.
 
 ### 5. Jalankan CMS container
+
+#### Opsi A: Start MySQL + CMS sekaligus (PALING MUDAH)
 ```bash
-make up        # build & up, tunggu healthy, tail logs
-make status    # cek state
-make logs      # tail logs saja
-make bash      # masuk container
-make rr        # restart (down + up)
-make down      # stop
+cd ~/cms
+make start-all      # Start MySQL, tunggu healthy, lalu start CMS
 ```
+
+#### Opsi B: Start CMS saja (jika MySQL sudah running)
+```bash
+cd ~/cms
+make up             # Start CMS, tunggu healthy, tail logs
+```
+
+#### Command lainnya:
+```bash
+make status         # Cek state CMS
+make mysql-status   # Cek state MySQL
+make logs           # Tail CMS logs
+make mysql-logs     # Tail MySQL logs
+make bash           # Masuk container CMS
+make rr             # Restart CMS (down + up)
+make down           # Stop CMS
+make mysql-down     # Stop MySQL
+make stop-all       # Stop MySQL + CMS
+make restart-all    # Restart MySQL + CMS
+```
+
 Dashboard: **http://localhost:8879**
 Code-server: **http://localhost:8881** (optional IDE, password: `orioriori3x`)
 

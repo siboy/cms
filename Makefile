@@ -32,6 +32,60 @@ nw:
 		docker network create $(NETWORK) && echo "[OK] network '$(NETWORK)' dibuat"; \
 	fi
 
+# ---- MySQL Commands (delegasi ke flask/) ----
+mysql-up:
+	@echo "=========================================="
+	@echo "  Starting MySQL container..."
+	@echo "=========================================="
+	@cd $(FLASK_DIR) && $(MAKE) mysql-up
+	@echo ""
+	@echo "[OK] MySQL started. Waiting for healthy status..."
+	@MAX=60; i=0; \
+	while [ $$i -lt $$MAX ]; do \
+		STATUS=$$(docker inspect --format='{{.State.Health.Status}}' mysql-8 2>/dev/null || echo "starting"); \
+		if [ "$$STATUS" = "healthy" ]; then \
+			echo ""; \
+			echo "[OK] MySQL is healthy"; \
+			break; \
+		fi; \
+		printf "\r  [%2ds] MySQL status: %-12s" $$i "$$STATUS"; \
+		sleep 1; \
+		i=$$((i + 1)); \
+	done; \
+	if [ $$i -ge $$MAX ]; then \
+		echo ""; \
+		echo "[WARN] MySQL timeout after $${MAX}s, but may still be starting..."; \
+	fi
+
+mysql-down:
+	@cd $(FLASK_DIR) && $(MAKE) mysql-down || docker stop mysql-8 2>/dev/null || true
+
+mysql-logs:
+	@docker logs mysql-8 --tail 50 -f
+
+mysql-status:
+	@docker ps --filter "name=mysql-8" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+# ---- Start All (MySQL + CMS) ----
+start-all: check
+	@echo "=========================================="
+	@echo "  Starting MySQL + CMS..."
+	@echo "=========================================="
+	@$(MAKE) mysql-up
+	@echo ""
+	@echo "=========================================="
+	@echo "  MySQL ready. Starting CMS..."
+	@echo "=========================================="
+	@$(MAKE) up
+
+stop-all:
+	@echo "Stopping CMS..."
+	@$(MAKE) down
+	@echo "Stopping MySQL..."
+	@$(MAKE) mysql-down
+
+restart-all: stop-all start-all
+
 # ---- Docker Commands ----
 up: check
 	$(DC) up -d
@@ -135,4 +189,4 @@ cal:
 %:
 	@:
 
-.PHONY: check nw up down rr logs bash build dev status init-schema init-schema-docker drop-schema pull cmd cal
+.PHONY: check nw mysql-up mysql-down mysql-logs mysql-status start-all stop-all restart-all up down rr logs bash build dev status init-schema init-schema-docker drop-schema pull cmd cal
