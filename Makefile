@@ -185,8 +185,40 @@ cal:
 	git commit -am "$m" --author="agusdd <agusdwidarmawan@gmail.com>"
 	git push $(GITTOKEN)
 
+# ---- VPN Management ----
+ovpn:
+	@echo "=========================================="
+	@echo "  Starting 2 VPN tmux sessions..."
+	@echo "=========================================="
+	@tmux kill-session -t vpn1 2>/dev/null || true
+	@tmux kill-session -t vpn2 2>/dev/null || true
+	@sleep 1
+	@tmux new-session -d -s vpn1 "sudo openvpn --config $(HOME)/cms/data/agus/katadata-data_agus.darmawan_katadata-prod.ovpn"
+	@tmux new-session -d -s vpn2 "sudo openvpn --config $(HOME)/cms/data/agus/KATADATA-DEV.ovpn"
+	@echo "[OK] VPN sessions started:"
+	@echo "  - vpn1: katadata-prod"
+	@echo "  - vpn2: KATADATA-DEV"
+	@echo ""
+	@echo "Attach dengan: tmux attach -t vpn1"
+	@echo "               tmux attach -t vpn2"
+	@echo "List sessions: tmux ls"
+	@echo "=========================================="
+
+ovpn-stop:
+	@echo "Stopping VPN sessions..."
+	@tmux kill-session -t vpn1 2>/dev/null || echo "vpn1 not running"
+	@tmux kill-session -t vpn2 2>/dev/null || echo "vpn2 not running"
+	@echo "[OK] VPN sessions stopped"
+
+ovpn-status:
+	@echo "=========================================="
+	@echo "  VPN Sessions Status"
+	@echo "=========================================="
+	@tmux ls 2>/dev/null | grep vpn || echo "No VPN sessions running"
+	@echo "=========================================="
+
 # Catch extra args so make doesn't error on them
 %:
 	@:
 
-.PHONY: check nw mysql-up mysql-down mysql-logs mysql-status start-all stop-all restart-all up down rr logs bash build dev status init-schema init-schema-docker drop-schema pull cmd cal
+.PHONY: check nw mysql-up mysql-down mysql-logs mysql-status start-all stop-all restart-all up down rr logs bash build dev status init-schema init-schema-docker drop-schema pull cmd cal ovpn ovpn-stop ovpn-status
