@@ -39,6 +39,21 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
 let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,es=null,outline=[],locks={},hb=null;
 function cellText(c){let n=0;return (c.blocks||[]).map(x=>{const d=x.data||{};if(x.kind==='list_item'){if(d.ordered){n=(d.restart||!n)?1:n+1;return n+') '+x.text}n=0;return '• '+x.text}n=0;return x.text}).join('\n')}
+/* daftar dlm sel tabel: awali tiap baris terpilih dgn `1) ` / `• ` (server menjadikannya list_item; klik lagi = lepas) */
+function listMark(ordered){const sel=getSelection();if(!sel.rangeCount)throw new Error('Klik/sorot baris di dalam sel dulu');
+ const r=sel.getRangeAt(0);let host=r.commonAncestorContainer;host=host.nodeType===1?host:host.parentElement;host=host&&host.closest('[contenteditable="true"]');
+ if(!host||!host.matches('td,th,.fld'))throw new Error('Klik/sorot baris di dalam sel dulu');
+ const w=document.createTreeWalker(host,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{acceptNode:n=>n.nodeType===3||n.nodeName==='BR'?1:3});
+ const segs=[];let cur=[];for(let n=w.nextNode();n;n=w.nextNode()){cur.push(n);if(n.nodeName==='BR'){segs.push(cur);cur=[]}}segs.push(cur);
+ const hit=segs.filter(sg=>sg.some(n=>r.intersectsNode(n)));if(!hit.length)return;
+ const re=ordered?/^\s*\d{1,3}[.)]\s/:/^\s*[•▪◦]\s/,any=/^\s*(\d{1,3}[.)]|[•▪◦])\s/;
+ const first=sg=>sg.find(n=>n.nodeType===3&&n.data.length);
+ const on=hit.every(sg=>{const t=first(sg);return t&&re.test(t.data)});let k=0;
+ for(const sg of hit){const t=first(sg);
+  if(on){t.data=t.data.replace(any,'');continue}
+  if(t&&any.test(t.data))t.data=t.data.replace(any,'');
+  const m=document.createTextNode(ordered?(++k)+') ':'• ');const a=t||sg[0];a.parentNode.insertBefore(m,a)}
+ host.dispatchEvent(new Event('blur'))}
 async function api(m,u,b,raw){const r=await fetch('/api'+u,{method:m,headers:raw?{'X-CMS':'1'}:H,body:raw?b:(b?JSON.stringify(b):undefined),credentials:'same-origin'});
  let j={};try{j=await r.json()}catch(e){}if(!r.ok){const e=new Error(j.error||r.status);e.status=r.status;e.body=j;throw e}return j}
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -152,8 +167,13 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   btn('+ Page break',async()=>{await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id})});
   btn('Hapus',async()=>{if(confirm('Hapus blok ini?'))await api('DELETE',`/blocks/${b.id}?version=${b.version}`)});
   btn('Riwayat',()=>hist(el,b));
-  if(b.kind==='heading'){const ls=document.createElement('select');ls.title='Level heading';[1,2,3,4].forEach(n=>ls.add(new Option('H'+n,n,0,n===b.level)));
-   ls.onchange=()=>api('PATCH',`/blocks/${b.id}`,{level:+ls.value,version:b.version}).catch(e=>{note(e.message,1);ls.value=b.level});a.append(ls)}
+  if(['heading','paragraph','list_item'].includes(b.kind)&&canEdit){const ls=document.createElement('select');ls.title='Ubah jenis blok (paragraf / heading / daftar)';
+   const opts=[['p','Paragraf'],['h1','H1 (bab)'],['h2','H2'],['h3','H3'],['h4','H4'],['ul','Bullet'],['ol','Numbering']];
+   opts.forEach(([v,l])=>{const o=new Option(l,v);if(v==='h1'&&me.role!=='admin')o.disabled=true;ls.add(o)});
+   const cur=b.kind==='heading'?'h'+b.level:b.kind==='list_item'?((b.data||{}).ordered?'ol':'ul'):'p';ls.value=cur;
+   ls.onchange=()=>{const v=ls.value,body={version:b.version};
+    if(v[0]==='h'){body.kind='heading';body.level=+v[1]}else if(v==='p')body.kind='paragraph';else{body.kind='list_item';body.data={ordered:v==='ol',ilvl:0}}
+    api('PATCH',`/blocks/${b.id}`,body).catch(e=>{note(e.message,1);ls.value=cur})};a.append(ls)}
   if(b.kind==='list_item'){const d=b.data||{};
    btn(d.ordered?'→ Bullet':'→ Numbering',()=>api('PATCH',`/blocks/${b.id}`,{data:{...d,ordered:!d.ordered},version:b.version}));
    btn('⇥ Indent',()=>api('PATCH',`/blocks/${b.id}`,{data:{...d,ilvl:Math.min((d.ilvl||0)+1,3)},version:b.version}));
@@ -162,6 +182,8 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   if(b.kind==='table'&&b.data.long){btn('✎ Edit form',async()=>formEd(b.id));btn('Kolom & header',async()=>formEd(b.id,'cols'));
    btn('→ Mode grid',async()=>{if(confirm('Kembali ke mode grid? Edit per record dinonaktifkan untuk tabel ini.'))await api('POST',`/blocks/${b.id}/long`,{on:false})})}
   else if(b.kind==='table'){const rw=()=>{const t=el.querySelector('table');return t.dataset.row!==undefined?+t.dataset.row:(b.data.rows.length-1)};
+   btn('1) Nomor',async()=>listMark(true));a.lastChild.title='Sorot baris di dalam sel, lalu klik: jadi daftar bernomor (klik lagi = lepas)';a.lastChild.onmousedown=e=>e.preventDefault();
+   btn('• Bullet',async()=>listMark(false));a.lastChild.title='Sorot baris di dalam sel, lalu klik: jadi bullet (klik lagi = lepas)';a.lastChild.onmousedown=e=>e.preventDefault();
    btn('+ Baris',async()=>{const r=rw(),n=b.data.ncols||b.data.rows[0].cells.length;await api('POST',`/blocks/${b.id}/rows`,{after_row:r,values:Array(n).fill(''),version:b.version})});
    btn('− Baris',async()=>{if(b.data.rows.length<2)throw new Error('sisakan minimal 1 baris');if(confirm('Hapus baris terpilih (klik sel dulu; default terakhir)?'))await api('POST',`/blocks/${b.id}/rows`,{delete:rw(),version:b.version})})
    btn('→ Mode form',async()=>{
@@ -240,7 +262,7 @@ async function formEd(id,open){const m=document.createElement('div');m.className
   tb(st.prev?'Kembali ke form':'Pratinjau tabel',()=>{st.prev=!st.prev;render()});
   if(!ro()){tb('Kolom & header…',()=>colsDlg());tb('Tempel baris (Excel)…',()=>pasteDlg());tb('＋ Record',()=>op({op:'add',after:n-1,rows:[{}]},n))}
   tb('Tutup',()=>st.close(),1);
-  if(!ro()&&!st.prev){const bar=toolbar({focus(){}},()=>{});bar.lastChild.remove();hd.append(bar)}
+  if(!ro()&&!st.prev){const bar=toolbar({focus(){}},()=>{},true);bar.lastChild.remove();hd.append(bar)}
   if(ro()){const w=document.createElement('small');w.textContent=me.role==='reviewer'?'(hanya baca)':'🔒 dikunci '+st.b.locked_by;hd.querySelector('b').after(w)}
   hd.querySelector('.q').oninput=e=>{st.q=e.target.value;const pos=e.target.selectionStart;render();const q=m.querySelector('.q');q.focus();q.setSelectionRange(pos,pos)};
   const body=document.createElement('div');body.className='fbody';m.append(hd,body);
@@ -272,13 +294,14 @@ async function formEd(id,open){const m=document.createElement('div');m.className
  try{await st.load(true)}catch(e){m.remove();fe=null;return note(e.message,1)}
  if(open==='cols')colsDlg()}
 function plainPaste(e){e.preventDefault();const t=(e.clipboardData||window.clipboardData).getData('text/plain');document.execCommand('insertText',false,t)}
-function toolbar(ed,rawToggle){const d=document.createElement('div');d.className='tb';
+function toolbar(ed,rawToggle,lists){const d=document.createElement('div');d.className='tb';
  const mk=(l,title,fn)=>{const x=document.createElement('button');x.type='button';x.innerHTML=l;x.title=title;x.onmousedown=e=>e.preventDefault();x.onclick=fn;d.append(x);return x};
  const cmd=c=>()=>{ed.focus();document.execCommand(c)};
  mk('<b>B</b>','Tebal (Ctrl+B)',cmd('bold'));mk('<i>I</i>','Miring (Ctrl+I)',cmd('italic'));mk('<u>U</u>','Garis bawah (Ctrl+U)',cmd('underline'));
  mk('x²','Superscript',cmd('superscript'));mk('x₂','Subscript',cmd('subscript'));
  mk('Tautan','Sisipkan tautan',()=>{ed.focus();const u=prompt('URL (https://…):');if(u)document.execCommand('createLink',false,u)});
  mk('Lepas','Hapus tautan',cmd('unlink'));mk('Bersih','Hapus format',cmd('removeFormat'));
+ if(lists){mk('1)','Daftar bernomor (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(true)}catch(e){note(e.message,1)}});mk('•','Daftar bullet (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(false)}catch(e){note(e.message,1)}})}
  const r=mk('&lt;/&gt;','Lihat/ubah kode markup',rawToggle);r.style.marginLeft='auto';return d}
 async function edit(el,b){try{await api('POST',`/blocks/${b.id}/lock`);locks[b.id]=1}catch(e){return note(e.message,1)}
  el.classList.add('edit');const old=el.querySelector('.txt');let ed=document.createElement('div');ed.className='wys';ed.contentEditable=true;ed.append(mk2dom(b.text));

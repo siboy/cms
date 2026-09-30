@@ -26,6 +26,7 @@ from typing import Any, Optional
 from . import tablemodel as tm
 from .docx_blocks import plain
 
+TEXT_KINDS = {"paragraph", "heading", "list_item"}
 KINDS = {"heading", "paragraph", "list_item", "caption", "table", "image", "note", "page_break"}
 PARTS = ("cover", "front", "body", "lampiran")
 GAP = 1024.0
@@ -332,8 +333,25 @@ class BlockStore:
     # ------------------------------------------------------------ edit
     def update_block(self, block_id: int, user: str = "", text: Optional[str] = None, data: Optional[dict] = None,
                      level: Optional[int] = None, status: Optional[str] = None, assignee: Optional[str] = None,
-                     expected_version: Optional[int] = None) -> int:
+                     expected_version: Optional[int] = None, kind: Optional[str] = None) -> int:
         sets: dict[str, Any] = {}
+        if kind is not None:
+            # ubah jenis blok teks: paragraph <-> heading (level 1..4) <-> list_item; isi teks tetap
+            b0 = self.get_block(block_id)
+            if kind not in TEXT_KINDS or b0["kind"] not in TEXT_KINDS:
+                raise ValueError("jenis hanya bisa diubah antar paragraph / heading / list_item")
+            if kind == "heading":
+                level = level if level is not None else 2
+                if not 1 <= level <= 4:
+                    raise ValueError("heading level 1..4")
+            else:
+                level = 0
+            if data is None:
+                data = {"ordered": bool((b0["data"] or {}).get("ordered")), "ilvl": 0} if kind == "list_item" else {}
+                if kind == "heading" and level == 1 and b0["part"] == "body":
+                    with self._tx() as c:
+                        data.update(self._chapter_num_data(c, b0["doc_id"]))
+            sets["kind"], sets["style"] = kind, ""
         if text is not None:
             sets["text"], sets["plain"] = text, plain(text)
         if data is not None:
@@ -398,6 +416,17 @@ class BlockStore:
             self._renumber(c, doc_id)
         raise RuntimeError("gagal menentukan posisi")
 
+    def _chapter_num_data(self, c, doc_id: int) -> dict:
+        """Bab baru ikut format penomoran bab yang sudah ada (mis. "III.")."""
+        ref = None
+        for r in self._all(c, "SELECT data FROM cms_blocks WHERE doc_id=? AND kind='heading' AND level=1 AND deleted_at IS NULL", (doc_id,)):
+            d0 = _jload(r["data"])
+            if d0.get("numbered"):
+                ref = d0
+                break
+        return {"numbered": True, "num_fmt": (ref or {}).get("num_fmt", "upperRoman"),
+                "num_text": (ref or {}).get("num_text", "%1.")}
+
     def insert_block(self, doc_id: int, after_id: Optional[int], kind: str, text: str = "", level: int = 0,
                      data: Optional[dict] = None, part: Optional[str] = None, user: str = "") -> int:
         if kind not in KINDS:
@@ -420,15 +449,7 @@ class BlockStore:
             if part not in PARTS:
                 raise ValueError(f"part harus salah satu {PARTS}")
             if kind == "heading" and level == 1 and part == "body" and "numbered" not in data:
-                # bab baru ikut format penomoran bab yang sudah ada (mis. "III.")
-                ref = None
-                for r in self._all(c, "SELECT data FROM cms_blocks WHERE doc_id=? AND kind='heading' AND level=1 AND deleted_at IS NULL", (doc_id,)):
-                    d0 = _jload(r["data"])
-                    if d0.get("numbered"):
-                        ref = d0
-                        break
-                data.update({"numbered": True, "num_fmt": (ref or {}).get("num_fmt", "upperRoman"),
-                             "num_text": (ref or {}).get("num_text", "%1.")})
+                data.update(self._chapter_num_data(c, doc_id))
             cur = self._x(c, "INSERT INTO cms_blocks(doc_id,seq,part,kind,level,style,text,plain,data,updated_by,updated_at) "
                              "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                           (doc_id, seq, part, kind, level, "", text, plain(text), json.dumps(data, ensure_ascii=False), user, _now()))

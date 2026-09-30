@@ -213,11 +213,13 @@ def patch_block(bid):
             abort(403, description="reviewer hanya boleh mengubah status")
     elif not auth.can_edit(b["doc_id"], bid):
         abort(403, description="tidak ditugaskan pada bab ini")
-    if "level" in d and g.user["role"] != "admin" and (b["level"] == 1 or int(d["level"]) == 1):
+    if ("level" in d or "kind" in d) and g.user["role"] != "admin" and (
+            b["level"] == 1 or int(d.get("level") or (2 if d.get("kind") == "heading" else 0)) == 1):
         abort(403, description="hanya admin yang mengubah level bab")
     v = S().update_block(bid, g.user["username"], text=d.get("text"), data=d.get("data"), level=d.get("level"),
-                         status=d.get("status"), assignee=d.get("assignee"), expected_version=d.get("version"))
-    emit(b["doc_id"], "block", id=bid, version=v, force_global="level" in d)
+                         status=d.get("status"), assignee=d.get("assignee"), expected_version=d.get("version"),
+                         kind=d.get("kind"))
+    emit(b["doc_id"], "block", id=bid, version=v, force_global="level" in d or "kind" in d)
     return jsonify(id=bid, version=v)
 
 
