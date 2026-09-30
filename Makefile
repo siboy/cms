@@ -1,173 +1,55 @@
 # ============================================================
-# CMS Makefile
-# Engine terpisah dari flask/sekda. Dependensi: $(HOME)/flask
+# CMS Makefile (CMS kolaborasi: cmsapp + MySQL + Redis + worker)
+# Stack Docker mandiri (docker/collab.yml), TIDAK lagi memakai container
+# flask. ~/flask hanya dipakai untuk token git (GITTOKEN) dan init-schema
+# jalur razan (opsional).
 # ============================================================
 
-USER := $(shell whoami)
 FLASK_DIR := $(HOME)/flask
-FLASK_ENV := $(FLASK_DIR)/.env
-include $(FLASK_ENV)
-
 GITTOKEN = $(shell python3 $(FLASK_DIR)/razan/get_gittoken.py 2>/dev/null)
 
-COMPOSE_FILE = docker/cms.yml
-PROJECT_NAME = cms
-DC = docker compose --env-file $(FLASK_ENV) -f $(COMPOSE_FILE) -p $(PROJECT_NAME)
+COLLAB_DIR ?= $(HOME)/cms-collab
+DC = docker compose -f $(COLLAB_DIR)/collab.yml --env-file $(COLLAB_DIR)/.env
 
-# ---- Preflight ----
-check:
-	@if [ ! -d $(FLASK_DIR)/razan ]; then \
-		echo "[FATAL] $(FLASK_DIR)/razan tidak ada. CMS butuh flask sebagai core."; exit 1; \
-	fi
-	@if [ ! -f $(FLASK_ENV) ]; then \
-		echo "[FATAL] $(FLASK_ENV) tidak ada."; exit 1; \
-	fi
-	@echo "[OK] Flask core tersedia: $(FLASK_DIR)/razan"
+# ---- Stack Docker (mysql + redis + app + worker) ----
+# Idempoten: build image, terapkan skema, up. Bisa di server maupun PC (default ~/cms-collab).
+stack:
+	bash scripts/collab_deploy.sh
 
-# ---- Docker Network ----
-nw:
-	@if docker network inspect $(NETWORK) >/dev/null 2>&1; then \
-		echo "[OK] network '$(NETWORK)' sudah ada"; \
-	else \
-		docker network create $(NETWORK) && echo "[OK] network '$(NETWORK)' dibuat"; \
-	fi
-
-# ---- MySQL Commands (delegasi ke flask/) ----
-mysql-up:
-	@echo "=========================================="
-	@echo "  Starting MySQL container..."
-	@echo "=========================================="
-	@cd $(FLASK_DIR) && $(MAKE) mysql-up
-	@echo ""
-	@echo "[OK] MySQL started. Waiting for healthy status..."
-	@MAX=60; i=0; \
-	while [ $$i -lt $$MAX ]; do \
-		STATUS=$$(docker inspect --format='{{.State.Health.Status}}' mysql-8 2>/dev/null || echo "starting"); \
-		if [ "$$STATUS" = "healthy" ]; then \
-			echo ""; \
-			echo "[OK] MySQL is healthy"; \
-			break; \
-		fi; \
-		printf "\r  [%2ds] MySQL status: %-12s" $$i "$$STATUS"; \
-		sleep 1; \
-		i=$$((i + 1)); \
-	done; \
-	if [ $$i -ge $$MAX ]; then \
-		echo ""; \
-		echo "[WARN] MySQL timeout after $${MAX}s, but may still be starting..."; \
-	fi
-
-mysql-down:
-	@cd $(FLASK_DIR) && $(MAKE) mysql-down || docker stop mysql-8 2>/dev/null || true
-
-mysql-logs:
-	@docker logs mysql-8 --tail 50 -f
-
-mysql-status:
-	@docker ps --filter "name=mysql-8" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-# ---- Start All (MySQL + CMS) ----
-start-all: check
-	@echo "=========================================="
-	@echo "  Starting MySQL + CMS..."
-	@echo "=========================================="
-	@$(MAKE) mysql-up
-	@echo ""
-	@echo "=========================================="
-	@echo "  MySQL ready. Starting CMS..."
-	@echo "=========================================="
-	@$(MAKE) up
-
-stop-all:
-	@echo "Stopping CMS..."
-	@$(MAKE) down
-	@echo "Stopping MySQL..."
-	@$(MAKE) mysql-down
-
-restart-all: stop-all start-all
-
-# ---- Docker Commands ----
-up: check
-	$(DC) up -d
-	@echo ""
-	@echo "=========================================="
-	@echo "  Menunggu CMS ready..."
-	@echo "=========================================="
-	@MAX=90; i=0; \
-	while [ $$i -lt $$MAX ]; do \
-		STATUS=$$(docker inspect --format='{{.State.Health.Status}}' cms 2>/dev/null || echo "starting"); \
-		if [ "$$STATUS" = "healthy" ]; then \
-			echo ""; \
-			echo "  CMS UP & RUNNING"; \
-			echo "  CMS app    : http://localhost:8879"; \
-			echo "  Code-server: http://localhost:$(CMS_CODE_SERVER_PORT)"; \
-			echo "  (startup: $${i}s)"; \
-			echo "=========================================="; \
-			break; \
-		fi; \
-		printf "\r  [%2ds] status: %-12s" $$i "$$STATUS"; \
-		sleep 1; \
-		i=$$((i + 1)); \
-	done; \
-	if [ $$i -ge $$MAX ]; then \
-		echo ""; \
-		echo "  TIMEOUT setelah $${MAX}s - cek logs:"; \
-		echo "  make logs"; \
-		echo "=========================================="; \
-		exit 1; \
-	fi
-	@$(DC) logs -f --tail=50
-
-down:
+stack-down:
 	$(DC) down
-	@docker rm -f cms cms-code-server 2>/dev/null || true
 
-rr:
-	$(DC) down
-	@docker rm -f cms cms-code-server 2>/dev/null || true
-	@$(MAKE) up
+stack-logs:
+	$(DC) logs -f --tail=100 app worker
 
-logs:
-	$(DC) logs -f --tail=100
-
-bash:
-	docker exec -it cms bash
-
-build:
-	$(DC) build --no-cache
-
-# ---- Local Development ----
-dev: check
-	PYTHONPATH=$(FLASK_DIR) flask --app app run -h 0.0.0.0 -p 8879 --with-threads --reload
-
-# ---- Status ----
-status:
-	@echo "=========================================="
-	@echo "  CMS Status"
-	@echo "=========================================="
-	@STATUS=$$(docker inspect --format='{{.State.Health.Status}}' cms 2>/dev/null || echo "not running"); \
-	UPTIME=$$(docker inspect --format='{{.State.StartedAt}}' cms 2>/dev/null || echo "-"); \
-	CS_STATE=$$(docker inspect --format='{{.State.Status}}' cms-code-server 2>/dev/null || echo "not running"); \
-	echo "  CMS container : cms"; \
-	echo "  CMS health    : $$STATUS"; \
-	echo "  CMS started   : $$UPTIME"; \
-	echo "  CMS URL       : http://localhost:8879"; \
-	echo "  Code-server   : cms-code-server ($$CS_STATE)"; \
-	echo "  Code-server URL: http://localhost:$(CMS_CODE_SERVER_PORT)"; \
-	echo "  Flask core    : $(FLASK_DIR) (bind-mount ro)"; \
-	echo "=========================================="
+stack-status:
 	@$(DC) ps
+	@curl -s http://127.0.0.1:8879/health || echo "app tidak menjawab"; echo
+
+stack-bash:
+	docker exec -it cms-app bash
+
+# ---- Dev lokal (hot-reload, port 8880) ----
+# Memakai MySQL/Redis dari stack ($(COLLAB_DIR): port 127.0.0.1:3307 / 6380); sandi dibaca dari $(COLLAB_DIR)/.env.
+# Di PC: buka tunnel dulu (make tunnel) atau jalankan langsung di server.
+dev:
+	@test -f $(COLLAB_DIR)/.env || { echo "[FATAL] $(COLLAB_DIR)/.env tidak ada - jalankan 'make stack' dulu"; exit 1; }
+	@set -a; . $(COLLAB_DIR)/.env; set +a; \
+	CMS_DB_HOST=127.0.0.1 CMS_DB_PORT=3307 CMS_DB_USER=cms CMS_DB_PASS=$$MYSQL_PASSWORD \
+	CMS_REDIS_URL=redis://:$$REDIS_PASSWORD@127.0.0.1:6380/0 \
+	CMS_DATA_DIR=$(CURDIR)/data CMS_EXPORT_DIR=$(CURDIR)/data/exports PYTHONPATH=$(CURDIR) \
+	gunicorn -k gevent -w 1 --reload -b 0.0.0.0:8880 --timeout 120 "cmsapp:create_app()"
+
+tunnel:
+	ssh -N -L 3307:127.0.0.1:3307 -L 6380:127.0.0.1:6380 dbscraping
 
 # ---- DB Schema ----
+# Skema utama diterapkan otomatis oleh 'make stack'. Target di bawah = jalur razan (~/flask), opsional.
 init-schema:
-	@echo "=== Init CMS schema (dsc/databoks) ==="
 	@PYTHONPATH=$(FLASK_DIR) python3 scripts/init_schema.py
 
-init-schema-docker:
-	@docker exec cms python3 -u /home/databoks/cms/scripts/init_schema.py
-
 drop-schema:
-	@echo "=== DROP CMS tables (IRREVERSIBLE) ==="
+	@echo "=== DROP semua tabel CMS (IRREVERSIBLE) ==="
 	@read -p "Ketik 'yes' untuk lanjut: " ans && [ "$$ans" = "yes" ] || exit 1
 	@PYTHONPATH=$(FLASK_DIR) python3 scripts/init_schema.py --drop
 
@@ -175,6 +57,9 @@ drop-schema:
 pull:
 	git pull $(GITTOKEN)
 	@git log -6 --pretty=format:"%h | %ad | %s" --date=format:"%Y-%m-%d %H:%M"
+
+push:
+	git push $(GITTOKEN)
 
 cmd:
 	git commit -am "$m" --author="agusdd <agusdwidarmawan@gmail.com>"
@@ -221,4 +106,4 @@ ovpn-status:
 %:
 	@:
 
-.PHONY: check nw mysql-up mysql-down mysql-logs mysql-status start-all stop-all restart-all up down rr logs bash build dev status init-schema init-schema-docker drop-schema pull cmd cal ovpn ovpn-stop ovpn-status
+.PHONY: push stack stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status

@@ -53,6 +53,10 @@ CREATE INDEX IF NOT EXISTS idx_blk_doc_seq ON cms_blocks(doc_id, seq);
 CREATE TABLE IF NOT EXISTS cms_block_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT, block_id INTEGER NOT NULL, version INTEGER NOT NULL,
     text TEXT, data TEXT, changed_by TEXT, changed_at TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS cms_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER NOT NULL, block_id INTEGER NOT NULL, parent_id INTEGER,
+    author TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT, resolved_by TEXT, resolved_at TEXT, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_cmt_blk ON cms_comments(block_id);
 CREATE TABLE IF NOT EXISTS cms_assets (
     doc_id INTEGER NOT NULL, sha1 TEXT NOT NULL, filename TEXT NOT NULL, path TEXT NOT NULL, mime TEXT,
     px_w INTEGER, px_h INTEGER, size INTEGER, uses INTEGER DEFAULT 0, orig_part TEXT,
@@ -137,6 +141,65 @@ class BlockStore:
     def list_documents(self) -> list[dict]:
         with self._tx() as c:
             return self._all(c, "SELECT id, filename, status, updated_at FROM cms_documents ORDER BY id")
+
+    # ------------------------------------------------------------ komentar
+    def add_comment(self, block_id: int, author: str, text: str, parent_id: Optional[int] = None) -> dict:
+        text = (text or "").strip()
+        if not text or len(text) > 4000:
+            raise ValueError("komentar kosong / >4000 karakter")
+        with self._tx() as c:
+            b = self._one(c, "SELECT doc_id FROM cms_blocks WHERE id=?", (block_id,))
+            if not b:
+                raise KeyError(f"blok {block_id} tidak ada")
+            if parent_id is not None:
+                pr = self._one(c, "SELECT block_id FROM cms_comments WHERE id=? AND deleted_at IS NULL", (parent_id,))
+                if not pr or pr["block_id"] != block_id:
+                    raise ValueError("komentar induk tidak valid")
+            cur = self._x(c, "INSERT INTO cms_comments(doc_id,block_id,parent_id,author,text,created_at) VALUES (?,?,?,?,?,?)",
+                          (b["doc_id"], block_id, parent_id, author, text, _now()))
+            return {"id": cur.lastrowid, "doc_id": b["doc_id"], "block_id": block_id}
+
+    def list_comments(self, doc_id: int, from_seq: Optional[float] = None, to_seq: Optional[float] = None,
+                      block_id: Optional[int] = None) -> list[dict]:
+        sql = ("SELECT m.id, m.block_id, m.parent_id, m.author, m.text, m.created_at, m.resolved_by, m.resolved_at "
+               "FROM cms_comments m JOIN cms_blocks b ON b.id=m.block_id WHERE m.doc_id=? AND m.deleted_at IS NULL")
+        p: list = [doc_id]
+        if block_id is not None:
+            sql += " AND m.block_id=?"
+            p.append(block_id)
+        if from_seq is not None:
+            sql += " AND b.seq>=?"
+            p.append(from_seq)
+        if to_seq is not None:
+            sql += " AND b.seq<?"
+            p.append(to_seq)
+        with self._tx() as c:
+            return self._all(c, sql + " ORDER BY m.id", p)
+
+    def get_comment(self, cid: int) -> dict:
+        with self._tx() as c:
+            r = self._one(c, "SELECT * FROM cms_comments WHERE id=? AND deleted_at IS NULL", (cid,))
+        if not r:
+            raise KeyError(f"komentar {cid} tidak ada")
+        return r
+
+    def resolve_comment(self, cid: int, user: str, resolved: bool = True) -> dict:
+        cm = self.get_comment(cid)
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_comments SET resolved_by=?, resolved_at=? WHERE id=?",
+                    (user if resolved else None, _now() if resolved else None, cid))
+        return cm
+
+    def delete_comment(self, cid: int) -> dict:
+        cm = self.get_comment(cid)
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_comments SET deleted_at=? WHERE id=? OR parent_id=?", (_now(), cid, cid))
+        return cm
+
+    def asset_filename(self, doc_id: int, sha1: str) -> Optional[str]:
+        with self._tx() as c:
+            a = self._one(c, "SELECT filename FROM cms_assets WHERE doc_id=? AND sha1=?", (doc_id, sha1))
+        return a["filename"] if a else None
 
     def load_document(self, doc_id: int) -> dict:
         """Format yang dipakai docx_build.build_docx (blok tak terhapus, terurut seq)."""

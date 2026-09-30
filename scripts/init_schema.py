@@ -15,7 +15,7 @@ sys.path.insert(0, ROOT)
 from utils import db  # noqa: E402
 
 
-TABLES = ["cms_chunk_history", "cms_chunks", "cms_media", "cms_documents"]
+TABLES = ["cms_comments", "cms_assign", "cms_users", "cms_assets", "cms_block_history", "cms_blocks", "cms_documents"]
 
 
 def read_sql() -> str:

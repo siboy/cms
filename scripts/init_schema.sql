@@ -15,50 +15,6 @@ CREATE TABLE IF NOT EXISTS cms_documents (
     INDEX idx_uploaded_at (uploaded_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS cms_chunks (
-    id              INT AUTO_INCREMENT PRIMARY KEY,
-    doc_id          INT NOT NULL,
-    order_idx       INT NOT NULL,
-    heading_level   TINYINT NOT NULL DEFAULT 0,
-    heading_text    VARCHAR(512) DEFAULT NULL,
-    content_html    LONGTEXT,
-    content_raw     LONGTEXT,
-    version         INT NOT NULL DEFAULT 1,
-    updated_by      VARCHAR(100) DEFAULT NULL,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_chunk_doc FOREIGN KEY (doc_id) REFERENCES cms_documents(id) ON DELETE CASCADE,
-    INDEX idx_doc_order (doc_id, order_idx)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cms_chunk_history (
-    id            INT AUTO_INCREMENT PRIMARY KEY,
-    chunk_id      INT NOT NULL,
-    doc_id        INT NOT NULL,
-    version       INT NOT NULL,
-    content_html  LONGTEXT,
-    changed_by    VARCHAR(100) DEFAULT NULL,
-    changed_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_hist_chunk FOREIGN KEY (chunk_id) REFERENCES cms_chunks(id) ON DELETE CASCADE,
-    INDEX idx_chunk_version (chunk_id, version)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS cms_media (
-    id          INT AUTO_INCREMENT PRIMARY KEY,
-    doc_id      INT NOT NULL,
-    chunk_id    INT DEFAULT NULL,
-    rid         VARCHAR(64) DEFAULT NULL,
-    filename    VARCHAR(512) NOT NULL,
-    path        VARCHAR(1024) NOT NULL,
-    mime        VARCHAR(100) DEFAULT NULL,
-    order_idx   INT DEFAULT 0,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_media_doc FOREIGN KEY (doc_id) REFERENCES cms_documents(id) ON DELETE CASCADE,
-    INDEX idx_doc_rid (doc_id, rid)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- ---- Engine blok (utils/docx_blocks.py + utils/blockstore.py). Padanan 1:1 dengan SQLite BlockStore ----
--- cms_documents (di atas) dipakai apa adanya: manifest = meta dokumen, media_dir = folder gambar.
 CREATE TABLE IF NOT EXISTS cms_blocks (
     id           INT AUTO_INCREMENT PRIMARY KEY,
     doc_id       INT NOT NULL,
@@ -94,6 +50,22 @@ CREATE TABLE IF NOT EXISTS cms_block_history (
     note        VARCHAR(255) DEFAULT NULL,        -- edit/delete/move/restore + siapa yang menggantikan
     CONSTRAINT fk_bh_blk FOREIGN KEY (block_id) REFERENCES cms_blocks(id) ON DELETE CASCADE,
     INDEX idx_blk_ver (block_id, version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_comments (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    doc_id      INT NOT NULL,
+    block_id    INT NOT NULL,
+    parent_id   INT DEFAULT NULL,                 -- balasan
+    author      VARCHAR(100) NOT NULL,
+    text        TEXT NOT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    resolved_by VARCHAR(100) DEFAULT NULL,
+    resolved_at VARCHAR(19) DEFAULT NULL,
+    deleted_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_cmt_blk (block_id),
+    INDEX idx_cmt_doc (doc_id),
+    CONSTRAINT fk_cmt_blk FOREIGN KEY (block_id) REFERENCES cms_blocks(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS cms_assets (

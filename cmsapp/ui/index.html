@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CMS Kolaborasi</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1c2330;--mut:#6b7482;--line:#dde1e7;--acc:#1f6feb;--warn:#b54708;--card:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#14171c;--fg:#e6e9ee;--mut:#8b94a3;--line:#2a2f38;--acc:#4c8dff;--warn:#f0a35e;--card:#1c2027}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+button{cursor:pointer}button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
+header{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+header b{flex:1}#login{max-width:320px;margin:15vh auto;display:grid;gap:8px}
+#main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 45px)}
+#side{overflow:auto;border-right:1px solid var(--line);padding:8px;background:var(--card)}
+#side a{display:block;padding:3px 6px;border-radius:4px;cursor:pointer;color:var(--fg)}#side a:hover{background:var(--bg)}
+#side a.mine{font-weight:600}#side a.cur{background:var(--bg);outline:1px solid var(--acc)}
+#ed{overflow:auto;padding:14px 22px}
+.blk{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:6px 0;position:relative}
+.blk .meta{font-size:11px;color:var(--mut);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.blk.locked{border-color:var(--warn)}.blk .txt{white-space:pre-wrap;min-height:1.4em}
+.blk.h .txt{font-weight:700}.blk .acts{display:none;gap:4px;margin-top:6px;flex-wrap:wrap}.blk:hover .acts,.blk.edit .acts{display:flex}
+textarea{width:100%;min-height:90px}table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:3px 6px}
+td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
+#bar{position:fixed;right:12px;bottom:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;max-width:320px}
+.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.tb{display:flex;gap:4px;margin-bottom:4px}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:30vh}}
+</style></head><body>
+<header><b>CMS Kolaborasi</b><span id="who"></span><span id="pres" title="online"></span>
+<button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
+<div id="app"></div><div id="bar" hidden></div>
+<script>
+const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
+let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,es=null,outline=[],locks={},hb=null;
+async function api(m,u,b,raw){const r=await fetch('/api'+u,{method:m,headers:raw?{'X-CMS':'1'}:H,body:raw?b:(b?JSON.stringify(b):undefined),credentials:'same-origin'});
+ let j={};try{j=await r.json()}catch(e){}if(!r.ok){const e=new Error(j.error||r.status);e.status=r.status;e.body=j;throw e}return j}
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function inl(t){return esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/__(.+?)__/g,'<i>$1</i>').replace(/\+\+(.+?)\+\+/g,'<u>$1</u>').replace(/\^\^(.+?)\^\^/g,'<sup>$1</sup>').replace(/~~(.+?)~~/g,'<sub>$1</sub>').replace(/\\([\\*_+^~\[\]])/g,'$1')}
+function note(t,err){const b=$('#bar');b.hidden=!t;b.className=err?'err':'';b.textContent=t||'';if(t)setTimeout(()=>{b.hidden=true},4000)}
+async function boot(){try{me=(await api('GET','/me')).user}catch(e){return loginView()}
+ $('#who').textContent=me.name||me.username;$('#bout').hidden=false;docsView()}
+function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder=username autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span></form>`;
+ $('#login').onsubmit=async e=>{e.preventDefault();try{await api('POST','/login',{username:e.target.u.value,password:e.target.p.value});boot()}catch(x){$('#le').textContent=x.message}}}
+$('#bout').onclick=async()=>{await api('POST','/logout');location.reload()};
+async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
+ $('#app').innerHTML='<div id=docs><h3>Dokumen</h3>'+(docs.map(d=>`<p><a href="#" data-id="${d.id}">${esc(d.filename)}</a> <small>${esc(d.status)}</small></p>`).join('')||'<p>Belum ada dokumen.</p>')+'</div>';
+ document.querySelectorAll('#docs a').forEach(a=>a.onclick=e=>{e.preventDefault();openDoc(+a.dataset.id)})}
+function closeDoc(){if(es)es.close();es=null;doc=null;chapter=null;clearInterval(hb);$('#bexp').hidden=true;$('#pres').textContent=''}
+async function openDoc(id){doc=id;$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div>';$('#bexp').hidden=false;
+ await loadOutline();subscribe();hb=setInterval(async()=>{for(const b of Object.keys(locks)){try{await api('POST',`/blocks/${b}/lock`)}catch(e){}}
+  try{const p=await api('GET',`/docs/${doc}/presence`);$('#pres').textContent='● '+p.count+' online'}catch(e){}},60000)}
+async function loadOutline(){const r=await api('GET',`/docs/${doc}/outline?max_level=1`);outline=r.outline;
+ $('#side').innerHTML='<a id=back>← Dokumen</a>'+outline.map(h=>`<a data-id="${h.id}" class="${h.mine?'mine':''} ${h.id==chapter?'cur':''}">${esc((h.text||'(tanpa judul)').slice(0,60))}</a>`).join('');
+ $('#back').onclick=docsView;document.querySelectorAll('#side a[data-id]').forEach(a=>a.onclick=()=>{chapter=+a.dataset.id;loadOutline();loadChapter()});
+ if(!chapter&&outline[0]){chapter=outline[0].id;loadOutline();loadChapter()}}
+async function loadChapter(){if(!chapter)return;const r=await api('GET',`/docs/${doc}/blocks?chapter=${chapter}`);await loadCmts();$('#ed').innerHTML='';
+ for(const b of r.blocks)$('#ed').append(view(b));if(!r.blocks.length)$('#ed').textContent='Bab kosong.'}
+async function loadCmts(){try{const {comments}=await api('GET',`/docs/${doc}/comments?chapter=${chapter}`);cmts={};
+ for(const c of comments)(cmts[c.block_id]=cmts[c.block_id]||[]).push(c)}catch(e){}}
+function toggleCm(id){openCm.has(id)?openCm.delete(id):openCm.add(id);refreshBlock(id)}
+function cmPanel(b){const box=document.createElement('div');box.className='cm';const list=cmts[b.id]||[];
+ const line=(c,re)=>{const d=document.createElement('div');d.className='c'+(re?' re':'')+(c.resolved_at?' done':'');
+  d.innerHTML=`<small>${esc(c.author)} · ${esc(c.created_at||'')}${c.resolved_at?' · ✔ selesai oleh '+esc(c.resolved_by):''}</small><div style="white-space:pre-wrap">${esc(c.text)}</div>`;
+  const bt=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.style.fontSize='11px';x.onclick=()=>f().catch(e=>note(e.message,1));d.append(' ',x)};
+  if(!re)bt('Balas',async()=>{const t=prompt('Balasan:');if(t)await api('POST',`/blocks/${b.id}/comments`,{text:t,parent_id:c.id})});
+  if(!re)bt(c.resolved_at?'Buka lagi':'Selesai',()=>api('POST',`/comments/${c.id}/resolve`,{resolved:!c.resolved_at}));
+  if(c.author===me.username||me.role==='admin')bt('Hapus',async()=>{if(confirm('Hapus komentar?'))await api('DELETE',`/comments/${c.id}`)});
+  return d};
+ list.filter(c=>!c.parent_id).forEach(c=>{box.append(line(c,0));list.filter(r=>r.parent_id===c.id).forEach(r=>box.append(line(r,1)))});
+ const f=document.createElement('form');f.innerHTML='<input placeholder="Tulis komentar…" maxlength=4000><button class=p>Kirim</button>';
+ f.onsubmit=async e=>{e.preventDefault();const i=f.querySelector('input');if(!i.value.trim())return;try{await api('POST',`/blocks/${b.id}/comments`,{text:i.value});i.value=''}catch(x){note(x.message,1)}};
+ box.append(f);return box}
+function bodyOf(b){
+ if(b.kind==='table'){const t=document.createElement('table');(b.data.rows||[]).forEach((r,ri)=>{const tr=t.insertRow();r.cells.forEach(c=>{const td=document.createElement(r.header?'th':'td');
+  td.textContent=(c.blocks||[]).map(x=>x.text).join('\n');td.onfocus=()=>{t.dataset.row=ri};td.contentEditable=b.kind==='table'&&!b.locked_by;td.onblur=async()=>{if(td.textContent===(c.blocks||[]).map(x=>x.text).join('\n'))return;
+  try{const v=await api('PATCH',`/blocks/${b.id}/cell`,{row:ri,col:c.col,text:td.textContent,version:b.version});b.version=v.version;c.blocks=[{text:td.textContent}]}catch(e){note(e.message,1)}};tr.append(td)});});return t}
+ if(b.kind==='image'){const i=document.createElement('img');i.src=`/api/docs/${doc}/asset/${b.data.asset}`;i.alt=b.data.alt||'';return i}
+ if(b.kind==='page_break'){const d=document.createElement('div');d.textContent='— pindah halaman —';d.style.color='var(--mut)';return d}
+ const d=document.createElement('div');d.className='txt';d.innerHTML=inl(b.text);return d}
+function view(b){const el=document.createElement('div');el.className='blk'+(b.kind==='heading'?' h':'')+(b.locked_by?' locked':'');el.dataset.id=b.id;
+ const canEdit=me.role!=='reviewer';
+ el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
+ el.append(bodyOf(b));const a=document.createElement('div');a.className='acts';
+ const btn=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
+ if(['paragraph','heading','list_item','caption','note'].includes(b.kind)&&canEdit)btn('Edit',()=>edit(el,b));
+ if(me.role!=='reviewer'){btn('+ Paragraf',async()=>{await api('POST',`/docs/${doc}/blocks`,{after_id:b.id,kind:'paragraph',text:''});});
+  btn('+ Gambar',async()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('after_id',b.id);
+   try{await api('POST',`/docs/${doc}/images`,fd,true)}catch(e){note(e.message,1)}};f.click()});
+  btn('+ Tabel',()=>tableDlg(b));
+  btn('+ Page break',async()=>{await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id})});
+  btn('Hapus',async()=>{if(confirm('Hapus blok ini?'))await api('DELETE',`/blocks/${b.id}?version=${b.version}`)});
+  btn('Riwayat',()=>hist(el,b));
+  btn('↑',()=>mv(el,b,-1));btn('↓',()=>mv(el,b,1));
+  if(b.kind==='table'){const rw=()=>{const t=el.querySelector('table');return t.dataset.row!==undefined?+t.dataset.row:(b.data.rows.length-1)};
+   btn('+ Baris',async()=>{const r=rw(),n=b.data.ncols||b.data.rows[0].cells.length;await api('POST',`/blocks/${b.id}/rows`,{after_row:r,values:Array(n).fill(''),version:b.version})});
+   btn('− Baris',async()=>{if(b.data.rows.length<2)throw new Error('sisakan minimal 1 baris');if(confirm('Hapus baris terpilih (klik sel dulu; default terakhir)?'))await api('POST',`/blocks/${b.id}/rows`,{delete:rw(),version:b.version})})}}
+ {const n=(cmts[b.id]||[]).filter(c=>!c.resolved_at).length,x=document.createElement('button');x.innerHTML='💬'+(n?` <span class=badge>${n}</span>`:'');
+ x.onclick=()=>{openCm.has(b.id)?openCm.delete(b.id):openCm.add(b.id);refreshBlock(b.id)};a.append(x)}
+ const sel=document.createElement('select');['draft','review','approved'].forEach(s=>sel.add(new Option(s,s,0,s===b.status)));
+ sel.onchange=()=>api('PATCH',`/blocks/${b.id}`,{status:sel.value,version:b.version}).catch(e=>note(e.message,1));a.append(sel);el.append(a);if(openCm.has(b.id))el.append(cmPanel(b));return el}
+async function mv(el,b,dir){let after;
+ if(dir<0){const p=el.previousElementSibling,pp=p&&p.previousElementSibling;if(!pp)throw new Error('sudah paling atas dalam bab');after=+pp.dataset.id}
+ else{const n=el.nextElementSibling;if(!n)throw new Error('sudah paling bawah dalam bab');after=+n.dataset.id}
+ await api('POST',`/blocks/${b.id}/move`,{after_id:after,version:b.version})}
+function tableDlg(b){const m=document.createElement('div');m.className='mask';m.innerHTML=`<form class=dlg><b>Sisipkan tabel setelah blok ini</b>
+ <label>Judul tabel (opsional)<input name=cap></label>
+ <div style="display:flex;gap:8px"><label>Baris<input name=r type=number min=1 max=500 value=3></label><label>Kolom<input name=c type=number min=1 max=30 value=3></label>
+ <label style="align-content:end"><span><input name=h type=checkbox checked> baris pertama = header</span></label></div>
+ <label>Atau tempel dari Excel/Sheets (kolom dipisah tab) — menggantikan ukuran di atas<textarea name=paste rows=5></textarea></label>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Sisipkan</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();let rows;const t=f.paste.value.replace(/\r/g,'').replace(/\n+$/,'');
+  if(t.trim())rows=t.split('\n').map(l=>l.split('\t'));else rows=Array.from({length:+f.r.value},()=>Array(+f.c.value).fill(''));
+  try{await api('POST',`/docs/${doc}/tables`,{after_id:b.id,rows,header:f.h.checked,caption:f.cap.value.trim()||null});m.remove()}catch(x){note(x.message,1)}}}
+function toolbar(ta){const d=document.createElement('div');d.className='tb';
+ for(const [l,a,z] of [['B','**','**'],['I','__','__'],['U','++','++'],['x²','^^','^^'],['x₂','~~','~~']]){const x=document.createElement('button');x.type='button';x.textContent=l;
+  x.onclick=()=>{const s0=ta.selectionStart,e0=ta.selectionEnd;ta.setRangeText(a+ta.value.slice(s0,e0)+z,s0,e0,'end');ta.focus()};d.append(x)}
+ const k=document.createElement('button');k.type='button';k.textContent='🔗';k.onclick=()=>{const u=prompt('URL:');if(!u)return;const s0=ta.selectionStart,e0=ta.selectionEnd;ta.setRangeText('['+(ta.value.slice(s0,e0)||u)+']('+u+')',s0,e0,'end');ta.focus()};d.append(k);return d}
+async function edit(el,b){try{await api('POST',`/blocks/${b.id}/lock`);locks[b.id]=1}catch(e){return note(e.message,1)}
+ el.classList.add('edit');const old=el.querySelector('.txt');const ta=document.createElement('textarea');ta.value=b.text;old.replaceWith(ta);ta.before(toolbar(ta));ta.focus();
+ const acts=el.querySelector('.acts');acts.innerHTML='';const done=async()=>{delete locks[b.id];try{await api('DELETE',`/blocks/${b.id}/lock`)}catch(e){}};
+ const s=document.createElement('button');s.className='p';s.textContent='Simpan';s.onclick=async()=>{try{await api('PATCH',`/blocks/${b.id}`,{text:ta.value,version:b.version});await done();refreshBlock(b.id)}
+  catch(e){note(e.status===409?'Konflik: blok diubah orang lain, muat ulang.':e.message,1)}};
+ const c=document.createElement('button');c.textContent='Batal';c.onclick=async()=>{await done();refreshBlock(b.id)};acts.append(s,c)}
+async function hist(el,b){const {history}=await api('GET',`/blocks/${b.id}/history`);let p=el.querySelector('.hist');if(p){p.remove();return}
+ p=document.createElement('div');p.className='hist meta';p.style.flexDirection='column';p.style.alignItems='flex-start';
+ history.slice().reverse().slice(0,15).forEach(h=>{const r=document.createElement('div');r.innerHTML=`v${h.version} · ${esc(h.changed_by||'')} · ${esc((h.text||'').slice(0,80))} `;
+  if(me.role!=='reviewer'){const x=document.createElement('button');x.textContent='Kembalikan';x.onclick=()=>api('POST',`/blocks/${b.id}/revert`,{version:h.version}).catch(e=>note(e.message,1));r.append(x)}p.append(r)});el.append(p)}
+async function refreshBlock(id){const el=$(`.blk[data-id="${id}"]`);if(!el)return;if(el.classList.contains('edit')&&locks[id])return;
+ await loadCmts();try{const {block}=await api('GET',`/blocks/${id}`);if(block.deleted)return el.remove();el.replaceWith(view(block))}catch(e){el.remove()}}
+let rl=null;function reloadSoon(){clearTimeout(rl);rl=setTimeout(()=>{if(!$('.blk.edit'))loadChapter();loadOutline()},400)}
+function subscribe(){es=new EventSource(`/api/docs/${doc}/events`);
+ for(const t of ['block','lock','unlock'])es.addEventListener(t,e=>{const d=JSON.parse(e.data);if(d.by!==me.username||t==='block')refreshBlock(d.id)});
+ es.addEventListener('comment',e=>{const d=JSON.parse(e.data);refreshBlock(d.id)});
+ for(const t of ['insert','delete','move','resync'])es.addEventListener(t,reloadSoon)}
+$('#bexp').onclick=async()=>{try{const j=await api('POST',`/docs/${doc}/export`);note('Ekspor berjalan…');
+ const iv=setInterval(async()=>{try{const s=await api('GET',`/exports/${j.job}`);if(s.status==='done'){clearInterval(iv);note('Ekspor selesai');location.href=`/api/exports/${j.job}/download`}
+  else if(s.status==='error'||s.status==='failed'){clearInterval(iv);note(s.error||'Ekspor gagal',1)}}catch(e){clearInterval(iv);note(e.message,1)}},1500)}catch(e){note(e.message,1)}};
+boot();
+</script></body></html>

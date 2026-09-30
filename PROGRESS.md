@@ -30,7 +30,6 @@ Ditolak: OnlyOffice/Collabora (batas koneksi, menghilangkan model blok/AI).
 | `scripts/collab_smoke.sh` / `collab_api_test.py` / `collab_load.py` | Uji engine vs MySQL / 34 cek API / beban SSE+penulis |
 | `docker/collab.yml`, `Dockerfile.collab`, `mysql-cms.cnf` | Stack `cmscollab` (mysql, redis, app, worker) |
 | `scripts/init_schema.sql` | Skema MySQL (idempoten; tabel lama chunk masih ada tapi tak dipakai engine baru) |
-| `app.py`, `utils/docx_split.py`, `docx_merge.py`, `templates/` | Alur LAMA (chunk HTML) — lossy untuk dokumen ini; belum dipensiunkan |
 
 Format teks blok = inline-markup: `**tebal** __miring__ ++garis-bawah++ ^^sup^^ ~~sub~~ [teks](url)`; literal `\ * _ + ^ ~ [ ]` di-escape `\`.
 Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Riwayat di `cms_block_history`.
@@ -49,9 +48,8 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
-- [ ] **0. Housekeeping**: commit/push perubahan yang belum ter-commit (lihat `git status`); putuskan nasib alur lama
-  (`app.py`, chunk) dan tabel lama `cms_chunks/cms_chunk_history/cms_media` di `init_schema.sql`.
-- [ ] **1. Tahap 3 — UI web** (Flask templates/JS atau SPA ringan, memakai API yang sudah ada):
+- [ ] **0. Housekeeping**: commit/push perubahan yang belum ter-commit (lihat `git status`); alur lama (`app.py`, chunk, templates) SUDAH DIHAPUS 2026-09-30 (masih ada di riwayat git); DDL tabel lama dibuang dari `init_schema.sql`; tabelnya di DB server dibiarkan (drop manual setelah backup bila mau). Makefile disesuaikan (`make stack`/`dev`). Tinggal commit.
+- [~] **1. Tahap 3 — UI web** (DRAFT awal `cmsapp/ui/index.html`, dilayani di `/`: login, daftar dok, outline, edit+lock, sel tabel, gambar, riwayat/revert, status, SSE, ekspor; BELUM diuji di browser; komentar per blok/bab (H1) + balasan + resolve via `cms_comments`, event `comment`; sisip tabel (grid/paste Excel) + tambah/hapus baris + pindah ↑↓ + toolbar inline-markup; sisa: langganan event per bab, WYSIWYG penuh) (Flask templates/JS atau SPA ringan, memakai API yang sudah ada):
   login; daftar dokumen; outline bab (tandai bab milik user via `outline[].mine`); editor blok; editor tabel (sel/baris);
   unggah gambar; page break; riwayat/revert; status draft/review/approved; tombol Ekspor + progres job; presence;
   heartbeat lock (perpanjang TTL) + auto-unlock saat simpan/tutup; komentar per blok (`cms_comments` + event);

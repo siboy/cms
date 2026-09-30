@@ -167,6 +167,15 @@ def media(doc_id, filename):
     return resp
 
 
+@bp.get("/docs/<int:doc_id>/asset/<sha1>")
+@auth.require()
+def asset(doc_id, sha1):
+    fn = S().asset_filename(doc_id, sha1)
+    if not fn:
+        abort(404)
+    return media(doc_id, fn)
+
+
 # ---------------------------------------------------------------- edit
 @bp.patch("/blocks/<int:bid>")
 @auth.require("admin", "author", "reviewer")
@@ -317,6 +326,51 @@ def revert(bid):
     v = S().restore_version(bid, int(need(body().get("version"), "version")), g.user["username"])
     emit(b["doc_id"], "block", id=bid, version=v)
     return jsonify(id=bid, version=v)
+
+
+# ---------------------------------------------------------------- komentar
+def _chapter_range(doc_id: int, ch: int):
+    s = S()
+    fs = s.get_block(ch)["seq"]
+    nxt = [x for x in s.outline(doc_id, 1) if x["seq"] > fs]
+    return fs, (nxt[0]["seq"] if nxt else None)
+
+
+@bp.get("/docs/<int:doc_id>/comments")
+@auth.require()
+def comments(doc_id):
+    """?chapter=<id H1> -> semua komentar dalam bab; tanpa parameter -> seluruh dokumen."""
+    ch = request.args.get("chapter", type=int)
+    fs, ts = _chapter_range(doc_id, ch) if ch else (None, None)
+    return jsonify(comments=S().list_comments(doc_id, fs, ts))
+
+
+@bp.post("/blocks/<int:bid>/comments")
+@auth.require("admin", "author", "reviewer")
+def add_comment(bid):
+    d = body()
+    c = S().add_comment(bid, g.user["username"], d.get("text", ""), d.get("parent_id"))
+    emit(c["doc_id"], "comment", id=bid, cid=c["id"])
+    return jsonify(id=c["id"]), 201
+
+
+@bp.post("/comments/<int:cid>/resolve")
+@auth.require("admin", "author", "reviewer")
+def resolve_comment(cid):
+    cm = S().resolve_comment(cid, g.user["username"], bool(body().get("resolved", True)))
+    emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid)
+    return jsonify(ok=True)
+
+
+@bp.delete("/comments/<int:cid>")
+@auth.require("admin", "author", "reviewer")
+def del_comment(cid):
+    cm = S().get_comment(cid)
+    if g.user["role"] != "admin" and cm["author"] != g.user["username"]:
+        abort(403, description="hanya penulis komentar / admin")
+    S().delete_comment(cid)
+    emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid)
+    return jsonify(ok=True)
 
 
 # ---------------------------------------------------------------- lock

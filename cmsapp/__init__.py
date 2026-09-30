@@ -1,5 +1,7 @@
 """Aplikasi CMS kolaborasi:  gunicorn -k gevent 'cmsapp:create_app()'"""
-from flask import Flask, jsonify
+import os
+
+from flask import Flask, jsonify, send_from_directory
 
 from cmsapp.config import Config
 from cmsapp.realtime import Hub, RedisLocks, make_redis
@@ -24,6 +26,10 @@ def create_app(cfg=Config) -> Flask:
 
     from cmsapp.api import bp
     app.register_blueprint(bp)
+
+    @app.get("/")
+    def ui():
+        return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "index.html")
 
     @app.get("/health")
     def health():
