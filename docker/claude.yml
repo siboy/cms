@@ -27,6 +27,10 @@ services:
       - ${HOST_HOME}/diskusidata:${HOST_HOME}/diskusidata
       # Login Claude milik container ini (persisten, akun terpisah dari host).
       - claude-home:/claude-home
+      # Memori + riwayat sesi host (per proyek, rw). Path container = path host, jadi nama
+      # folder proyek cocok & memori repo yang di-mount langsung terbaca/tertulis ke host.
+      # Hanya projects/ — login tetap akun container sendiri (BUKAN seluruh ~/.claude).
+      - ${HOST_HOME}/.claude/projects:/claude-home/.claude/projects
       # Aturan global host (read-only) supaya perilaku Claude sama.
       - ${HOST_HOME}/.claude/CLAUDE.md:/claude-home/.claude/CLAUDE.md:ro
 

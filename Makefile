@@ -120,14 +120,28 @@ clog:
 	docker logs -f --tail=100 $(CLAUDEDOCKER)
 
 csh:
-	docker exec -it -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) $(CLAUDEDOCKER) bash -l
+	docker exec -it -w $(HOME)/$(d) -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) $(CLAUDEDOCKER) bash -l
 
-# clogin: jalankan Claude di container (login akun Claude via /login pada pemakaian pertama).
+# clogin: jalankan Claude di container. Folder kerja = repo yg dipilih (memori Claude per folder!):
+#   make clogin            → ~/cms        make clogin d=flask|sekda|newflask|diskusidata
+d ?= cms
 clogin:
-	docker exec -it -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) -e CLAUDE_CONFIG_DIR=/claude-home/.claude $(CLAUDEDOCKER) claude
+	docker exec -it -w $(HOME)/$(d) -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) -e CLAUDE_CONFIG_DIR=/claude-home/.claude $(CLAUDEDOCKER) claude
+
+# Pintasan per repo: make csekda · cflask · cnewflask · cdiskusidata · ccms
+csekda:
+	@$(MAKE) --no-print-directory clogin d=sekda
+cflask:
+	@$(MAKE) --no-print-directory clogin d=flask
+cnewflask:
+	@$(MAKE) --no-print-directory clogin d=newflask
+cdiskusidata:
+	@$(MAKE) --no-print-directory clogin d=diskusidata
+ccms:
+	@$(MAKE) --no-print-directory clogin d=cms
 
 # Catch extra args so make doesn't error on them
 %:
 	@:
 
-.PHONY: push stack stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin
+.PHONY: push stack stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
