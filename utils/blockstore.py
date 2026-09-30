@@ -539,13 +539,34 @@ class BlockStore:
                 if expected_version is not None or attempt == 5:
                     raise
 
-    def table_enable_long(self, block_id: int, user: str = "", expected_version: Optional[int] = None):
-        """Ubah tabel grid menjadi mode form (long-form). Ditolak bila tak bisa dibentuk ulang persis."""
+    def table_long_preview(self, block_id: int) -> dict:
+        """Pratinjau konversi ke mode form tanpa menyimpan: {ok, strict, why, notes}.
+        strict=True: persis. strict=False & ok: hanya bisa lewat konversi longgar (ada `notes` perubahan)."""
+        b = self.get_block(block_id)
+        if b["kind"] != "table":
+            raise ValueError("bukan blok tabel")
+        if "long" in b["data"]:
+            return {"ok": True, "strict": True, "why": "", "notes": [], "already": True}
+        long, why = tm.grid_to_long(b["data"])
+        if long is not None:
+            return {"ok": True, "strict": True, "why": "", "notes": []}
+        long, notes, why2 = tm.grid_to_long_lenient(b["data"])
+        if long is None:
+            return {"ok": False, "strict": False, "why": why2, "notes": notes}
+        return {"ok": True, "strict": False, "why": why, "notes": notes}
+
+    def table_enable_long(self, block_id: int, user: str = "", expected_version: Optional[int] = None,
+                          force: bool = False):
+        """Ubah tabel grid menjadi mode form (long-form). Ditolak bila tak bisa dibentuk ulang persis,
+        kecuali force=True (konversi longgar: badan tabel dinormalkan; versi lama tetap ada di riwayat blok)."""
         b0 = self.get_block(block_id)
         if b0["kind"] == "table" and "long" in b0["data"]:
             return b0["version"], False                    # sudah mode form
         def fn(d):
             long, why = tm.grid_to_long(d)
+            if long is None and force:
+                long, _notes, why2 = tm.grid_to_long_lenient(d)
+                why = why2
             if long is None:
                 raise ValueError(f"tabel ini tak bisa diubah ke mode form: {why}")
             d.pop("long_error", None)

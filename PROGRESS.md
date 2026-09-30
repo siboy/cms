@@ -49,6 +49,11 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Tabel existing tak bisa → Mode form (2026-09-30)** — Matriks UKL-UPL (doc 12, blok 4348) ditolak karena (1) kolom ke-13 "hantu" (lebar 0, kosong) dan (2) sel kosong berisi paragraf kosong.
+  Perbaikan `utils/tablemodel.py`: `_trim_ghost_cols`, sel kosong berparagraf disimpan `raw`, kolom tanpa header ("Kolom N") tak dianggap selisih.
+  Pesan gagal kini spesifik (`_describe_diff`: baris/kolom + sebab). **Konversi longgar** `grid_to_long_lenient` (badan tabel dinormalkan: rowspan diisi-salin, colspan bentrok digeser/dipersempit, sel di luar kolom dibuang, header boleh disusun ulang) —
+  API `POST /blocks/<id>/long {preview:true}` (cek) dan `{on:true,force:true}`; UI "→ Mode form" selalu tampil, konfirmasi menampilkan catatan perubahan; CLI `docx_tool.py tables-long --force`. Versi lama tetap di riwayat blok.
+  Semua 12 tabel di DB kini lolos mode ketat. Belum dicoba di browser sungguhan (jalur konfirmasi longgar hanya diuji di engine).
 - [x] **Editor tabel mode form (2026-09-30)** — masalah: header multi-baris/colspan tak sejajar dgn isi, sel grid terlalu kecil, sulit ditambah/diisi AI.
   Solusi: tabel diedit sebagai **long-form** (`data.long`: `columns` [key, jalur header `A > B`, brk, align/size], `records` [v, span, raw, nm], `merge`),
   `data.rows` SELALU diturunkan (pivot `tablemodel.long_to_rows`) sehingga `docx_build` tak berubah. Jumlah kolom header == kolom isi by construction;

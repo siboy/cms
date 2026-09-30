@@ -286,11 +286,14 @@ def rows(bid):
 @bp.post("/blocks/<int:bid>/long")
 @auth.require("admin", "author")
 def table_long(bid):
-    """Ubah mode tabel: {"on": true} -> mode form (long-form), {"on": false} -> kembali ke grid."""
+    """Ubah mode tabel: {"on": true[, "force": true]} -> mode form (long-form; force = konversi longgar),
+    {"on": false} -> kembali ke grid, {"preview": true} -> cek konversi tanpa menyimpan."""
     d = body()
     b = guard(bid)
+    if d.get("preview"):                                # cek saja: {ok, strict, why, notes}; tak menyimpan
+        return jsonify(S().table_long_preview(bid))
     if d.get("on", True):
-        v, _ = S().table_enable_long(bid, g.user["username"], d.get("version"))
+        v, _ = S().table_enable_long(bid, g.user["username"], d.get("version"), bool(d.get("force")))
     else:
         v, _ = S().table_disable_long(bid, g.user["username"], d.get("version"))
     emit(b["doc_id"], "block", id=bid, version=v)

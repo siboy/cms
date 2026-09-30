@@ -163,7 +163,11 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   else if(b.kind==='table'){const rw=()=>{const t=el.querySelector('table');return t.dataset.row!==undefined?+t.dataset.row:(b.data.rows.length-1)};
    btn('+ Baris',async()=>{const r=rw(),n=b.data.ncols||b.data.rows[0].cells.length;await api('POST',`/blocks/${b.id}/rows`,{after_row:r,values:Array(n).fill(''),version:b.version})});
    btn('− Baris',async()=>{if(b.data.rows.length<2)throw new Error('sisakan minimal 1 baris');if(confirm('Hapus baris terpilih (klik sel dulu; default terakhir)?'))await api('POST',`/blocks/${b.id}/rows`,{delete:rw(),version:b.version})})
-   if(!b.data.long_error)btn('→ Mode form',async()=>{await api('POST',`/blocks/${b.id}/long`,{on:true})})}}
+   btn('→ Mode form',async()=>{
+    const pv=await api('POST',`/blocks/${b.id}/long`,{preview:true});
+    if(!pv.ok)throw new Error('Tak bisa diubah ke mode form: '+pv.why);
+    if(!pv.strict&&!confirm('Struktur tabel ini tidak bisa dibentuk ulang persis:\n'+pv.why+'\n\nKonversi longgar akan mengubah tabel:\n- '+pv.notes.join('\n- ')+'\n\nVersi lama tetap ada di Riwayat (bisa di-revert). Lanjutkan?'))return;
+    await api('POST',`/blocks/${b.id}/long`,{on:true,force:!pv.strict})})}}
  {const n=(cmts[b.id]||[]).filter(c=>!c.resolved_at).length,x=document.createElement('button');x.innerHTML='💬'+(n?` <span class=badge>${n}</span>`:'');
  x.onclick=()=>{openCm.has(b.id)?openCm.delete(b.id):openCm.add(b.id);refreshBlock(b.id)};a.append(x)}
  const sel=document.createElement('select');['draft','review','approved'].forEach(s=>sel.add(new Option(s,s,0,s===b.status)));

@@ -105,5 +105,24 @@ check([b["text"] for b in rr[1]["cells"][0]["blocks"]] == ["a", "b"] and rr[1]["
 tm.set_field(L3, 0, "c1", "baru")
 check(len(tm.long_to_rows(L3)[0][1]["cells"][0]["blocks"]) == 1, "edit sel multi-paragraf -> satu paragraf baru")
 
+# ---- tabel berantakan: colspan bentrok dgn rowspan dari atas, sel di luar kolom, header tak beraturan
+mess = {"grid": [], "ncols": 3, "rows": [
+    R([C(0, "**A**"), C(1, "**B**", cs=2)], True),
+    R([C(0, "1", rs=2), C(1, "x"), C(2, "y")]),
+    R([C(0, "z", cs=2), C(2, "w")]),                          # colspan 2 dari col 0 bentrok dgn rowspan dari atas
+]}
+Lm, why = tm.grid_to_long(copy.deepcopy(mess))
+check(Lm is None and "baris" in why and "kolom" in why, f"mode ketat menolak + pesan spesifik: {why}")
+Ll, notes, why2 = tm.grid_to_long_lenient(copy.deepcopy(mess))
+check(Ll is not None and why2 == "", f"mode longgar berhasil ({why2})")
+check(any("rowspan" in n for n in notes) and any("bertabrakan" in n for n in notes),
+      f"catatan perubahan lengkap: {notes}")
+rm = tm.long_to_rows(Ll)[0]
+check(all(len(r["cells"]) >= 1 for r in rm) and len(Ll["columns"]) == 3 and len(Ll["records"]) == 2, "hasil longgar: 3 kolom, 2 record")
+check(tm.long_to_rows(tm.grid_to_long_lenient(tm.apply_long(copy.deepcopy(mess), Ll))[0])[0] is not None, "hasil longgar stabil")
+check(not any("di luar kolom" in n for n in notes), "tak ada teks yang terbuang pada kasus bentrok")
+check([r["v"] for r in Ll["records"]] == [{"c1": "1", "c2": "x", "c3": "y"}, {"c1": "1", "c2": "z", "c3": "w"}],
+      f"isi record utuh: {[r['v'] for r in Ll['records']]}")
+
 print("SEMUA LOLOS" if not check.bad else f"{check.bad} GAGAL")
 sys.exit(1 if check.bad else 0)

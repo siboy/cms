@@ -16,7 +16,7 @@ Dokumen dipilih dengan --doc N (default 1). ID blok = kolom `id` (lihat perintah
   image   <after_id|0> <file.png> [--alt ".."] [--caption ".."]
   lock <id> | unlock <id>  |  history <id>  |  revert <id> <versi>
   build   <hasil.docx>                     # export DOCX rapi
-  tables-long [id ...]                     # ubah tabel (semua di dokumen bila tanpa id) ke mode form/long-form
+  tables-long [id ...] [--force]           # ubah tabel (semua di dokumen bila tanpa id) ke mode form/long-form
   cols    <id>                             # tampilkan kolom+jalur header tabel mode form (key | jalur | merge)
   recs    <id>                             # tampilkan record tabel mode form (indeks, isian per kolom)
   rec     <id> <rec> <key> <teks>          # ubah satu isian record
@@ -80,6 +80,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default="doc.db")
     ap.add_argument("--mysql", action="store_true")
+    ap.add_argument("--force", action="store_true", help="tables-long: konversi longgar utk tabel yang ditolak mode ketat")
     ap.add_argument("--razan", action="store_true")
     ap.add_argument("--doc", type=int, default=1)
     ap.add_argument("--user", default=os.environ.get("USERNAME", ""))
@@ -144,7 +145,7 @@ def main():
         okn = 0
         for i in ids:
             try:
-                st.table_enable_long(i, u); okn += 1
+                st.table_enable_long(i, u, force=a.force); okn += 1
             except (ValueError, KeyError) as e:
                 print(f"[{i}] dilewati: {e}")
         print(f"{okn}/{len(ids)} tabel diubah ke mode form")

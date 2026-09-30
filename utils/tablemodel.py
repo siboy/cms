@@ -76,14 +76,59 @@ def blocks_of(text: str, fmt: Optional[dict]) -> list[dict]:
 
 
 # ------------------------------------------------------------------ grid -> long
-def grid_to_long(data: dict) -> tuple[Optional[dict], str]:
-    """Kembalikan (long, "") atau (None, alasan). Hasil selalu diverifikasi round-trip terhadap grid asal."""
+def _trim_ghost_cols(data: dict) -> dict:
+    """Buang kolom 'hantu' di kanan: lebar grid 0, sel kosong, tak tercakup colspan sel lain (sisa Word)."""
     rows = data.get("rows") or []
     if not rows:
-        return None, "tabel kosong"
+        return data
+    grid = data.get("grid") or []
+    ncols = max([data.get("ncols", 0)] + [c["col"] + c["colspan"] for r in rows for c in r["cells"]])
+    n = ncols
+    while n > 1:
+        j = n - 1
+        if j < len(grid) and grid[j] not in (0, None):
+            break
+        ghost = all(
+            (c["col"] + c["colspan"] <= j) or (c["col"] == j and c["colspan"] == 1 and c["rowspan"] == 1
+                                               and not _cell_text(c).strip())
+            for r in rows for c in r["cells"])
+        if not ghost:
+            break
+        n -= 1
+    if n == ncols:
+        return data
+    out = copy.deepcopy(data)
+    out["ncols"] = n
+    for r in out["rows"]:
+        r["cells"] = [c for c in r["cells"] if c["col"] < n]
+    if out.get("grid"):
+        out["grid"] = out["grid"][:n]
+    return out
+
+
+def grid_to_long(data: dict) -> tuple[Optional[dict], str]:
+    """Kembalikan (long, "") atau (None, alasan). Hasil selalu diverifikasi round-trip terhadap grid asal."""
+    long, why, _ = _grid_to_long(data, False)
+    return long, why
+
+
+def grid_to_long_lenient(data: dict) -> tuple[Optional[dict], list[str], str]:
+    """Konversi longgar utk tabel yang ditolak mode ketat: badan tabel dinormalkan (rowspan diisi ke tiap baris,
+    colspan bentrok disesuaikan, sel di luar kolom dibuang) dan header boleh disusun ulang.
+    Kembalikan (long, catatan perubahan, alasan_gagal)."""
+    long, why, notes = _grid_to_long(data, True)
+    return long, notes, why
+
+
+def _grid_to_long(data: dict, lenient: bool) -> tuple[Optional[dict], str, list[str]]:
+    notes: list[str] = []
+    data = _trim_ghost_cols(data)
+    rows = data.get("rows") or []
+    if not rows:
+        return None, "tabel kosong", notes
     ncols = max([data.get("ncols", 0)] + [c["col"] + c["colspan"] for r in rows for c in r["cells"]])
     if ncols < 1:
-        return None, "tabel tanpa kolom"
+        return None, "tabel tanpa kolom", notes
     nrows = len(rows)
 
     # jumlah baris header: baris awal berflag header + baris yang tercakup rowspan sel header
@@ -99,6 +144,9 @@ def grid_to_long(data: dict) -> tuple[Optional[dict], str]:
         h = h2
     h = min(h, nrows - 1) if nrows > 1 else 0
     hdr = h > 0
+    orig_rows = rows
+    if lenient:
+        rows = _normalize_body(rows, h, ncols, notes)
 
     keys = [f"c{j + 1}" for j in range(ncols)]
     # ---- header -> path per kolom
@@ -112,6 +160,7 @@ def grid_to_long(data: dict) -> tuple[Optional[dict], str]:
                 for cc in range(c["col"], min(c["col"] + c["colspan"], ncols)):
                     occ[rr][cc] = cid
     paths, ids = [], []
+    synth: set[int] = set()
     for j in range(ncols):
         p, pid, last = [], [], None
         for r in range(h):
@@ -122,6 +171,7 @@ def grid_to_long(data: dict) -> tuple[Optional[dict], str]:
                 last = cid
         if not p:
             p, pid = [f"Kolom {j + 1}"], [None]
+            synth.add(j)                            # kolom tanpa header di tabel asli
         paths.append(p)
         ids.append(pid)
     cols = []
@@ -206,7 +256,7 @@ def grid_to_long(data: dict) -> tuple[Optional[dict], str]:
         if "raw" in rec and key in rec["raw"]:
             continue
         ok, fm = _plain_fmt(c)
-        if ok and c.get("blocks") and _fmt_key(fm) != colfmt[key]:
+        if ok and c.get("blocks") and (_fmt_key(fm) != colfmt[key] or _cell_text(c) == ""):
             rec.setdefault("raw", {})[key] = copy.deepcopy(c["blocks"])
     for rec in records:
         if "nm" in rec:
@@ -216,9 +266,105 @@ def grid_to_long(data: dict) -> tuple[Optional[dict], str]:
     long = {"columns": cols, "hdr": hdr, "merge": [k for k in keys if k in merge], "records": records}
 
     got = long_to_rows(long)[0]
-    if _sig(rows, h) != _sig(got, h):
-        return None, "struktur tidak bisa dibentuk ulang persis (tetap mode grid)"
-    return long, ""
+    a, b = _sig(rows, h), _sig(got, h)
+    if synth and hdr:                                # header buatan utk kolom tanpa header bukan selisih
+        b = [[c for c in r if c[0] not in synth] if ri < h else r for ri, r in enumerate(b)]
+    if lenient:
+        if a[:h] != b[:h]:
+            notes.append("header disusun ulang: susunan sel header aslinya tidak beraturan, kini mengikuti jalur per kolom")
+        a, b = a[h:], b[h:]
+    if a != b:
+        return None, "struktur tidak bisa dibentuk ulang persis: " + _describe_diff(rows, got, h, synth), notes
+    return long, "", notes
+
+
+def _describe_diff(want: list[dict], got: list[dict], h: int, synth: set = frozenset()) -> str:
+    """Pesan spesifik: baris/kolom pertama yang beda antara grid asal dan hasil rekonstruksi."""
+    sa, sb = _sig(want, h), _sig(got, h)
+    sb = [[c for c in r if c[0] not in synth] if ri < h else r for ri, r in enumerate(sb)]
+    if len(sa) != len(sb):
+        return f"jumlah baris {len(sa)} -> {len(sb)}"
+    for ri, (x, y) in enumerate(zip(sa, sb)):
+        if x == y:
+            continue
+        where = f"baris {ri + 1} ({'header' if ri < h else 'isi'})"
+        dx, dy = {c[0]: c for c in x}, {c[0]: c for c in y}
+        for col in sorted(set(dx) | set(dy)):
+            a, b = dx.get(col), dy.get(col)
+            if a == b:
+                continue
+            if a is None:
+                return f"{where}, kolom {col + 1}: sel tak ada di tabel asli (rekonstruksi menambah sel)"
+            if b is None:
+                if any(c["col"] < col < c["col"] + c["colspan"] for r in [want[ri]] for c in r["cells"]):
+                    return f"{where}, kolom {col + 1}: sel tertimpa colspan dari sel di kirinya"
+                return f"{where}, kolom {col + 1}: sel asli tak bisa dipetakan (rowspan/colspan dari baris lain bertabrakan)"
+            if a[1:3] != b[1:3]:
+                return f"{where}, kolom {col + 1}: colspan/rowspan {a[1]}x{a[2]} tak cocok dgn hasil {b[1]}x{b[2]}"
+            return f"{where}, kolom {col + 1}: isi sel berbeda setelah dibentuk ulang"
+        return f"{where}: urutan sel berbeda"
+    return "tak diketahui"
+
+
+def _normalize_body(rows: list[dict], h: int, ncols: int, notes: list[str]) -> list[dict]:
+    """Ratakan badan tabel: tiap baris terisi penuh ncols kolom, rowspan diisi-salin ke bawah, colspan yang bentrok
+    dipersempit/digeser, sel di luar kolom dibuang. Baris header tak disentuh."""
+    out = copy.deepcopy(rows[:h])
+    carry: dict[int, tuple[int, dict]] = {}          # col -> (sisa baris, sel)
+    n_fill = n_fix = n_drop = 0
+    for r in rows[h:]:
+        occ = [False] * ncols
+        cells: list[dict] = []
+        nxt: dict[int, tuple[int, dict]] = {}
+        for col, (rem, src) in sorted(carry.items()):
+            cs = max(1, min(src["colspan"], ncols - col))
+            if any(occ[col:col + cs]):
+                continue
+            cells.append({"col": col, "colspan": cs, "rowspan": 1, "blocks": copy.deepcopy(src["blocks"])})
+            for k in range(col, col + cs):
+                occ[k] = True
+            n_fill += 1
+            if rem > 1:
+                nxt[col] = (rem - 1, src)
+        for c in sorted(r["cells"], key=lambda x: x["col"]):
+            col, cs = c["col"], c["colspan"]
+            if col >= ncols:
+                if any(b.get("text") for b in c["blocks"]):
+                    n_drop += 1
+                continue
+            j = col
+            while j < ncols and occ[j]:
+                j += 1
+            if j >= ncols:
+                if any(b.get("text") for b in c["blocks"]):
+                    n_drop += 1
+                continue
+            if j != col:
+                cs = 1                              # digeser -> jangan makan kolom milik sel sesudahnya
+            k = j
+            while k < ncols and k < j + cs and not occ[k]:
+                k += 1
+            if j != col or k - j != cs:
+                n_fix += 1
+            cells.append({"col": j, "colspan": k - j, "rowspan": 1, "blocks": copy.deepcopy(c["blocks"])})
+            for m in range(j, k):
+                occ[m] = True
+            if c["rowspan"] > 1:
+                nxt[j] = (c["rowspan"] - 1, {"colspan": k - j, "blocks": c["blocks"]})
+        for j in range(ncols):
+            if not occ[j]:
+                cells.append({"col": j, "colspan": 1, "rowspan": 1, "blocks": []})
+        cells.sort(key=lambda x: x["col"])
+        out.append({"header": False, "cells": cells})
+        carry = nxt
+    # rowspan yang melewati batas tabel tidak dihitung; catat perubahan
+    if n_fill:
+        notes.append(f"{n_fill} sel gabungan ke bawah (rowspan) diisi-salin ke tiap barisnya")
+    if n_fix:
+        notes.append(f"{n_fix} sel dengan colspan/posisi bertabrakan digeser atau dipersempit")
+    if n_drop:
+        notes.append(f"{n_drop} sel berisi teks di luar kolom tabel dibuang")
+    return out
 
 
 def _sig(rows: list[dict], h: int) -> list:
