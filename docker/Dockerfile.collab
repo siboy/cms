@@ -1,0 +1,17 @@
+# Image aplikasi CMS kolaborasi (engine blok + UI Flask + worker ekspor).
+# Build: docker build --network host -f docker/Dockerfile.collab -t cms-collab:dev .
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 TZ=Asia/Jakarta
+
+RUN pip install \
+      python-docx lxml pillow beautifulsoup4 \
+      pymysql cryptography \
+      redis requests \
+      flask gunicorn gevent packaging
+
+WORKDIR /app
+COPY utils /app/utils
+COPY scripts /app/scripts
+COPY cmsapp /app/cmsapp
+CMD ["python", "-c", "print('cms-collab image siap')"]

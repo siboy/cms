@@ -1,0 +1,23 @@
+[mysqld]
+character-set-server = utf8mb4
+collation-server     = utf8mb4_0900_ai_ci
+default-time-zone    = '+07:00'
+skip-name-resolve
+
+# ratusan koneksi (pool per worker gunicorn tetap kecil; ini batas keras server)
+max_connections      = 600
+thread_cache_size    = 64
+
+# durabilitas penuh: data tim tidak boleh hilang saat restart mendadak
+innodb_flush_log_at_trx_commit = 1
+sync_binlog                    = 1
+innodb_buffer_pool_size        = 2G
+innodb_redo_log_capacity       = 1G
+innodb_ft_min_token_size       = 2
+max_allowed_packet             = 64M
+
+# binlog 7 hari untuk point-in-time recovery
+binlog_expire_logs_seconds = 604800
+
+slow_query_log      = 1
+long_query_time     = 1

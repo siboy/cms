@@ -75,10 +75,13 @@ def cell_block(text: str = "") -> dict:
 
 
 class BlockStore:
-    def __init__(self, connect, dialect: str):
+    def __init__(self, connect, dialect: str, locks=None):
         self._connect = connect
         self.dialect = dialect
         self.ph = "?" if dialect == "sqlite" else "%s"
+        # locks eksternal (mis. Redis): objek dengan holder(block_id)->(user, until)|None,
+        # acquire(block_id, user, ttl_min)->until, release(block_id, user). None = lock di kolom DB.
+        self.locks = locks
 
     # ------------------------------------------------------------ low level
     @contextmanager
@@ -151,7 +154,7 @@ class BlockStore:
 
     @staticmethod
     def _row_to_block(r: dict) -> dict:
-        return {"id": r["id"], "seq": r["seq"], "part": r["part"], "kind": r["kind"], "level": r["level"],
+        return {"id": r["id"], "doc_id": r.get("doc_id"), "seq": r["seq"], "part": r["part"], "kind": r["kind"], "level": r["level"],
                 "style": r["style"] or "", "text": r["text"] or "", "data": _jload(r["data"]),
                 "version": r["version"], "status": r["status"], "assignee": r["assignee"],
                 "locked_by": r["locked_by"], "locked_until": r["locked_until"]}
@@ -168,13 +171,60 @@ class BlockStore:
         with self._tx() as c:
             return [self._row_to_block(r) for r in self._all(c, sql, (doc_id,))]
 
+    # ------------------------------------------------------------ baca untuk UI
+    def outline(self, doc_id: int, max_level: int = 3) -> list[dict]:
+        """Daftar heading (id, seq, level, text, part) untuk navigasi; ringan (tanpa isi blok)."""
+        with self._tx() as c:
+            rows = self._all(c, "SELECT id, seq, part, level, text, version FROM cms_blocks WHERE doc_id=? AND kind='heading' "
+                                "AND level<=? AND deleted_at IS NULL ORDER BY seq, id", (doc_id, max_level))
+        return [{"id": r["id"], "seq": r["seq"], "part": r["part"], "level": r["level"], "text": r["text"] or "",
+                 "version": r["version"]} for r in rows]
+
+    def blocks_range(self, doc_id: int, from_seq: Optional[float] = None, to_seq: Optional[float] = None,
+                     limit: int = 500) -> list[dict]:
+        """Blok pada rentang seq [from_seq, to_seq) - dipakai UI untuk memuat satu bab."""
+        sql, args = "SELECT * FROM cms_blocks WHERE doc_id=? AND deleted_at IS NULL", [doc_id]
+        if from_seq is not None:
+            sql += " AND seq>=?"; args.append(from_seq)
+        if to_seq is not None:
+            sql += " AND seq<?"; args.append(to_seq)
+        sql += " ORDER BY seq, id LIMIT " + str(int(limit))
+        with self._tx() as c:
+            return [self._row_to_block(r) for r in self._all(c, sql, args)]
+
+    def chapter_of(self, block_id: int) -> Optional[dict]:
+        """H1 (bab) yang memuat blok ini: heading level 1 terdekat dengan seq <= blok. None bila di luar bab (cover/depan)."""
+        with self._tx() as c:
+            b = self._one(c, "SELECT doc_id, seq, part, kind, level, id FROM cms_blocks WHERE id=?", (block_id,))
+            if not b:
+                return None
+            if b["kind"] == "heading" and b["level"] == 1:
+                return {"id": b["id"], "part": b["part"]}
+            h = self._one(c, "SELECT id, part FROM cms_blocks WHERE doc_id=? AND kind='heading' AND level=1 AND seq<=? "
+                             "AND deleted_at IS NULL ORDER BY seq DESC, id DESC LIMIT 1", (b["doc_id"], b["seq"]))
+            return {"id": h["id"], "part": h["part"]} if h else {"id": None, "part": b["part"]}
+
+    def fingerprint(self, doc_id: int) -> str:
+        """Sidik jari isi dokumen: berubah bila ada edit/sisip/hapus/pindah. Untuk cache ekspor & deteksi perubahan."""
+        with self._tx() as c:
+            r = self._one(c, "SELECT COUNT(*) AS n, COALESCE(SUM(version),0) AS v, COALESCE(MAX(id),0) AS m, "
+                             "COALESCE(SUM(deleted_at IS NOT NULL),0) AS d FROM cms_blocks WHERE doc_id=?", (doc_id,))
+        return f"{r['n']}.{r['v']}.{r['m']}.{r['d']}"
+
     # ------------------------------------------------------------ lock & versi
     def _check_lock(self, row: dict, user: str):
+        if self.locks is not None:
+            h = self.locks.holder(row["id"])
+            if h and h[0] != user:
+                raise LockedError(f"blok {row['id']} sedang diedit {h[0]} sampai {h[1]}")
+            return
         lu, lb = row.get("locked_until"), row.get("locked_by")
         if lb and lb != user and lu and str(lu) > _now():
             raise LockedError(f"blok {row['id']} sedang diedit {lb} sampai {lu}")
 
     def lock_block(self, block_id: int, user: str, ttl_min: int = 15) -> str:
+        if self.locks is not None:
+            return self.locks.acquire(block_id, user, ttl_min)
         until = (datetime.now() + timedelta(minutes=ttl_min)).strftime("%Y-%m-%d %H:%M:%S")
         with self._tx() as c:
             cur = self._x(c, "UPDATE cms_blocks SET locked_by=?, locked_until=? WHERE id=? AND "
@@ -188,6 +238,8 @@ class BlockStore:
         return until
 
     def unlock_block(self, block_id: int, user: str):
+        if self.locks is not None:
+            return self.locks.release(block_id, user)
         with self._tx() as c:
             self._x(c, "UPDATE cms_blocks SET locked_by=NULL, locked_until=NULL WHERE id=? AND locked_by=?", (block_id, user))
 
@@ -448,18 +500,73 @@ def open_sqlite(path: str) -> BlockStore:
     return s
 
 
-def open_mysql(host: str, user: str, password: str, database: str = "databoks", port: int = 3306) -> BlockStore:
+class _Pool:
+    """Pool koneksi kecil (aman untuk thread/gevent). Koneksi dicek hidup saat dipinjam."""
+    def __init__(self, factory, size: int):
+        import queue
+        self._factory, self._q, self.size = factory, queue.LifoQueue(), size
+        self._made = 0
+        import threading
+        self._lock = threading.Lock()
+
+    @contextmanager
+    def get(self):
+        import queue
+        c = None
+        try:
+            c = self._q.get_nowait()
+        except queue.Empty:
+            with self._lock:
+                can_make = self._made < self.size
+                if can_make:
+                    self._made += 1
+            if can_make:
+                try:
+                    c = self._factory()
+                except Exception:
+                    with self._lock:
+                        self._made -= 1
+                    raise
+            else:
+                c = self._q.get(timeout=30)          # tunggu koneksi kosong; error bila 30 dtk penuh
+        try:
+            c.ping(reconnect=True)
+        except Exception:
+            c = self._factory()
+        ok = False
+        try:
+            yield c
+            ok = True
+        finally:
+            try:
+                if not ok:
+                    c.rollback()
+                self._q.put(c)
+            except Exception:
+                with self._lock:
+                    self._made -= 1
+
+
+def open_mysql(host: str, user: str, password: str, database: str = "databoks", port: int = 3306,
+               pool_size: int = 0, locks=None) -> BlockStore:
+    """pool_size=0: satu koneksi baru per transaksi (CLI). pool_size>0: pool (server web)."""
     import pymysql
+
+    def factory():
+        return pymysql.connect(host=host, user=user, password=password, database=database, port=port,
+                               charset="utf8mb4", autocommit=False, connect_timeout=10)
+
+    if pool_size > 0:
+        return BlockStore(_Pool(factory, pool_size).get, "mysql", locks)
 
     @contextmanager
     def connect():
-        c = pymysql.connect(host=host, user=user, password=password, database=database, port=port,
-                            charset="utf8mb4", autocommit=False)
+        c = factory()
         try:
             yield c
         finally:
             c.close()
-    return BlockStore(connect, "mysql")
+    return BlockStore(connect, "mysql", locks)
 
 
 def open_mysql_razan() -> BlockStore:

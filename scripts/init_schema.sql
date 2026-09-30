@@ -110,3 +110,27 @@ CREATE TABLE IF NOT EXISTS cms_assets (
     PRIMARY KEY (doc_id, sha1),
     CONSTRAINT fk_asset_doc FOREIGN KEY (doc_id) REFERENCES cms_documents(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---- Tahap 2: pengguna, peran, penugasan bab (idempoten; jalankan scripts/collab_migrate.sh untuk DB yang sudah ada) ----
+CREATE TABLE IF NOT EXISTS cms_users (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    username    VARCHAR(64) NOT NULL,
+    name        VARCHAR(120) NOT NULL DEFAULT '',
+    role        ENUM('admin','author','reviewer') NOT NULL DEFAULT 'author',
+    pw_hash     VARCHAR(255) NOT NULL,
+    active      TINYINT NOT NULL DEFAULT 1,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    last_login  VARCHAR(19) DEFAULT NULL,
+    UNIQUE KEY uq_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- scope: 'h1:<id blok heading level 1>' (satu bab) atau 'part:<cover|front|body|lampiran>'
+CREATE TABLE IF NOT EXISTS cms_assign (
+    doc_id   INT NOT NULL,
+    user_id  INT NOT NULL,
+    scope    VARCHAR(40) NOT NULL,
+    PRIMARY KEY (doc_id, user_id, scope),
+    KEY idx_user (user_id),
+    CONSTRAINT fk_as_doc  FOREIGN KEY (doc_id)  REFERENCES cms_documents(id) ON DELETE CASCADE,
+    CONSTRAINT fk_as_user FOREIGN KEY (user_id) REFERENCES cms_users(id)     ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

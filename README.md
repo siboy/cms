@@ -1,5 +1,7 @@
 # CMS — Collaborative DOCX Editor (PoC)
 
+> **Status pekerjaan & next jobs: lihat [`PROGRESS.md`](PROGRESS.md).** (Sesi Claude baru: baca itu dulu saat diminta "lanjutkan progress pekerjaan".)
+
 Web engine untuk **mengubah dokumen Word (.docx) menjadi konten yang bisa
 diedit parsial (per section/heading) lewat webview**, disimpan ke database
 dengan tracking histori, lalu dimerge kembali menjadi .docx.
@@ -687,3 +689,17 @@ python scripts/docx_tool.py --db out/doc.db build hasil.docx
 - Gambar/lampiran diekstrak terpisah ke `media/` (dedup sha1), blok gambar hanya menyimpan referensi.
 - Build: style seragam, nomor heading otomatis, H1 halaman baru, tabel tidak terpotong,
   Daftar Isi/Tabel/Gambar berupa field Word (klik "Yes" saat Word menawarkan update fields).
+
+## Server kolaborasi (tahap 2): API + real-time + ekspor
+
+Stack Docker `cmscollab` (`docker/collab.yml`): `cms-mysql`, `cms-redis`, `cms-app` (gunicorn gevent, 4 worker),
+`cms-worker` (ekspor DOCX). Deploy/upgrade di server: `bash scripts/collab_deploy.sh` (idempoten; sandi acak di `.env`).
+
+- **API** `/api/*` (paket `cmsapp/`): login berbasis sesi, peran admin/author/reviewer, penugasan per bab
+  (`scripts/cms_admin.py user|users-csv|assign|chapters`), edit/sisip/tabel/gambar/hapus/pindah, versi optimistik (409),
+  lock blok di Redis TTL 15 mnt (423), riwayat. Semua request non-GET wajib header `X-CMS: 1`.
+- **Real-time**: `GET /api/docs/<id>/events` (SSE) — event `block|insert|delete|move|lock|unlock|resync`, replay `Last-Event-ID`.
+- **Ekspor**: `POST /api/docs/<id>/export` -> antrian Redis -> worker; hasil di-cache per sidik-jari dokumen.
+- **Uji**: `scripts/collab_smoke.sh` (engine vs MySQL), `scripts/collab_api_test.py` (34 cek API, jalankan via
+  `docker exec cms-app`), `scripts/collab_load.py` (beban: N klien SSE + W penulis).
+- **Backup**: cron harian 02:30 (`backup.sh`), simpan 14 hari di `~/cms-collab/backup`.
