@@ -143,14 +143,22 @@ def outline(doc_id):
 @bp.get("/docs/<int:doc_id>/blocks")
 @auth.require()
 def blocks(doc_id):
-    """?chapter=<id blok H1> memuat satu bab; atau ?from_seq=&to_seq=; maks 500 blok per panggilan."""
+    """?chapter=<id blok H1> memuat satu bab; ?heading=<id blok heading apa pun> memuat SEBAGIAN
+    (hanya sampai heading berikutnya level berapa pun ketemu, tak termasuk sub-bagian di bawahnya);
+    atau ?from_seq=&to_seq=; maks 500 blok per panggilan."""
     s = S()
     fs, ts = request.args.get("from_seq", type=float), request.args.get("to_seq", type=float)
     ch = request.args.get("chapter", type=int)
+    hd = request.args.get("heading", type=int)
     if ch:
         h = s.get_block(ch)
         fs = h["seq"]
         nxt = [x for x in s.outline(doc_id, 1) if x["seq"] > fs]
+        ts = nxt[0]["seq"] if nxt else None
+    elif hd:
+        h = s.get_block(hd)
+        fs = h["seq"]
+        nxt = [x for x in s.outline(doc_id, 4) if x["seq"] > fs]
         ts = nxt[0]["seq"] if nxt else None
     bl = s.blocks_range(doc_id, fs, ts, limit=min(request.args.get("limit", 500, type=int), 500))
     locks = current_app.extensions["cms_locks"].holders([b["id"] for b in bl])
