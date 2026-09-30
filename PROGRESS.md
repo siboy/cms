@@ -5,7 +5,7 @@
 > Perbarui file ini (status, tanggal, centang, temuan baru) sebelum menutup sesi, lalu commit.
 > Jangan menaruh sandi/token di sini. Bahasa pengguna: Indonesia; gaya jawab ringkas (lihat preferensi pengguna).
 
-Terakhir diperbarui: **2026-09-30** (akhir tahap 2).
+Terakhir diperbarui: **2026-09-30** (tahap 3 + editor tabel mode form).
 
 ## 1. Tujuan
 Tim (target minimal **500–1000 koneksi**, realistisnya ~100–200 penulis aktif) + AI mengerjakan dokumen resmi
@@ -21,6 +21,7 @@ Ditolak: OnlyOffice/Collabora (batas koneksi, menghilangkan model blok/AI).
 |---|---|
 | `utils/docx_blocks.py` | Extractor DOCX -> blok (tracked changes diterima, textbox, tabel merge, gambar dedup sha1, part cover/front/body/lampiran) |
 | `utils/docx_build.py` | Builder blok -> DOCX (style seragam, nomor heading, H1 halaman baru, TOC/SEQ field, seksi+footer) |
+| `utils/tablemodel.py` | Tabel mode form: grid <-> long-form (record per baris; header = jalur kolom; span/merge/raw), operasi edit murni. Uji: `scripts/tablemodel_test.py` |
 | `utils/blockstore.py` | Penyimpanan SQLite+MySQL satu kode: sisip/pindah/hapus(soft)/restore, tabel, gambar, versi, riwayat, pool, lock provider |
 | `cmsapp/` | Flask: `auth.py` (sesi, peran, penugasan bab), `api.py` (REST+SSE), `realtime.py` (RedisLocks, Hub, presence), `export.py`+`worker.py` (ekspor via antrian) |
 | `scripts/docx_tool.py` | CLI engine (import/show/edit/insert/table/image/build/…); `--mysql` via env `CMS_DB_*` |
@@ -48,6 +49,17 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Editor tabel mode form (2026-09-30)** — masalah: header multi-baris/colspan tak sejajar dgn isi, sel grid terlalu kecil, sulit ditambah/diisi AI.
+  Solusi: tabel diedit sebagai **long-form** (`data.long`: `columns` [key, jalur header `A > B`, brk, align/size], `records` [v, span, raw, nm], `merge`),
+  `data.rows` SELALU diturunkan (pivot `tablemodel.long_to_rows`) sehingga `docx_build` tak berubah. Jumlah kolom header == kolom isi by construction;
+  header multi-level = jalur per kolom (colspan/rowspan otomatis; awalan `/` = paksa grup baru mis. dua "20XX"); baris judul = record ber-`span`;
+  rowspan = nilai diisi ke bawah + kolom `merge` (digabung saat pivot; `nm` = mulai gabungan baru). Sel kompleks (multi-paragraf/list/format khusus) dijaga di `raw`.
+  Import otomatis memasang `long` (`attach_long`, diverifikasi round-trip persis; kalau gagal tetap grid + `long_error`). 62/62 tabel dokumen ANDAL lolos.
+  API: `POST /blocks/<id>/long {on}`, `PATCH /blocks/<id>/rec {rec,key,text,group?}` (tanpa version = digabung ke versi terbaru, retry server), `POST /blocks/<id>/records {op:add|delete|move|span}`
+  (add menerima banyak baris sekaligus: list/dict per kolom), `POST /blocks/<id>/columns {columns,dry?}`. CLI: `docx_tool.py tables-long|cols|recs|rec|addrec|delrec`.
+  UI: tombol "✎ Edit form" (kartu per record, label = jalur header, WYSIWYG, cari, pratinjau tabel, tempel baris Excel, judul/span, pindah/duplikat/hapus), "Kolom & header…" (edit jalur, urutan, merge, format + pratinjau), "→ Mode grid".
+  Uji: `scripts/tablemodel_test.py` (engine), e2e sqlite+build DOCX manual, UI di jsdom (12 cek) — **belum dicoba di browser sungguhan / server MySQL**.
+  **Perlu dilakukan di server:** deploy, lalu `docx_tool.py --mysql --doc N tables-long` untuk tabel yang sudah terlanjur diimpor (backup dulu). Belum ada event SSE khusus record (memakai event `block`).
 - [ ] **0. Housekeeping**: commit/push perubahan yang belum ter-commit (lihat `git status`); alur lama (`app.py`, chunk, templates) SUDAH DIHAPUS 2026-09-30 (masih ada di riwayat git); DDL tabel lama dibuang dari `init_schema.sql`; tabelnya di DB server dibiarkan (drop manual setelah backup bila mau). Makefile disesuaikan (`make stack`/`dev`). Tinggal commit.
 - [~] **1. Tahap 3 — UI web** (DRAFT awal `cmsapp/ui/index.html`, dilayani di `/`: login, daftar dok, outline, edit+lock, sel tabel, gambar, riwayat/revert, status, SSE, ekspor; diuji di Chromium headless (login, edit, simpan, admin API); komentar per blok/bab (H1) + balasan + resolve via `cms_comments`, event `comment`; sisip tabel (grid/paste Excel) + tambah/hapus baris + pindah ↑↓ + toolbar inline-markup; event SSE difilter per bab (`?chapter=`, `ch`/`g` di payload, `realtime.wants`), halaman Admin (pengguna, penugasan bab, unggah DOCX); editor WYSIWYG contenteditable (B/I/U/sup/sub/tautan, Enter=baris baru, Ctrl+Enter=simpan, tombol </> = kode markup; konverter `mk2dom`/`dom2mk` cermin `parse_inline`, teruji round-trip di Chromium via Playwright); sel tabel juga WYSIWYG) (Flask templates/JS atau SPA ringan, memakai API yang sudah ada):
   login; daftar dokumen; outline bab (tandai bab milik user via `outline[].mine`); editor blok; editor tabel (sel/baris);

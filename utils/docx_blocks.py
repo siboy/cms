@@ -28,6 +28,8 @@ import re
 from collections import Counter
 from typing import Any, Optional
 
+from .tablemodel import attach_long
+
 from docx import Document
 from docx.image.image import Image as DocxImage
 
@@ -428,6 +430,8 @@ def parse_container(el, ctx: Ctx, nested: bool = False) -> list[dict]:
                 continue
         elif ch.tag == q("w:tbl"):
             bl = [parse_table(ch, ctx)]
+            if not nested:                              # tabel tingkat atas: siapkan long-form untuk editing
+                attach_long(bl[0]["data"])
         else:
             continue
         for b in bl:

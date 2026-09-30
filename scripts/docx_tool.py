@@ -16,6 +16,12 @@ Dokumen dipilih dengan --doc N (default 1). ID blok = kolom `id` (lihat perintah
   image   <after_id|0> <file.png> [--alt ".."] [--caption ".."]
   lock <id> | unlock <id>  |  history <id>  |  revert <id> <versi>
   build   <hasil.docx>                     # export DOCX rapi
+  tables-long [id ...]                     # ubah tabel (semua di dokumen bila tanpa id) ke mode form/long-form
+  cols    <id>                             # tampilkan kolom+jalur header tabel mode form (key | jalur | merge)
+  recs    <id>                             # tampilkan record tabel mode form (indeks, isian per kolom)
+  rec     <id> <rec> <key> <teks>          # ubah satu isian record
+  addrec  <id> <setelah_rec|-1> <v1|v2|..> # sisip record (nilai urut kolom, dipisah |)
+  delrec  <id> <rec>                       # hapus record
   roundtrip <file.docx> <out_dir>          # uji: import + build + cek cakupan
 Selalu sertakan --user nama agar riwayat tahu siapa yang mengubah.
 """
@@ -27,6 +33,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import blockstore, docx_blocks, docx_build  # noqa: E402
+from utils import tablemodel as tm  # noqa: E402
 
 
 def get_store(a):
@@ -132,6 +139,30 @@ def main():
             print(h["version"], h["changed_at"], h["changed_by"], h["note"], "|", (h["text"] or "")[:70])
     elif a.cmd == "revert":
         print("versi baru:", st.restore_version(int(x[0]), int(x[1]), u))
+    elif a.cmd == "tables-long":
+        ids = [int(i) for i in x] or [b["id"] for b in st.list_blocks(doc) if b["kind"] == "table" and "long" not in b["data"]]
+        okn = 0
+        for i in ids:
+            try:
+                st.table_enable_long(i, u); okn += 1
+            except (ValueError, KeyError) as e:
+                print(f"[{i}] dilewati: {e}")
+        print(f"{okn}/{len(ids)} tabel diubah ke mode form")
+    elif a.cmd == "cols":
+        L = st.get_block(int(x[0]))["data"]["long"]
+        for c in L["columns"]:
+            print(c["key"], "|", tm.path_line(c), "|", "merge" if c["key"] in L["merge"] else "")
+    elif a.cmd == "recs":
+        L = st.get_block(int(x[0]))["data"]["long"]
+        for i, r in enumerate(L["records"]):
+            print(i, ("[judul] " if r.get("span") else "") + " | ".join(f"{k}={str(v)[:40]!r}" for k, v in r["v"].items() if v != ""))
+    elif a.cmd == "rec":
+        print("versi baru:", st.table_set_field(int(x[0]), int(x[1]), x[2], x[3], user=u, expected_version=a.version))
+    elif a.cmd == "addrec":
+        v, r = st.table_records(int(x[0]), "add", u, a.version, after=int(x[1]), rows=[x[2].split("|")])
+        print("versi baru:", v, "record", r)
+    elif a.cmd == "delrec":
+        print("versi baru:", st.table_records(int(x[0]), "delete", u, a.version, rec=int(x[1]))[0])
     elif a.cmd == "build":
         stats, miss, n = build_and_check(st, doc, x[0])
         print(stats, f"kata tidak ditemukan {len(miss)}/{n}", miss[:10])

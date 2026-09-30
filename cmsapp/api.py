@@ -90,6 +90,7 @@ def _nf(e):
 
 
 @bp.errorhandler(ValueError)
+@bp.errorhandler(IndexError)
 def _bad(e):
     return jsonify(error=str(e)), 400
 
@@ -278,6 +279,65 @@ def rows(bid):
     else:
         v = S().table_add_row(bid, int(d.get("after_row", -1)), [str(x) for x in d.get("values", [])],
                               g.user["username"], d.get("version"))
+    emit(b["doc_id"], "block", id=bid, version=v)
+    return jsonify(id=bid, version=v)
+
+
+@bp.post("/blocks/<int:bid>/long")
+@auth.require("admin", "author")
+def table_long(bid):
+    """Ubah mode tabel: {"on": true} -> mode form (long-form), {"on": false} -> kembali ke grid."""
+    d = body()
+    b = guard(bid)
+    if d.get("on", True):
+        v, _ = S().table_enable_long(bid, g.user["username"], d.get("version"))
+    else:
+        v, _ = S().table_disable_long(bid, g.user["username"], d.get("version"))
+    emit(b["doc_id"], "block", id=bid, version=v)
+    return jsonify(id=bid, version=v)
+
+
+@bp.patch("/blocks/<int:bid>/rec")
+@auth.require("admin", "author")
+def table_rec(bid):
+    """Ubah satu isian record tabel: {rec, key, text, group?}. Tanpa `version` = digabung ke versi terbaru."""
+    d = body()
+    b = guard(bid)
+    v = S().table_set_field(bid, int(need(d.get("rec"), "rec")), str(need(d.get("key"), "key")), str(d.get("text", "")),
+                            bool(d.get("group")), g.user["username"], d.get("version"))
+    emit(b["doc_id"], "block", id=bid, version=v)
+    return jsonify(id=bid, version=v)
+
+
+@bp.post("/blocks/<int:bid>/records")
+@auth.require("admin", "author")
+def table_records(bid):
+    """Operasi record: {op:"add", after, rows:[[...]|{kolom:teks}]} | {op:"delete", rec} | {op:"move", rec, to} | {op:"span", rec, key, n}."""
+    d = body()
+    b = guard(bid)
+    op = need(d.get("op"), "op")
+    rows = d.get("rows")
+    if op == "add" and (not isinstance(rows, list) or len(rows) > 500):
+        raise ValueError("rows: daftar <=500 record")
+    args = {k: d[k] for k in ("after", "rows", "rec", "to", "key", "n") if k in d}
+    v, out = S().table_records(bid, op, g.user["username"], d.get("version"), **args)
+    emit(b["doc_id"], "block", id=bid, version=v)
+    return jsonify(id=bid, version=v, rec=out)
+
+
+@bp.post("/blocks/<int:bid>/columns")
+@auth.require("admin", "author")
+def table_columns(bid):
+    """Atur kolom/header: {columns:[{key?, path:"Grup > Sub", merge?, align?, size?}], dry?}. dry=true -> hanya pratinjau grid."""
+    d = body()
+    b = guard(bid)
+    cols = d.get("columns")
+    if not isinstance(cols, list):
+        raise ValueError("columns wajib berupa daftar")
+    if d.get("dry"):
+        _, data = S().table_columns(bid, cols, g.user["username"], dry=True)
+        return jsonify(data=data)
+    v, _ = S().table_columns(bid, cols, g.user["username"], d.get("version"))
     emit(b["doc_id"], "block", id=bid, version=v)
     return jsonify(id=bid, version=v)
 

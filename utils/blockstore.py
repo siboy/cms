@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+from . import tablemodel as tm
 from .docx_blocks import plain
 
 KINDS = {"heading", "paragraph", "list_item", "caption", "table", "image", "note", "page_break"}
@@ -468,6 +469,7 @@ class BlockStore:
                           "cells": [{"col": j, "colspan": 1, "rowspan": 1, "blocks": [cell_block(str(v))]}
                                     for j, v in enumerate(list(r) + [""] * (ncols - len(r)))]}
                          for i, r in enumerate(rows)]}
+        tm.attach_long(data)
         ids, pos = [], after_id
         if caption:
             pos = self.insert_block(doc_id, pos, "caption", caption, data={"subtype": "tabel"}, user=user)
@@ -479,6 +481,8 @@ class BlockStore:
         b = self.get_block(block_id)
         if b["kind"] != "table":
             raise ValueError("bukan blok tabel")
+        if "long" in b["data"]:
+            raise ValueError("tabel mode form: ubah lewat record (set_field/rec)")
         cell = self._find_cell(b["data"], row, col)
         cell["blocks"] = [cell_block(text)]
         return self.update_block(block_id, user, data=b["data"], expected_version=expected_version)
@@ -496,6 +500,8 @@ class BlockStore:
     def table_add_row(self, block_id: int, after_row: int, values: list[str], user: str = "", expected_version: Optional[int] = None) -> int:
         b = self.get_block(block_id)
         d = b["data"]
+        if "long" in d:
+            raise ValueError("tabel mode form: tambah baris lewat record (table_records)")
         n = d["ncols"]
         new = {"header": False, "cells": [{"col": j, "colspan": 1, "rowspan": 1, "blocks": [cell_block(str(v))]}
                                           for j, v in enumerate(list(values) + [""] * (n - len(values)))]}
@@ -505,12 +511,93 @@ class BlockStore:
     def table_delete_row(self, block_id: int, row: int, user: str = "", expected_version: Optional[int] = None) -> int:
         b = self.get_block(block_id)
         d = b["data"]
+        if "long" in d:
+            raise ValueError("tabel mode form: hapus baris lewat record (table_records)")
         if len(d["rows"]) <= 1:
             raise ValueError("tabel harus punya minimal 1 baris; hapus blok tabelnya")
         if any(c["rowspan"] > 1 for r in d["rows"] for c in r["cells"]):
             raise ValueError("tabel punya sel rowspan; ubah lewat editor tabel")
         del d["rows"][row]
         return self.update_block(block_id, user, data=d, expected_version=expected_version)
+
+    # ------------------------------------------------------------ tabel mode form (long-form)
+    def _edit_long(self, block_id: int, user: str, fn, expected_version: Optional[int] = None, need_long: bool = True):
+        """Baca-ubah-tulis data tabel. Tanpa expected_version, bentrok versi dicoba ulang (edit per sel/record
+        pada tabel besar tidak perlu saling menolak). Kembalikan (versi baru, hasil fn)."""
+        for attempt in range(6):
+            b = self.get_block(block_id)
+            if b["kind"] != "table":
+                raise ValueError("bukan blok tabel")
+            d = b["data"]
+            if need_long and "long" not in d:
+                raise ValueError("tabel belum mode form; jalankan table_enable_long dulu")
+            out = fn(d)
+            ev = expected_version if expected_version is not None else b["version"]
+            try:
+                return self.update_block(block_id, user, data=d, expected_version=ev), out
+            except ConflictError:
+                if expected_version is not None or attempt == 5:
+                    raise
+
+    def table_enable_long(self, block_id: int, user: str = "", expected_version: Optional[int] = None):
+        """Ubah tabel grid menjadi mode form (long-form). Ditolak bila tak bisa dibentuk ulang persis."""
+        b0 = self.get_block(block_id)
+        if b0["kind"] == "table" and "long" in b0["data"]:
+            return b0["version"], False                    # sudah mode form
+        def fn(d):
+            long, why = tm.grid_to_long(d)
+            if long is None:
+                raise ValueError(f"tabel ini tak bisa diubah ke mode form: {why}")
+            d.pop("long_error", None)
+            tm.apply_long(d, long)
+            return True
+        return self._edit_long(block_id, user, fn, expected_version, need_long=False)
+
+    def table_disable_long(self, block_id: int, user: str = "", expected_version: Optional[int] = None):
+        """Kembali ke mode grid (rows tetap; `long` dibuang)."""
+        def fn(d):
+            d.pop("long", None)
+        return self._edit_long(block_id, user, fn, expected_version, need_long=False)
+
+    def table_set_field(self, block_id: int, rec: int, key: str, text: str, group: bool = False, user: str = "",
+                        expected_version: Optional[int] = None) -> int:
+        def fn(d):
+            tm.set_field(d["long"], rec, key, text, group)
+            tm.apply_long(d, d["long"])
+        return self._edit_long(block_id, user, fn, expected_version)[0]
+
+    def table_records(self, block_id: int, op: str, user: str = "", expected_version: Optional[int] = None, **a):
+        """op: add {after, rows:[list|dict]} | delete {rec} | move {rec, to} | span {rec, key, n}. Kembalikan (versi, hasil)."""
+        def fn(d):
+            L = d["long"]
+            r = None
+            if op == "add":
+                r = tm.add_records(L, int(a.get("after", len(L["records"]) - 1)), a["rows"])
+            elif op == "delete":
+                tm.delete_record(L, int(a["rec"]))
+            elif op == "move":
+                tm.move_record(L, int(a["rec"]), int(a["to"]))
+            elif op == "span":
+                tm.set_span(L, int(a["rec"]), a["key"], int(a["n"]))
+            else:
+                raise ValueError("op: add|delete|move|span")
+            tm.apply_long(d, L)
+            return r
+        return self._edit_long(block_id, user, fn, expected_version)
+
+    def table_columns(self, block_id: int, specs: list, user: str = "", expected_version: Optional[int] = None,
+                      dry: bool = False):
+        """Ganti definisi kolom/header (urutan, jalur header, merge, format). dry=True: hanya hitung grid hasilnya."""
+        if dry:
+            d = json.loads(json.dumps(self.get_block(block_id)["data"]))
+            tm.set_columns(d["long"], specs)
+            tm.apply_long(d, d["long"])
+            return None, d
+
+        def fn(d):
+            tm.set_columns(d["long"], specs)
+            tm.apply_long(d, d["long"])
+        return self._edit_long(block_id, user, fn, expected_version)
 
     def add_image(self, doc_id: int, after_id: Optional[int], file_path: str, alt: str = "", caption: Optional[str] = None,
                   role: Optional[str] = None, user: str = "") -> list[int]:
