@@ -13,7 +13,7 @@ DC = docker compose -f $(COLLAB_DIR)/collab.yml --env-file $(COLLAB_DIR)/.env
 
 # ---- Stack Docker (mysql + redis + app + worker) ----
 # Idempoten: build image, terapkan skema, up. Bisa di server maupun PC (default ~/cms-collab).
-stack:
+stack rx7:
 	bash scripts/collab_deploy.sh
 
 stack-down:
@@ -144,4 +144,4 @@ ccms:
 %:
 	@:
 
-.PHONY: push stack stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
+.PHONY: push stack rx7 stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
