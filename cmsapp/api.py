@@ -1,6 +1,7 @@
 """REST API + SSE. Semua rute di bawah /api. Ringkas: tiap rute = izin -> aksi store -> siarkan event."""
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import time
@@ -25,9 +26,33 @@ def out(b: dict) -> dict:
     return {k: b[k] for k in ("id", "doc_id", "seq", "part", "kind", "level", "text", "data", "version", "status", "assignee") if k in b}
 
 
-def emit(doc_id: int, etype: str, **payload):
+def emit(doc_id: int, etype: str, extra_ch=(), force_global=False, **payload):
+    """Siarkan event + id bab terdampak (`ch`, daftar) agar klien yang hanya membuka satu bab bisa disaring server.
+    `g`=True bila outline bisa berubah (blok H1 / bab tak diketahui) -> semua klien menerima."""
     payload["by"] = g.user["username"]
+    anchor = payload.get("id") or (payload.get("ids") or [None])[0] or payload.get("after")
+    chs = {c for c in extra_ch if c}
+    glob = force_global
+    try:
+        c = S().chapter_of(anchor) if anchor else None
+        if not c or not c["id"] or c["id"] == anchor:
+            glob = True
+        else:
+            chs.add(c["id"])
+    except Exception:                                   # noqa: BLE001
+        glob = True
+    payload["ch"] = sorted(chs)
+    if glob:
+        payload["g"] = 1
     return realtime.publish(R(), doc_id, etype, payload)
+
+
+def chapter_id(bid) -> int | None:
+    try:
+        c = S().chapter_of(bid) if bid else None
+        return c["id"] if c else None
+    except Exception:                                   # noqa: BLE001
+        return None
 
 
 def guard(block_id: int) -> dict:
@@ -191,7 +216,7 @@ def patch_block(bid):
         abort(403, description="hanya admin yang mengubah level bab")
     v = S().update_block(bid, g.user["username"], text=d.get("text"), data=d.get("data"), level=d.get("level"),
                          status=d.get("status"), assignee=d.get("assignee"), expected_version=d.get("version"))
-    emit(b["doc_id"], "block", id=bid, version=v)
+    emit(b["doc_id"], "block", id=bid, version=v, force_global="level" in d)
     return jsonify(id=bid, version=v)
 
 
@@ -314,8 +339,9 @@ def move(bid):
     after = d.get("after_id")
     if after is not None and not auth.can_edit(b["doc_id"], after):
         abort(403, description="tujuan di luar bab Anda")
+    src = chapter_id(bid)
     S().move_block(bid, after, g.user["username"], d.get("version"))
-    emit(b["doc_id"], "move", id=bid, after=after)
+    emit(b["doc_id"], "move", extra_ch=(src, chapter_id(after)), id=bid, after=after)
     return jsonify(ok=True)
 
 
@@ -399,9 +425,10 @@ def events(doc_id):
     """Server-Sent Events. Header Last-Event-ID (otomatis oleh browser) memutar ulang event yang terlewat."""
     hub, r, me = current_app.extensions["cms_hub"], R(), g.user["username"]
     last = request.headers.get("Last-Event-ID", type=int)
+    chapter = request.args.get("chapter", type=int)          # hanya event bab ini (+ global); kosong = semua
 
     def gen():
-        q = hub.subscribe(doc_id)
+        q = hub.subscribe(doc_id, chapter)
         try:
             yield "retry: 3000\n: connected\n\n"
             if last is not None:
@@ -409,7 +436,8 @@ def events(doc_id):
                 if gap:
                     yield "event: resync\ndata: {}\n\n"
                 for m in evs:
-                    yield realtime.frame(m)
+                    if chapter is None or realtime.wants(chapter, json.loads(m.split("\t", 2)[2])):
+                        yield realtime.frame(m)
             realtime.presence_touch(r, doc_id, me)
             tick = time.time()
             while True:
@@ -490,3 +518,54 @@ def admin_assign():
     d = body()
     (auth.unassign if d.get("remove") else auth.assign)(int(d["doc_id"]), int(d["user_id"]), d["scope"])
     return jsonify(ok=True)
+
+
+@bp.get("/admin/users")
+@auth.require("admin")
+def admin_users():
+    st = S()
+    with st._tx() as c:
+        rows = st._all(c, "SELECT id, username, name, role, active, last_login FROM cms_users ORDER BY id")
+    return jsonify(users=rows)
+
+
+@bp.post("/admin/users/<int:uid>/active")
+@auth.require("admin")
+def admin_user_active(uid):
+    if uid == g.user["id"]:
+        raise ValueError("tidak bisa menonaktifkan diri sendiri")
+    auth.set_active(uid, bool(body().get("active", True)))
+    return jsonify(ok=True)
+
+
+@bp.get("/admin/docs/<int:doc_id>/assign")
+@auth.require("admin")
+def admin_assignments(doc_id):
+    st = S()
+    with st._tx() as c:
+        rows = st._all(c, "SELECT a.user_id, u.username, a.scope FROM cms_assign a JOIN cms_users u ON u.id=a.user_id "
+                          "WHERE a.doc_id=? ORDER BY u.username, a.scope", (doc_id,))
+    return jsonify(assignments=rows)
+
+
+@bp.post("/admin/docs")
+@auth.require("admin")
+def admin_upload_doc():
+    """Unggah .docx -> ekstrak ke blok (sinkron; dokumen ratusan halaman beberapa detik)."""
+    import uuid
+    from utils import docx_blocks
+    f = request.files.get("file")
+    if not f or not (f.filename or "").lower().endswith(".docx"):
+        raise ValueError("unggah berkas .docx")
+    base = os.path.join(current_app.config["DATA_DIR"], "uploads", uuid.uuid4().hex)
+    os.makedirs(base, exist_ok=True)
+    path = os.path.join(base, "asli.docx")
+    f.save(path)
+    media = os.path.join(base, "media")
+    try:
+        res = docx_blocks.extract(path, media)
+    except Exception as e:                                  # noqa: BLE001
+        raise ValueError(f"gagal membaca docx: {e}")
+    res["meta"]["source_file"] = os.path.basename(f.filename)
+    doc_id = S().import_result(res, media, g.user["username"], path)
+    return jsonify(doc_id=doc_id, blocks=res["meta"].get("block_count")), 201

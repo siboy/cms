@@ -94,9 +94,10 @@ def replay(r, doc_id: int, last_id: int) -> tuple[list[str], bool]:
 
 class ClientQueue:
     """Antrian per koneksi SSE (dibungkus: Queue milik gevent tidak menerima atribut tambahan)."""
-    def __init__(self, maxsize: int = 1000):
+    def __init__(self, maxsize: int = 1000, chapter: int | None = None):
         self._q = queue.Queue(maxsize=maxsize)
         self.dropped = False
+        self.chapter = chapter                    # None = terima semua event dokumen
 
     def put_nowait(self, item):
         self._q.put_nowait(item)
@@ -106,6 +107,11 @@ class ClientQueue:
 
     def get_nowait(self):
         return self._q.get_nowait()
+
+
+def wants(chapter: int | None, ev: dict) -> bool:
+    """Apakah klien yang berlangganan `chapter` perlu event ini? Global (g) / tanpa info bab -> semua klien."""
+    return chapter is None or bool(ev.get("g")) or "ch" not in ev or chapter in ev["ch"]
 
 
 class Hub:
@@ -139,7 +145,16 @@ class Hub:
                     if not subs:
                         continue
                     fr = frame(m["data"])
+                    ev = None
                     for q in list(subs):
+                        if q.chapter is not None:
+                            if ev is None:                       # parse JSON sekali per event, hanya bila ada klien berfilter
+                                try:
+                                    ev = json.loads(m["data"].split("\t", 2)[2])
+                                except Exception:
+                                    ev = {}
+                            if not wants(q.chapter, ev):
+                                continue
                         try:
                             q.put_nowait(fr)
                         except queue.Full:
@@ -147,9 +162,9 @@ class Hub:
             except Exception:
                 time.sleep(1)      # reconnect; klien yang tertinggal akan diminta resync lewat replay/gap
 
-    def subscribe(self, doc_id: int) -> ClientQueue:
+    def subscribe(self, doc_id: int, chapter: int | None = None) -> ClientQueue:
         self._ensure()
-        q = ClientQueue()
+        q = ClientQueue(chapter=chapter)
         with self._lock:
             self.subs.setdefault(doc_id, set()).add(q)
         return q
