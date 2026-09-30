@@ -48,7 +48,7 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 </style></head><body>
 <header><b>CMS Kolaborasi</b><span id="who"></span><span id="pres" title="online"></span>
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
-<button id="bdocs" hidden>Dokumen</button><button id="badm" hidden>Admin</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
+<button id="bdocs" hidden>Dokumen</button><button id="badm" hidden>Admin</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
@@ -332,7 +332,7 @@ async function assignView(users){const d=+$('#ad').value;const isAdmin=me.role==
  const itemRows=items.map(it=>{const indent=it.kind==='heading'?(it.level-1)*2:curHLevel*2+2;
   if(it.kind==='heading')curHLevel=it.level;
   const node=map[it.id]||{pics:[],direct:false,scope:null};
-  const icon=it.kind==='heading'?'📖':it.kind==='caption'?'🏷':it.kind==='table'?'▦':'🖼';
+  const icon=it.kind==='heading'?'📖':it.subtype==='tabel'?'▦':it.subtype==='gambar'?'🖼':'🏷';
   const done=node.pics.length&&node.pics.every(p=>p.status==='done');
   const pics=node.pics.map(p=>`<span class=badge style="background:${p.status==='done'?'#2da44e':'var(--mut)'}">${esc(p.username)}${p.status==='done'?' ✓':''}</span>`).join(' ')
    ||(node.scope?'<small style="color:var(--mut)">(warisan, kosong)</small>':'<small style="color:var(--mut)">—</small>');
@@ -346,8 +346,8 @@ async function assignView(users){const d=+$('#ad').value;const isAdmin=me.role==
   document.querySelectorAll('[data-add]').forEach(sel=>sel.onchange=async()=>{if(!sel.value)return;try{await api('POST','/admin/assign',{doc_id:d,user_id:+sel.value,scope:sel.dataset.add});assignView(users)}catch(e){note(e.message,1)}});
   document.querySelectorAll('[data-rm]').forEach(a=>a.onclick=async e=>{e.preventDefault();const [u,sc]=a.dataset.rm.split('|');try{await api('POST','/admin/assign',{doc_id:d,user_id:+u,scope:sc,remove:true});assignView(users)}catch(x){note(x.message,1)}})}
  document.querySelectorAll('[data-pic]').forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===+b.dataset.pic);picDlg(d,it.id,it.label,()=>assignView(users))})}
-function closeDoc(){if(es)es.close();es=null;doc=null;chapter=null;section=null;clearInterval(hb);$('#bexp').hidden=true;$('#pres').textContent=''}
-async function openDoc(id){doc=id;$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div>';$('#bexp').hidden=false;
+function closeDoc(){if(es)es.close();es=null;doc=null;chapter=null;section=null;clearInterval(hb);$('#bexp').hidden=true;$('#bopt').hidden=true;$('#pres').textContent=''}
+async function openDoc(id){doc=id;$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div>';$('#bexp').hidden=false;$('#bopt').hidden=me.role!=='admin';
  await loadOutline();subscribe();hb=setInterval(async()=>{for(const b of Object.keys(locks)){try{await api('POST',`/blocks/${b}/lock`)}catch(e){}}
   try{const p=await api('GET',`/docs/${doc}/presence`);$('#pres').textContent='● '+p.count+' online'}catch(e){}},60000)}
 async function loadOutline(){const r=await api('GET',`/docs/${doc}/outline?max_level=4`);outline=r.outline;
@@ -418,6 +418,7 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
    try{await api('POST',`/docs/${doc}/images`,fd,true)}catch(e){note(e.message,1)}};f.click()});
   btn('+ Tabel',()=>tableDlg(b));
   btn('+ Page break',async()=>{layoutDlg(null,async layout=>{await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id,layout})})});
+  if(me.role==='admin')btn('+ Daftar…',()=>genListDlg(b));
   if(b.kind==='page_break')btn('⛶ Tata letak',async()=>{layoutDlg(b.data.layout||null,async layout=>{await api('PATCH',`/blocks/${b.id}`,{data:{layout},version:b.version})})});
   btn('Hapus',async()=>{if(confirm('Hapus blok ini?'))await api('DELETE',`/blocks/${b.id}?version=${b.version}`)});
   btn('Riwayat',()=>hist(el,b));
@@ -482,6 +483,15 @@ async function picDlg(docId,blockId,label,onClose){
   f.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{try{await api('POST','/admin/assign',{doc_id:docId,user_id:+b.dataset.rm,scope:info.scope,remove:true});paint()}catch(e){note(e.message,1)}});
   if(f.picadd)f.picadd.onchange=async()=>{if(!f.picadd.value)return;try{await api('POST','/admin/assign',{doc_id:docId,user_id:+f.picadd.value,scope:info.own_scope});paint()}catch(e){note(e.message,1)}}};
  await paint()}
+function genListDlg(after){const m=document.createElement('div');m.className='mask';
+ const opts={toc:'Daftar Isi',tof_tabel:'Daftar Tabel',tof_gambar:'Daftar Gambar'};
+ m.innerHTML=`<form class=dlg><b>Sisipkan daftar otomatis</b>
+ <label>Jenis<select name=k>${Object.entries(opts).map(([v,l])=>`<option value=${v}>${l}</option>`).join('')}</select></label>
+ <small style="color:var(--mut)">Isinya dibuat Word sendiri (field TOC) — nomor halaman terisi saat dokumen dibuka/Update Field, bukan dihitung CMS ini.</small>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Sisipkan</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();const k=f.k.value;
+  try{await api('POST',`/docs/${doc}/blocks`,{after_id:after.id,kind:'heading',level:1,text:opts[k].toUpperCase(),data:{generated:k,numbered:false}});m.remove()}catch(x){note(x.message,1)}}}
 async function mv(el,b,dir){let after;
  if(dir<0){const p=el.previousElementSibling,pp=p&&p.previousElementSibling;if(!pp)throw new Error('sudah paling atas dalam bab');after=+pp.dataset.id}
  else{const n=el.nextElementSibling;if(!n)throw new Error('sudah paling bawah dalam bab');after=+n.dataset.id}
@@ -634,5 +644,18 @@ function subscribe(){if(es)es.close();es=new EventSource(`/api/docs/${doc}/event
 $('#bexp').onclick=async()=>{try{const j=await api('POST',`/docs/${doc}/export`);note('Ekspor berjalan…');
  const iv=setInterval(async()=>{try{const s=await api('GET',`/exports/${j.job}`);if(s.status==='done'){clearInterval(iv);note('Ekspor selesai');location.href=`/api/exports/${j.job}/download`}
   else if(s.status==='error'||s.status==='failed'){clearInterval(iv);note(s.error||'Ekspor gagal',1)}}catch(e){clearInterval(iv);note(e.message,1)}},1500)}catch(e){note(e.message,1)}};
+$('#bopt').onclick=async()=>{const m=document.createElement('div');m.className='mask';
+ let meta={};try{meta=(await api('GET',`/docs/${doc}/meta`)).meta}catch(e){}
+ const cur=meta.caption_numbering==='per_chapter'?'per_chapter':'global';
+ m.innerHTML=`<form class=dlg><b>Opsi ekspor</b>
+ <label>Penomoran caption Tabel/Gambar
+  <select name=cn>
+   <option value=global ${cur==='global'?'selected':''}>Global berurut (Tabel 1, 2, 3…) — saat ini</option>
+   <option value=per_chapter ${cur==='per_chapter'?'selected':''}>Per bab (Tabel 2.1, 2.2…)</option>
+  </select></label>
+ <small style="color:var(--mut)">Berlaku utk dokumen ini saja. Nomor halaman di Daftar Isi/Tabel/Gambar tetap diisi Word sendiri saat dibuka/Update Field.</small>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();try{await api('PATCH',`/docs/${doc}/meta`,{caption_numbering:f.cn.value});note('Opsi ekspor disimpan');m.remove()}catch(x){note(x.message,1)}}};
 boot();
 </script></body></html>

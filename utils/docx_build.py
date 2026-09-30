@@ -246,9 +246,13 @@ def _new_restart_num(doc, style_name: str):
 
 
 # ---------------------------------------------------------------- label pra-hitung
-def compute_labels(blocks: list[dict]) -> dict[int, str]:
-    """seq -> label (prefix nomor heading / 'Tabel n' / 'Gambar n')."""
-    labels: dict[int, str] = {}
+def compute_labels(blocks: list[dict], per_chapter_captions: bool = False) -> tuple[dict[float, str], set[float]]:
+    """seq -> label: prefix nomor heading, ATAU nomor caption Tabel/Gambar (TANPA kata 'Tabel'/'Gambar' itu
+    sendiri -> `n` global berurut, atau `bab.n` per bab kalau `per_chapter_captions`). `reset` = seq caption
+    yang jadi caption PERTAMA subtype itu di bab-nya -> dipakai `_caption` utk restart field SEQ Word ke 1
+    (relevan cuma saat per_chapter_captions; pas ganti bab, hitungan lokal mulai dari 1 lagi)."""
+    labels: dict[float, str] = {}
+    reset: set[float] = set()
     chap = 0
     sub = [0, 0, 0]
     seqno = {"tabel": 0, "gambar": 0}
@@ -261,6 +265,8 @@ def compute_labels(blocks: list[dict]) -> dict[int, str]:
                 if b["data"].get("numbered"):
                     chap += 1
                     sub = [0, 0, 0]
+                    if per_chapter_captions:
+                        seqno = {"tabel": 0, "gambar": 0}
                     lab = b["data"].get("num_text") or "%1."
                     labels[b["seq"]] = lab.replace("%1", fmt_num(chap, b["data"].get("num_fmt", "decimal")))
             elif chap and lvl <= 4:
@@ -271,9 +277,15 @@ def compute_labels(blocks: list[dict]) -> dict[int, str]:
                 labels[b["seq"]] = ".".join([str(chap)] + [str(x) for x in sub[: i + 1]])
         elif b["kind"] == "caption":
             st = b["data"].get("subtype", "tabel")
+            first_in_chap = seqno[st] == 0
             seqno[st] += 1
-            labels[b["seq"]] = f"{st.capitalize()} {seqno[st]}"
-    return labels
+            if per_chapter_captions and chap:
+                labels[b["seq"]] = f"{chap}.{seqno[st]}"
+                if first_in_chap:
+                    reset.add(b["seq"])
+            else:
+                labels[b["seq"]] = str(seqno[st])
+    return labels, reset
 
 
 class Builder:
@@ -283,8 +295,8 @@ class Builder:
         self.meta = meta
         self.media_root = media_root
         self.doc = Document()
-        self.labels = compute_labels(self.blocks)
-        self.seq_counter = {"tabel": 0, "gambar": 0}
+        self.labels, self.caption_reset = compute_labels(
+            self.blocks, per_chapter_captions=meta.get("caption_numbering") == "per_chapter")
         self.fresh_cells: set[int] = set()
         self._num_ctx = None    # (container id, num id) untuk daftar bernomor yang sedang berjalan
         self.stats = {"blocks": 0, "tables": 0, "images": 0, "missing_images": 0}
@@ -365,10 +377,13 @@ class Builder:
 
     def _caption(self, container, b, nxt):
         st = b["data"].get("subtype", "tabel")
-        self.seq_counter[st] += 1
         p = self._para(container, "Caption")
         p.add_run(st.capitalize() + " ")
-        add_field(p, f"SEQ {st.capitalize()} \\* ARABIC", str(self.seq_counter[st]))
+        chap_prefix, _, local = self.labels.get(b["seq"], "").rpartition(".")
+        if chap_prefix:
+            p.add_run(chap_prefix + ".")
+        instr = f"SEQ {st.capitalize()} \\* ARABIC" + (" \\r 1" if b["seq"] in self.caption_reset else "")
+        add_field(p, instr, local or "1")
         if b["text"]:
             p.add_run(". ")
             add_markup(p, b["text"])
@@ -476,18 +491,19 @@ class Builder:
         if kind == "toc":
             entries = []
             for b in self.blocks:
-                if b["kind"] == "heading" and b["level"] <= 3 and not b["data"].get("skip_build") \
+                if b["kind"] == "heading" and b["level"] <= 4 and not b["data"].get("skip_build") \
                         and not b["data"].get("generated"):
                     entries.append((b["level"], (self.labels.get(b["seq"], "") + " " + b["text"]).strip()))
-            instr = 'TOC \\o "1-3" \\h \\z \\u'
+            instr = 'TOC \\o "1-4" \\h \\z \\u'
         else:
             st = "Tabel" if kind == "tof_tabel" else "Gambar"
             entries = []
-            n = 0
             for b in self.blocks:
+                if b["data"].get("skip_build"):
+                    continue
                 if b["kind"] == "caption" and b["data"].get("subtype") == st.lower():
-                    n += 1
-                    entries.append((1, f"{st} {n}. {b['text']}"))
+                    lab = self.labels.get(b["seq"], "")
+                    entries.append((1, f"{st} {lab}. {b['text']}".strip(". ")))
             instr = f'TOC \\h \\z \\c "{st}"'
         if not entries:
             entries = [(1, "(diperbarui otomatis)")]

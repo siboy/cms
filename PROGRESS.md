@@ -49,6 +49,42 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Daftar Isi/Tabel/Gambar: sisip manual, H4, penomoran caption per-bab opsional (2026-09-30)** — sebelumnya
+  Daftar Isi/Tabel/Gambar (field Word TOC/SEQ, `utils/docx_build.py`) cuma otomatis muncul kalau docx SUMBER yang
+  diimpor sudah punya heading persis "DAFTAR ISI"/"DAFTAR TABEL"/"DAFTAR GAMBAR" (dideteksi sekali saat impor,
+  `docx_blocks.py: GENERATED_H1`) — tak ada cara menyisipkannya lewat UI/API utk dokumen yang belum punya/dibuat
+  dari nol. TOC juga cuma sampai H3 (`\o "1-3"`), dan nomor caption Tabel/Gambar SELALU global berurut (Tabel 1,
+  2, 3…) tanpa opsi.
+  **a) Sisip manual**: tombol "+ Daftar…" (admin-only) di toolbar tiap blok (`cmsapp/ui/index.html: genListDlg`)
+  — pilih Daftar Isi/Tabel/Gambar, lalu `POST /docs/<id>/blocks` (endpoint generik yang sudah ada, tanpa rute
+  baru) dgn `kind:heading, level:1, data:{generated:<jenis>, numbered:false}` (`numbered:false` eksplisit supaya
+  TAK ikut diberi nomor bab otomatis oleh `insert_block`).
+  **b) H4**: `_generated_list` toc: filter level `<=3`→`<=4`, instr `TOC \o "1-3"`→`\o "1-4"`.
+  **c) Opsi penomoran caption per dokumen**: dua mode, BUKAN ganti paksa. `cms_documents.manifest` (meta, field
+  bebas yg sudah ada sejak impor) dapat key baru `caption_numbering` ('global' default = perilaku lama persis,
+  atau 'per_chapter' = 'Tabel 2.1, 2.2…' reset tiap bab). Baca/tulis: `BlockStore.get_doc_meta`/`set_doc_meta`
+  (baru) + `GET`/`PATCH /docs/<id>/meta` (PATCH admin-only, validasi nilai). UI: tombol header "⚙ Opsi ekspor"
+  (admin, saat dokumen terbuka) → dialog pilih mode → `PATCH`. `docx_build.compute_labels(blocks,
+  per_chapter_captions)` sekarang return `(labels, reset_seqs)`: label caption format baru TANPA kata
+  "Tabel"/"Gambar" (`n` global atau `bab.n`); `reset_seqs` = seq caption PERTAMA subtype itu di bab-nya. Caption
+  tetap Word field SUNGGUHAN (bukan teks statis, supaya `TOC \c "Tabel"` di Daftar Tabel/Gambar tetap nemu &
+  page number-nya akurat) — trik: prefix bab ("2.") ditulis literal (spt nomor heading, sama persis caranya),
+  lalu field `SEQ Tabel \* ARABIC \r 1` cuma di caption PERTAMA tiap bab (reset paksa ke 1), caption berikutnya
+  dlm bab yg sama `SEQ Tabel \* ARABIC` polos (lanjut otomatis dari field sebelumnya) — TIDAK pakai
+  outline-numbering Word asli (heading kami statis, bukan numPr, jadi trik native `\s` switch tak bisa dipakai).
+  Fallback teks entri Daftar Tabel/Gambar (`_generated_list` cabang tof) disamakan pakai `self.labels` yg sama
+  (dulu re-hitung `n` sendiri2, taklah selaras kalau per-bab).
+  **Diuji**: `py_compile`+`node --check` lolos; `compute_labels` diuji langsung (global vs per_chapter, assert
+  label & reset-set persis); `build_docx` end-to-end (python-docx beneran, blok tabel+caption tabel+gambar lintas
+  2 bab) utk KEDUA mode, dibuka lagi & dicek: teks caption match ("Tabel 1.1. Data A" dst di per_chapter, "Tabel 1"
+  dst di global), field XML `SEQ Tabel \* ARABIC \r 1` cuma di caption pertama tiap bab (bukan di caption ke-2
+  dst — dicek langsung instrText XML-nya), `TOC \o "1-4"` kepasang, entri fallback Daftar Tabel memuat SEMUA
+  caption lintas bab dgn nomor per-bab yg benar. Jalur penuh lewat `BlockStore` sungguhan (SQLite): `insert_block`
+  utk sisip marker (meniru `POST /docs/<id>/blocks` dari UI) + `set_doc_meta`/`get_doc_meta` (meniru `PATCH`/`GET
+  /docs/<id>/meta`) + `load_document`+`build_docx` — jadi DAFTAR TABEL + caption per-bab, semua tersambung.
+  **Belum dicoba** buka hasil ekspor di Word sungguhan (sama spt item ekspor lain yg belum diverifikasi manual) —
+  terutama utk mengecek field TOC/SEQ ter-update benar saat "Update Field"/dibuka, bukan cuma nilai cache yg
+  ditulis (`add_field(...)`) yang sudah diuji.
 - [x] **PIC berjenjang (H1..Hn + caption/tabel/gambar) + status done/kembalikan (2026-09-30)** — sebelumnya PIC cuma bisa
   per-H1 (`h1:<id>`), single-scope, tanpa status pengerjaan, dan dialog "Tag PIC" di Gantt kosong utk baris bab (bug:
   `taskDlg` cuma fetch daftar user saat `!isChapter`). Diminta: heading level berapa pun (turunan otomatis mewarisi PIC

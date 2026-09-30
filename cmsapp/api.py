@@ -135,6 +135,22 @@ def docs():
     return jsonify(docs=S().list_documents())
 
 
+@bp.get("/docs/<int:doc_id>/meta")
+@auth.require()
+def get_doc_meta(doc_id):
+    return jsonify(meta=S().get_doc_meta(doc_id))
+
+
+@bp.patch("/docs/<int:doc_id>/meta")
+@auth.require("admin")
+def patch_doc_meta(doc_id):
+    d = body()
+    if "caption_numbering" in d and d["caption_numbering"] not in ("global", "per_chapter"):
+        raise ValueError("caption_numbering: 'global' atau 'per_chapter'")
+    meta = S().set_doc_meta(doc_id, **{k: d[k] for k in ("caption_numbering",) if k in d})
+    return jsonify(meta=meta)
+
+
 @bp.get("/docs/<int:doc_id>/outline")
 @auth.require()
 def outline(doc_id):

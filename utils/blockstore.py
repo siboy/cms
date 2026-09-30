@@ -240,6 +240,26 @@ class BlockStore:
         blocks = [self._row_to_block(r) for r in rows]
         return {"meta": _jload(doc["manifest"]), "blocks": blocks, "assets": assets, "media_dir": media_dir}
 
+    def get_doc_meta(self, doc_id: int) -> dict:
+        with self._tx() as c:
+            doc = self._one(c, "SELECT manifest FROM cms_documents WHERE id=?", (doc_id,))
+        if not doc:
+            raise KeyError(f"dokumen {doc_id} tidak ada")
+        return _jload(doc["manifest"])
+
+    def set_doc_meta(self, doc_id: int, **fields) -> dict:
+        """Gabung field ke manifest/meta dokumen (dibaca Builder saat ekspor, mis. `caption_numbering`
+        'global'|'per_chapter' -> docx_build.compute_labels). None diabaikan (tak menghapus field lain)."""
+        with self._tx() as c:
+            doc = self._one(c, "SELECT manifest FROM cms_documents WHERE id=?", (doc_id,))
+            if not doc:
+                raise KeyError(f"dokumen {doc_id} tidak ada")
+            meta = _jload(doc["manifest"])
+            meta.update({k: v for k, v in fields.items() if v is not None})
+            self._x(c, "UPDATE cms_documents SET manifest=?, updated_at=? WHERE id=?",
+                    (json.dumps(meta, ensure_ascii=False), _now(), doc_id))
+        return meta
+
     @staticmethod
     def _row_to_block(r: dict) -> dict:
         return {"id": r["id"], "doc_id": r.get("doc_id"), "seq": r["seq"], "part": r["part"], "kind": r["kind"], "level": r["level"],
@@ -1022,24 +1042,38 @@ class BlockStore:
 
     def list_taggable_blocks(self, doc_id: int) -> list[dict]:
         """Semua blok yang bisa langsung ditandai PIC: heading (semua level) + caption/tabel/gambar,
-        urut seq. Label ramah: teks heading/caption sendiri; tabel/gambar tanpa caption sendiri memakai
-        label caption tetangga (sebelum/sesudah) kalau ada, else generik."""
+        urut seq. `subtype` = 'tabel'|'gambar'|None (heading) — dari `data.subtype` caption (docx_blocks
+        CAPTION_RE) kalau blok ini sendiri caption, else disamakan dgn kind utk tabel/gambar. Label ramah:
+        caption diberi prefix asli ('Tabel 3.2. ...'/'Gambar 1. ...') supaya kebeda dari isi captionnya
+        sendiri; tabel/gambar tanpa caption sendiri memakai label caption tetangga (sebelum/sesudah)
+        kalau ada, else generik — INI yang membedakan 'caption daftar gambar' dari 'caption judul tabel'."""
         with self._tx() as c:
             rows = self._all(c, "SELECT id, seq, part, kind, level, text, data FROM cms_blocks WHERE doc_id=? "
                                  "AND deleted_at IS NULL AND (kind='heading' OR kind IN ('caption','table','image')) "
                                  "ORDER BY seq", (doc_id,))
         out = []
         for i, r in enumerate(rows):
+            d = _jload(r["data"])
             label = (r["text"] or "").strip()
-            if r["kind"] in ("table", "image") and not label:
-                near = rows[i - 1] if i > 0 else None
-                nxt = rows[i + 1] if i + 1 < len(rows) else None
-                cap = near if (near and near["kind"] == "caption") else (nxt if (nxt and nxt["kind"] == "caption") else None)
-                if cap:
-                    label = _jload(cap["data"]).get("orig_label") or (cap["text"] or "").strip()
-                label = label or f"({'tabel' if r['kind'] == 'table' else 'gambar'} #{r['id']})"
+            subtype = d.get("subtype")
+            if r["kind"] == "caption":
+                prefix = d.get("orig_label") or {"tabel": "Tabel", "gambar": "Gambar"}.get(subtype, "")
+                label = (f"{prefix}. {label}".strip() if prefix else label)
+            elif r["kind"] in ("table", "image"):
+                subtype = "tabel" if r["kind"] == "table" else "gambar"
+                if not label:
+                    # tetangga (sebelum/sesudah) dicek subtype-nya juga, bukan cuma "ini caption" —
+                    # tabel & gambar bisa berurutan (tabel,caption-tabel,gambar,caption-gambar), jadi
+                    # caption tetangga bisa saja milik objek LAIN kalau cuma dicek posisi.
+                    for cand in (rows[i - 1] if i > 0 else None, rows[i + 1] if i + 1 < len(rows) else None):
+                        if cand and cand["kind"] == "caption":
+                            cd = _jload(cand["data"])
+                            if cd.get("subtype") == subtype:
+                                label = cd.get("orig_label") or (cand["text"] or "").strip()
+                                break
+                    label = label or f"({'tabel' if r['kind'] == 'table' else 'gambar'} #{r['id']})"
             out.append({"id": r["id"], "seq": r["seq"], "part": r["part"], "kind": r["kind"], "level": r["level"],
-                       "label": label or f"(#{r['id']})"})
+                       "subtype": subtype, "label": label or f"(#{r['id']})"})
         return out
 
     def pic_map(self, doc_id: int) -> dict[int, dict]:
