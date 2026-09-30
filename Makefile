@@ -55,20 +55,20 @@ drop-schema:
 
 # ---- Git Commands ----
 pull:
-	git pull $(GITTOKEN)
+	@git pull $(GITTOKEN)
 	@git log -6 --pretty=format:"%h | %ad | %s" --date=format:"%Y-%m-%d %H:%M"
 
 push:
-	git push $(GITTOKEN)
+	@git push $(GITTOKEN)
 
 cmd:
 	git commit -am "$m" --author="agusdd <agusdwidarmawan@gmail.com>"
-	git push $(GITTOKEN)
+	@git push $(GITTOKEN)
 
 cal:
 	git add .
 	git commit -am "$m" --author="agusdd <agusdwidarmawan@gmail.com>"
-	git push $(GITTOKEN)
+	@git push $(GITTOKEN)
 
 # ---- VPN Management ----
 ovpn:

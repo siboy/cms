@@ -77,7 +77,7 @@ services:
     volumes:
       - cms_data:/data
     ports:
-      - "127.0.0.1:8879:8879"
+      - "${CMS_BIND:-127.0.0.1}:8879:8879"          # CMS_BIND di .env (mis. IP VPN); default hanya lokal
     depends_on:
       mysql: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -107,6 +107,9 @@ services:
 networks:
   cms-net:
     name: cms-net
+    ipam:
+      config:
+        - subnet: 172.29.250.0/24      # jangan 172.20.x: bentrok dgn rute VPN (172.20.0.0/23 via tun1)
 
 volumes:
   cms_mysql_data:
