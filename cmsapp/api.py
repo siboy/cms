@@ -120,7 +120,12 @@ def logout():
 @bp.get("/me")
 @auth.require()
 def me():
-    return jsonify(user=g.user)
+    u = dict(g.user)
+    try:
+        u["unread_tags"] = S().count_unread_tags(u["id"])
+    except Exception:                                     # noqa: BLE001
+        u["unread_tags"] = 0
+    return jsonify(user=u)
 
 
 # ---------------------------------------------------------------- dokumen & baca

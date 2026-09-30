@@ -27,6 +27,9 @@ def create_app(cfg=Config) -> Flask:
     from cmsapp.api import bp
     app.register_blueprint(bp)
 
+    from cmsapp.projects_api import bp as projects_bp
+    app.register_blueprint(projects_bp)
+
     @app.get("/")
     def ui():
         return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "index.html")

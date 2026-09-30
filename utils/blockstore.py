@@ -63,6 +63,29 @@ CREATE TABLE IF NOT EXISTS cms_assets (
     doc_id INTEGER NOT NULL, sha1 TEXT NOT NULL, filename TEXT NOT NULL, path TEXT NOT NULL, mime TEXT,
     px_w INTEGER, px_h INTEGER, size INTEGER, uses INTEGER DEFAULT 0, orig_part TEXT,
     PRIMARY KEY (doc_id, sha1));
+CREATE TABLE IF NOT EXISTS cms_projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, client TEXT, description TEXT, location TEXT,
+    start_date TEXT, end_date TEXT, status TEXT NOT NULL DEFAULT 'planning', progress_override INTEGER,
+    created_by TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT);
+CREATE TABLE IF NOT EXISTS cms_project_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, doc_id INTEGER NOT NULL,
+    report_type TEXT NOT NULL DEFAULT 'draft', label TEXT, is_printed INTEGER NOT NULL DEFAULT 0,
+    printed_at TEXT, printed_by TEXT, created_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_pd_project ON cms_project_documents(project_id);
+CREATE TABLE IF NOT EXISTS cms_project_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, category TEXT NOT NULL,
+    title TEXT, description TEXT, filename TEXT NOT NULL, path TEXT NOT NULL, mime TEXT, size INTEGER,
+    status TEXT, doc_date TEXT, uploaded_by TEXT, uploaded_at TEXT, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_pf_project_cat ON cms_project_files(project_id, category);
+CREATE TABLE IF NOT EXISTS cms_project_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, doc_id INTEGER, chapter_block_id INTEGER,
+    parent_task_id INTEGER, title TEXT NOT NULL, start_date TEXT, end_date TEXT,
+    progress_percent INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'belum_mulai',
+    sort_order REAL NOT NULL DEFAULT 0, created_by TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_pt_project ON cms_project_tasks(project_id);
+CREATE TABLE IF NOT EXISTS cms_project_task_tags (
+    task_id INTEGER NOT NULL, user_id INTEGER NOT NULL, tagged_by TEXT, tagged_at TEXT, read_at TEXT,
+    PRIMARY KEY (task_id, user_id));
 """
 
 
@@ -675,6 +698,343 @@ class BlockStore:
         if caption:
             ids.append(self.insert_block(doc_id, ids[0], "caption", caption, data={"subtype": "gambar"}, user=user))
         return ids
+
+    # ------------------------------------------------------------ manajemen proyek
+    PROJECT_FILE_CATEGORIES = ("surat", "data_mentah", "dokumen_pendukung", "galeri", "tender", "pitching", "lab", "mom")
+
+    def create_project(self, name: str, user: str = "", **fields) -> int:
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("nama proyek wajib diisi")
+        cols = ["client", "description", "location", "start_date", "end_date", "status"]
+        vals = [fields.get(k) for k in cols]
+        with self._tx() as c:
+            cur = self._x(c, "INSERT INTO cms_projects(name,client,description,location,start_date,end_date,status,"
+                             "created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                          (name, *vals[:-1], vals[-1] or "planning", user, _now(), _now()))
+            return cur.lastrowid
+
+    def update_project(self, project_id: int, **fields) -> None:
+        allowed = {"name", "client", "description", "location", "start_date", "end_date", "status", "progress_override"}
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            sets, args = [], []
+            for k, v in fields.items():
+                if k in allowed:
+                    sets.append(f"{k}=?"); args.append(v)
+            if sets:
+                sets.append("updated_at=?"); args.append(_now())
+                args.append(project_id)
+                self._x(c, f"UPDATE cms_projects SET {','.join(sets)} WHERE id=?", args)
+
+    def get_project(self, project_id: int) -> dict:
+        with self._tx() as c:
+            p = self._one(c, "SELECT * FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,))
+        if not p:
+            raise KeyError(f"proyek {project_id} tidak ada")
+        p["progress_auto"] = self.project_progress_auto(project_id)
+        p["progress_effective"] = p["progress_override"] if p.get("progress_override") is not None else p["progress_auto"]
+        return p
+
+    def list_projects(self) -> list[dict]:
+        with self._tx() as c:
+            rows = self._all(c, "SELECT * FROM cms_projects WHERE deleted_at IS NULL ORDER BY id DESC")
+            counts = self._all(c, "SELECT project_id, report_type, COUNT(*) AS n FROM cms_project_documents GROUP BY project_id, report_type")
+        by_proj: dict = {}
+        for cnt in counts:
+            by_proj.setdefault(cnt["project_id"], {})[cnt["report_type"]] = cnt["n"]
+        for p in rows:
+            p["progress_auto"] = self.project_progress_auto(p["id"])
+            p["progress_effective"] = p["progress_override"] if p.get("progress_override") is not None else p["progress_auto"]
+            p["report_counts"] = by_proj.get(p["id"], {})
+        return rows
+
+    def delete_project(self, project_id: int) -> None:
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            self._x(c, "UPDATE cms_projects SET deleted_at=? WHERE id=?", (_now(), project_id))
+
+    def project_progress_auto(self, project_id: int) -> int:
+        """Rata-rata tertimbang status blok di semua dokumen proyek: approved=1, review=0.5, draft=0."""
+        with self._tx() as c:
+            doc_ids = [d["doc_id"] for d in self._all(c, "SELECT doc_id FROM cms_project_documents WHERE project_id=?", (project_id,))]
+            if not doc_ids:
+                return 0
+            ph = ",".join(["?"] * len(doc_ids))
+            rows = self._all(c, f"SELECT status, COUNT(*) AS n FROM cms_blocks WHERE doc_id IN ({ph}) AND deleted_at IS NULL "
+                                 f"GROUP BY status", doc_ids)
+        weight = {"approved": 1.0, "review": 0.5, "draft": 0.0}
+        total = sum(r["n"] for r in rows)
+        if not total:
+            return 0
+        score = sum(weight.get(r["status"], 0.0) * r["n"] for r in rows)
+        return round(score / total * 100)
+
+    def project_scurve(self, project_id: int, max_points: int = 40) -> dict:
+        """Kurva S: rencana kumulatif (ramp linear tiap task antara start/end, tertimbang durasi) vs
+        realisasi. Tanpa riwayat snapshot harian di skema ini, realisasi diaproksimasi: tiap task dianggap
+        naik linear dari 0% di start_date sampai progress_percent-nya saat ini (hari ini), lalu garis
+        dipotong di hari ini (bukan riwayat sungguhan, hanya perkiraan tren)."""
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            tasks = self._all(c, "SELECT start_date, end_date, progress_percent FROM cms_project_tasks "
+                                 "WHERE project_id=? AND deleted_at IS NULL AND start_date IS NOT NULL AND end_date IS NOT NULL",
+                              (project_id,))
+        pd = lambda s: datetime.strptime(s[:10], "%Y-%m-%d")
+        tasks = [t for t in tasks if pd(t["end_date"]) >= pd(t["start_date"])]
+        today_d = datetime.strptime(_now()[:10], "%Y-%m-%d")
+        if not tasks:
+            return {"points": [], "today": today_d.strftime("%Y-%m-%d")}
+        spans = [(pd(t["start_date"]), pd(t["end_date"]), t["progress_percent"] or 0) for t in tasks]
+        lo_d, hi_d = min(s for s, _, _ in spans), max(e for _, e, _ in spans)
+        if hi_d <= lo_d:
+            hi_d = lo_d + timedelta(days=1)
+        span_days = (hi_d - lo_d).days
+        n = max(2, min(max_points, span_days + 1))
+        weighted = [(s, e, max((e - s).days, 1), pct) for s, e, pct in spans]
+        total_w = sum(dur for _, _, dur, _ in weighted) or 1
+        out = []
+        for i in range(n):
+            d = lo_d + timedelta(days=round(span_days * i / (n - 1)))
+            planned = actual = 0.0
+            for s, e, dur, pct in weighted:
+                w = dur / total_w
+                if d <= s:
+                    r = 0.0
+                elif d >= e:
+                    r = 1.0
+                else:
+                    r = (d - s).days / dur
+                planned += w * r * 100
+                if d <= s or today_d <= s:
+                    ar = 0.0
+                else:
+                    ar = min((d - s).days / max((today_d - s).days, 1), 1.0)
+                actual += w * ar * pct
+            out.append({"date": d.strftime("%Y-%m-%d"), "planned": round(planned, 1),
+                        "actual": None if d > today_d else round(actual, 1)})
+        return {"points": out, "today": today_d.strftime("%Y-%m-%d")}
+
+    # -------- laporan (dokumen ditaut ke proyek)
+    def link_document(self, project_id: int, doc_id: int, report_type: str = "draft", label: str = "") -> int:
+        if report_type not in ("draft", "interim", "final"):
+            raise ValueError("report_type tidak valid")
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            if not self._one(c, "SELECT id FROM cms_documents WHERE id=?", (doc_id,)):
+                raise KeyError(f"dokumen {doc_id} tidak ada")
+            if self._one(c, "SELECT id FROM cms_project_documents WHERE doc_id=?", (doc_id,)):
+                raise ValueError("dokumen ini sudah tertaut ke sebuah proyek")
+            cur = self._x(c, "INSERT INTO cms_project_documents(project_id,doc_id,report_type,label,created_at) VALUES (?,?,?,?,?)",
+                          (project_id, doc_id, report_type, label or "", _now()))
+            return cur.lastrowid
+
+    def set_printed(self, link_id: int, printed: bool, user: str = "") -> None:
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_project_documents WHERE id=?", (link_id,)):
+                raise KeyError(f"tautan laporan {link_id} tidak ada")
+            self._x(c, "UPDATE cms_project_documents SET is_printed=?, printed_at=?, printed_by=? WHERE id=?",
+                    (1 if printed else 0, _now() if printed else None, user if printed else None, link_id))
+
+    def list_project_documents(self, project_id: int) -> list[dict]:
+        with self._tx() as c:
+            return self._all(c, "SELECT pd.*, d.filename, d.status AS doc_status, d.updated_at AS doc_updated_at "
+                                 "FROM cms_project_documents pd JOIN cms_documents d ON d.id=pd.doc_id "
+                                 "WHERE pd.project_id=? ORDER BY pd.report_type, pd.id", (project_id,))
+
+    def unlinked_documents(self) -> list[dict]:
+        """Dokumen yang belum ditaut ke proyek manapun."""
+        with self._tx() as c:
+            return self._all(c, "SELECT d.id, d.filename, d.status FROM cms_documents d "
+                                 "LEFT JOIN cms_project_documents pd ON pd.doc_id=d.id WHERE pd.id IS NULL ORDER BY d.id DESC")
+
+    # -------- repository berkas (surat/data mentah/dokumen pendukung/galeri/tender/pitching/lab/MoM)
+    def add_project_file(self, project_id: int, category: str, filename: str, path: str, mime: str = "",
+                         size: Optional[int] = None, title: str = "", description: str = "", status: str = "",
+                         doc_date: Optional[str] = None, user: str = "") -> int:
+        if category not in self.PROJECT_FILE_CATEGORIES:
+            raise ValueError("kategori berkas tidak valid")
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            cur = self._x(c, "INSERT INTO cms_project_files(project_id,category,title,description,filename,path,mime,"
+                             "size,status,doc_date,uploaded_by,uploaded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (project_id, category, title or filename, description or "", filename, path, mime, size,
+                           status or None, doc_date, user, _now()))
+            return cur.lastrowid
+
+    def list_project_files(self, project_id: int, category: Optional[str] = None) -> list[dict]:
+        sql = "SELECT * FROM cms_project_files WHERE project_id=? AND deleted_at IS NULL"
+        args: list = [project_id]
+        if category:
+            sql += " AND category=?"; args.append(category)
+        with self._tx() as c:
+            return self._all(c, sql + " ORDER BY id DESC", args)
+
+    def get_project_file(self, file_id: int) -> dict:
+        with self._tx() as c:
+            r = self._one(c, "SELECT * FROM cms_project_files WHERE id=? AND deleted_at IS NULL", (file_id,))
+        if not r:
+            raise KeyError(f"berkas {file_id} tidak ada")
+        return r
+
+    def delete_project_file(self, file_id: int) -> None:
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_project_files WHERE id=? AND deleted_at IS NULL", (file_id,)):
+                raise KeyError(f"berkas {file_id} tidak ada")
+            self._x(c, "UPDATE cms_project_files SET deleted_at=? WHERE id=?", (_now(), file_id))
+
+    # -------- gantt (baris bab dimaterialisasi on-demand + task manual bebas)
+    def list_assign(self, doc_id: int, scope: Optional[str] = None) -> list[dict]:
+        """PIC/tenaga ahli yang ditugaskan (cms_assign, dari model penugasan bab yang sudah ada).
+        Best-effort spt chapter_id() di api.py: tabel ini cuma ada di skema MySQL (bukan SQLITE_DDL CLI-only)."""
+        sql = "SELECT a.user_id, u.username, a.scope FROM cms_assign a JOIN cms_users u ON u.id=a.user_id WHERE a.doc_id=?"
+        args: list = [doc_id]
+        if scope:
+            sql += " AND a.scope=?"; args.append(scope)
+        try:
+            with self._tx() as c:
+                return self._all(c, sql + " ORDER BY u.username", args)
+        except Exception:                                     # noqa: BLE001
+            return []
+
+    def upsert_project_task(self, project_id: int, title: str = "", doc_id: Optional[int] = None,
+                            chapter_block_id: Optional[int] = None, start_date=None, end_date=None,
+                            progress_percent: Optional[int] = None, status: Optional[str] = None,
+                            parent_task_id: Optional[int] = None, user: str = "") -> int:
+        """Bikin/ubah baris gantt. chapter_block_id+doc_id terisi = materialisasi baris bab (idempoten, UNIQUE(doc_id,chapter_block_id))."""
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            existing = None
+            if doc_id and chapter_block_id:
+                existing = self._one(c, "SELECT id FROM cms_project_tasks WHERE doc_id=? AND chapter_block_id=? AND deleted_at IS NULL",
+                                     (doc_id, chapter_block_id))
+            if existing:
+                sets, args = [], []
+                for k, v in (("title", title or None), ("start_date", start_date), ("end_date", end_date),
+                             ("progress_percent", progress_percent), ("status", status)):
+                    if v is not None and v != "":
+                        sets.append(f"{k}=?"); args.append(v)
+                if sets:
+                    sets.append("updated_at=?"); args.append(_now())
+                    args.append(existing["id"])
+                    self._x(c, f"UPDATE cms_project_tasks SET {','.join(sets)} WHERE id=?", args)
+                tid = existing["id"]
+            else:
+                row = self._one(c, "SELECT COALESCE(MAX(sort_order),0) AS m FROM cms_project_tasks WHERE project_id=?", (project_id,))
+                cur = self._x(c, "INSERT INTO cms_project_tasks(project_id,doc_id,chapter_block_id,parent_task_id,title,"
+                                 "start_date,end_date,progress_percent,status,sort_order,created_by,created_at,updated_at) "
+                                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                              (project_id, doc_id, chapter_block_id, parent_task_id, title or "(tanpa judul)", start_date,
+                               end_date, progress_percent or 0, status or "belum_mulai", (row["m"] if row else 0) + 1,
+                               user, _now(), _now()))
+                tid = cur.lastrowid
+        if doc_id and chapter_block_id:
+            self.sync_task_pic_from_assign(tid)
+        return tid
+
+    def update_project_task(self, task_id: int, **fields) -> None:
+        allowed = {"title", "start_date", "end_date", "progress_percent", "status", "parent_task_id"}
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (task_id,)):
+                raise KeyError(f"task {task_id} tidak ada")
+            sets, args = [], []
+            for k, v in fields.items():
+                if k in allowed:
+                    sets.append(f"{k}=?"); args.append(v)
+            if sets:
+                sets.append("updated_at=?"); args.append(_now())
+                args.append(task_id)
+                self._x(c, f"UPDATE cms_project_tasks SET {','.join(sets)} WHERE id=?", args)
+
+    def delete_project_task(self, task_id: int) -> None:
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (task_id,)):
+                raise KeyError(f"task {task_id} tidak ada")
+            self._x(c, "UPDATE cms_project_tasks SET deleted_at=? WHERE id=?", (_now(), task_id))
+
+    def list_project_tasks(self, project_id: int) -> list[dict]:
+        """Baris tersimpan (dgn PIC live dari cms_assign utk baris bab) + kandidat bab yg belum dijadwalkan."""
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            tasks = self._all(c, "SELECT * FROM cms_project_tasks WHERE project_id=? AND deleted_at IS NULL ORDER BY sort_order, id",
+                              (project_id,))
+            docs = self._all(c, "SELECT pd.doc_id, pd.report_type, pd.label, d.filename FROM cms_project_documents pd "
+                                 "JOIN cms_documents d ON d.id=pd.doc_id WHERE pd.project_id=?", (project_id,))
+        scheduled = {(t["doc_id"], t["chapter_block_id"]) for t in tasks if t["chapter_block_id"]}
+        for t in tasks:
+            t["scheduled"] = True
+            t["tags"] = self.list_task_tags(t["id"])
+            t["pic"] = self.list_assign(t["doc_id"], f"h1:{t['chapter_block_id']}") if t["chapter_block_id"] else []
+        candidates = []
+        for d in docs:
+            for h in self.outline(d["doc_id"], max_level=1):
+                if (d["doc_id"], h["id"]) in scheduled:
+                    continue
+                candidates.append({
+                    "id": None, "project_id": project_id, "doc_id": d["doc_id"], "chapter_block_id": h["id"],
+                    "parent_task_id": None, "title": h["text"] or "(tanpa judul)", "doc_label": d["label"] or d["filename"],
+                    "start_date": None, "end_date": None, "progress_percent": 0, "status": "belum_mulai",
+                    "pic": self.list_assign(d["doc_id"], f"h1:{h['id']}"), "tags": [], "scheduled": False,
+                })
+        return tasks + candidates
+
+    # -------- tag PIC + notifikasi in-app
+    def tag_task(self, task_id: int, user_ids: list[int], tagged_by: str = "") -> None:
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (task_id,)):
+                raise KeyError(f"task {task_id} tidak ada")
+            for uid in user_ids:
+                if self._one(c, "SELECT 1 AS x FROM cms_project_task_tags WHERE task_id=? AND user_id=?", (task_id, uid)):
+                    self._x(c, "UPDATE cms_project_task_tags SET tagged_by=?, tagged_at=?, read_at=NULL WHERE task_id=? AND user_id=?",
+                            (tagged_by, _now(), task_id, uid))
+                else:
+                    self._x(c, "INSERT INTO cms_project_task_tags(task_id,user_id,tagged_by,tagged_at) VALUES (?,?,?,?)",
+                            (task_id, uid, tagged_by, _now()))
+
+    def sync_task_pic_from_assign(self, task_id: int) -> None:
+        """Tag ulang PIC task bab ini dari cms_assign saat ini (dipanggil otomatis saat materialize, atau manual dari UI)."""
+        with self._tx() as c:
+            t = self._one(c, "SELECT doc_id, chapter_block_id FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (task_id,))
+        if not t or not t["chapter_block_id"]:
+            return
+        pics = self.list_assign(t["doc_id"], f"h1:{t['chapter_block_id']}")
+        if pics:
+            self.tag_task(task_id, [p["user_id"] for p in pics], tagged_by="system")
+
+    def list_task_tags(self, task_id: int) -> list[dict]:
+        try:
+            with self._tx() as c:
+                return self._all(c, "SELECT tt.user_id, u.username, tt.tagged_at, tt.read_at FROM cms_project_task_tags tt "
+                                     "JOIN cms_users u ON u.id=tt.user_id WHERE tt.task_id=? ORDER BY u.username", (task_id,))
+        except Exception:                                     # noqa: BLE001
+            return []
+
+    def list_my_tags(self, user_id: int, unread_only: bool = False) -> list[dict]:
+        sql = ("SELECT tt.task_id, tt.tagged_at, tt.read_at, pt.project_id, pt.title, pt.doc_id, pt.chapter_block_id, "
+               "p.name AS project_name FROM cms_project_task_tags tt "
+               "JOIN cms_project_tasks pt ON pt.id=tt.task_id AND pt.deleted_at IS NULL "
+               "JOIN cms_projects p ON p.id=pt.project_id AND p.deleted_at IS NULL WHERE tt.user_id=?")
+        args: list = [user_id]
+        if unread_only:
+            sql += " AND tt.read_at IS NULL"
+        with self._tx() as c:
+            return self._all(c, sql + " ORDER BY tt.tagged_at DESC", args)
+
+    def mark_tag_read(self, task_id: int, user_id: int) -> None:
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_project_task_tags SET read_at=? WHERE task_id=? AND user_id=?", (_now(), task_id, user_id))
+
+    def count_unread_tags(self, user_id: int) -> int:
+        with self._tx() as c:
+            r = self._one(c, "SELECT COUNT(*) AS n FROM cms_project_task_tags WHERE user_id=? AND read_at IS NULL", (user_id,))
+        return r["n"] if r else 0
 
 
 # ---------------------------------------------------------------- pembuka koneksi

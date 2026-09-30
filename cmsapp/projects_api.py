@@ -1,0 +1,286 @@
+"""REST API manajemen proyek: proyek, laporan (dokumen ditaut), repository berkas, gantt/task, tag PIC.
+Numpang di store/auth yang sama dengan cmsapp/api.py (satu BlockStore, satu model peran/penugasan bab)."""
+from __future__ import annotations
+
+import os
+import uuid
+
+from flask import Blueprint, abort, current_app, g, jsonify, request, send_file
+from werkzeug.utils import secure_filename
+
+from cmsapp import auth
+from utils.blockstore import ConflictError, LockedError
+
+bp = Blueprint("projects", __name__, url_prefix="/api")
+S = auth.store
+
+
+def body() -> dict:
+    return request.get_json(silent=True) or {}
+
+
+@bp.errorhandler(ConflictError)
+def _conflict(e):
+    return jsonify(error=str(e)), 409
+
+
+@bp.errorhandler(LockedError)
+def _locked(e):
+    return jsonify(error=str(e)), 423
+
+
+@bp.errorhandler(KeyError)
+def _nf(e):
+    return jsonify(error=str(e).strip("'\"")), 404
+
+
+@bp.errorhandler(ValueError)
+@bp.errorhandler(IndexError)
+def _bad(e):
+    return jsonify(error=str(e)), 400
+
+
+@bp.errorhandler(403)
+def _forbidden(e):
+    return jsonify(error=getattr(e, "description", "dilarang")), 403
+
+
+def _task_row(tid: int) -> dict:
+    st = S()
+    with st._tx() as c:
+        t = st._one(c, "SELECT * FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (tid,))
+    if not t:
+        raise KeyError(f"task {tid} tidak ada")
+    return t
+
+
+def _can_edit_task(t: dict) -> bool:
+    if g.user["role"] == "admin":
+        return True
+    if t.get("doc_id") and t.get("chapter_block_id"):
+        return auth.can_edit(t["doc_id"], t["chapter_block_id"])
+    return False
+
+
+def _project_file_root(project_id: int) -> str:
+    base = os.path.join(current_app.config["DATA_DIR"], "projects", str(project_id), "files")
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def _save_upload(project_id: int, f) -> tuple[str, str, str, int]:
+    """Simpan berkas repository proyek; return (filename_asli, path_disimpan, mime, size)."""
+    fn = secure_filename(f.filename or "berkas")
+    stored = f"{uuid.uuid4().hex}_{fn}"
+    base = _project_file_root(project_id)
+    path = os.path.join(base, stored)
+    f.save(path)
+    size = os.path.getsize(path)
+    return fn, path, f.mimetype or "", size
+
+
+# ---------------------------------------------------------------- proyek
+@bp.get("/projects")
+@auth.require()
+def list_projects():
+    return jsonify(projects=S().list_projects())
+
+
+@bp.post("/projects")
+@auth.require("admin")
+def create_project():
+    d = body()
+    pid = S().create_project(d.get("name", ""), user=g.user["username"],
+                             client=d.get("client"), description=d.get("description"), location=d.get("location"),
+                             start_date=d.get("start_date"), end_date=d.get("end_date"), status=d.get("status"))
+    return jsonify(id=pid), 201
+
+
+@bp.get("/projects/<int:pid>")
+@auth.require()
+def get_project(pid):
+    return jsonify(project=S().get_project(pid))
+
+
+@bp.patch("/projects/<int:pid>")
+@auth.require("admin")
+def update_project(pid):
+    S().update_project(pid, **body())
+    return jsonify(ok=True)
+
+
+@bp.delete("/projects/<int:pid>")
+@auth.require("admin")
+def delete_project(pid):
+    S().delete_project(pid)
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------- laporan (dokumen ditaut)
+@bp.get("/projects/<int:pid>/documents")
+@auth.require()
+def list_documents(pid):
+    return jsonify(documents=S().list_project_documents(pid))
+
+
+@bp.get("/projects/<int:pid>/unlinked-docs")
+@auth.require("admin")
+def unlinked_docs(pid):
+    return jsonify(docs=S().unlinked_documents())
+
+
+@bp.post("/projects/<int:pid>/documents")
+@auth.require("admin")
+def link_document(pid):
+    """JSON {doc_id, report_type, label} utk dokumen yang sudah ada, ATAU multipart {file, report_type, label} utk unggah baru."""
+    st = S()
+    if request.files.get("file"):
+        import uuid as _uuid
+
+        from utils import docx_blocks
+        f = request.files["file"]
+        if not (f.filename or "").lower().endswith(".docx"):
+            raise ValueError("unggah berkas .docx")
+        base = os.path.join(current_app.config["DATA_DIR"], "uploads", _uuid.uuid4().hex)
+        os.makedirs(base, exist_ok=True)
+        path = os.path.join(base, "asli.docx")
+        f.save(path)
+        media = os.path.join(base, "media")
+        try:
+            res = docx_blocks.extract(path, media)
+        except Exception as e:                                  # noqa: BLE001
+            raise ValueError(f"gagal membaca docx: {e}")
+        res["meta"]["source_file"] = os.path.basename(f.filename)
+        doc_id = st.import_result(res, media, g.user["username"], path)
+        report_type = request.form.get("report_type", "draft")
+        label = request.form.get("label", "")
+    else:
+        d = body()
+        doc_id = int(d["doc_id"])
+        report_type = d.get("report_type", "draft")
+        label = d.get("label", "")
+    link_id = st.link_document(pid, doc_id, report_type, label)
+    return jsonify(id=link_id, doc_id=doc_id), 201
+
+
+@bp.post("/projects/<int:pid>/documents/<int:link_id>/print")
+@auth.require("admin")
+def set_printed(pid, link_id):
+    S().set_printed(link_id, bool(body().get("printed", True)), user=g.user["username"])
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------- repository berkas
+@bp.get("/projects/<int:pid>/files")
+@auth.require()
+def list_files(pid):
+    return jsonify(files=S().list_project_files(pid, request.args.get("category")))
+
+
+@bp.post("/projects/<int:pid>/files")
+@auth.require("admin", "author")
+def upload_file(pid):
+    f = request.files.get("file")
+    category = request.form.get("category", "")
+    if not f or not category:
+        raise ValueError("multipart: 'file' dan 'category' wajib")
+    fn, path, mime, size = _save_upload(pid, f)
+    fid = S().add_project_file(pid, category, fn, path, mime, size,
+                               title=request.form.get("title", ""), description=request.form.get("description", ""),
+                               status=request.form.get("status", ""), doc_date=request.form.get("doc_date") or None,
+                               user=g.user["username"])
+    return jsonify(id=fid), 201
+
+
+@bp.get("/project-files/<int:fid>/raw")
+@auth.require()
+def raw_file(fid):
+    r = S().get_project_file(fid)
+    base = os.path.realpath(_project_file_root(r["project_id"]))
+    p = os.path.realpath(r["path"])
+    if not p.startswith(base + os.sep) or not os.path.isfile(p):
+        abort(404)
+    return send_file(p, download_name=r["filename"])
+
+
+@bp.delete("/project-files/<int:fid>")
+@auth.require("admin", "author")
+def delete_file(fid):
+    S().delete_project_file(fid)
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------- gantt / task
+@bp.get("/projects/<int:pid>/tasks")
+@auth.require()
+def list_tasks(pid):
+    return jsonify(tasks=S().list_project_tasks(pid))
+
+
+@bp.get("/projects/<int:pid>/scurve")
+@auth.require()
+def scurve(pid):
+    return jsonify(**S().project_scurve(pid))
+
+
+@bp.post("/projects/<int:pid>/tasks")
+@auth.require("admin", "author")
+def create_task(pid):
+    d = body()
+    doc_id, chapter_block_id = d.get("doc_id"), d.get("chapter_block_id")
+    if doc_id and chapter_block_id and not (g.user["role"] == "admin" or auth.can_edit(doc_id, chapter_block_id)):
+        abort(403, description="tidak ditugaskan pada bab ini")
+    if not doc_id and g.user["role"] != "admin":
+        abort(403, description="hanya admin yang bisa menambah task manual")
+    tid = S().upsert_project_task(pid, title=d.get("title", ""), doc_id=doc_id, chapter_block_id=chapter_block_id,
+                                  start_date=d.get("start_date"), end_date=d.get("end_date"),
+                                  progress_percent=d.get("progress_percent"), status=d.get("status"),
+                                  parent_task_id=d.get("parent_task_id"), user=g.user["username"])
+    return jsonify(id=tid), 201
+
+
+@bp.patch("/tasks/<int:tid>")
+@auth.require("admin", "author")
+def update_task(tid):
+    t = _task_row(tid)
+    if not _can_edit_task(t):
+        abort(403, description="tidak ditugaskan pada bab ini")
+    S().update_project_task(tid, **body())
+    return jsonify(ok=True)
+
+
+@bp.delete("/tasks/<int:tid>")
+@auth.require("admin")
+def delete_task(tid):
+    S().delete_project_task(tid)
+    return jsonify(ok=True)
+
+
+@bp.post("/tasks/<int:tid>/tag")
+@auth.require("admin")
+def tag_task(tid):
+    d = body()
+    S().tag_task(tid, [int(u) for u in d.get("user_ids", [])], tagged_by=g.user["username"])
+    return jsonify(ok=True)
+
+
+@bp.post("/tasks/<int:tid>/resync-pic")
+@auth.require("admin")
+def resync_pic(tid):
+    S().sync_task_pic_from_assign(tid)
+    return jsonify(ok=True)
+
+
+@bp.post("/tasks/<int:tid>/read")
+@auth.require()
+def read_task(tid):
+    S().mark_tag_read(tid, g.user["id"])
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------- notifikasi tag PIC
+@bp.get("/me/tags")
+@auth.require()
+def my_tags():
+    unread = request.args.get("unread", type=int)
+    return jsonify(tags=S().list_my_tags(g.user["id"], unread_only=bool(unread)))

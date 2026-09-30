@@ -106,3 +106,92 @@ CREATE TABLE IF NOT EXISTS cms_assign (
     CONSTRAINT fk_as_doc  FOREIGN KEY (doc_id)  REFERENCES cms_documents(id) ON DELETE CASCADE,
     CONSTRAINT fk_as_user FOREIGN KEY (user_id) REFERENCES cms_users(id)     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---- Tahap 4: manajemen proyek (dashboard, laporan draft/interim/final, repository berkas, gantt, tag PIC) ----
+CREATE TABLE IF NOT EXISTS cms_projects (
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    name              VARCHAR(255) NOT NULL,
+    client            VARCHAR(255) DEFAULT NULL,
+    description       TEXT,
+    location          VARCHAR(255) DEFAULT NULL,
+    start_date        DATE DEFAULT NULL,
+    end_date          DATE DEFAULT NULL,
+    status            ENUM('planning','ongoing','completed','on_hold') NOT NULL DEFAULT 'planning',
+    progress_override TINYINT DEFAULT NULL,        -- NULL = pakai hitung otomatis dari status blok
+    created_by        VARCHAR(100) DEFAULT NULL,
+    created_at        VARCHAR(19) DEFAULT NULL,
+    updated_at        VARCHAR(19) DEFAULT NULL,
+    deleted_at        VARCHAR(19) DEFAULT NULL,
+    INDEX idx_proj_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_project_documents (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    doc_id      INT NOT NULL,
+    report_type ENUM('draft','interim','final') NOT NULL DEFAULT 'draft',
+    label       VARCHAR(120) DEFAULT NULL,
+    is_printed  TINYINT NOT NULL DEFAULT 0,
+    printed_at  VARCHAR(19) DEFAULT NULL,
+    printed_by  VARCHAR(100) DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_pd_project (project_id),
+    UNIQUE KEY uq_pd_doc (doc_id),
+    CONSTRAINT fk_pd_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id)  ON DELETE CASCADE,
+    CONSTRAINT fk_pd_doc  FOREIGN KEY (doc_id)      REFERENCES cms_documents(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- category: surat | data_mentah | dokumen_pendukung | galeri | tender | pitching | lab | mom
+CREATE TABLE IF NOT EXISTS cms_project_files (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    category    ENUM('surat','data_mentah','dokumen_pendukung','galeri','tender','pitching','lab','mom') NOT NULL,
+    title       VARCHAR(255) DEFAULT NULL,
+    description TEXT,
+    filename    VARCHAR(255) NOT NULL,
+    path        VARCHAR(1024) NOT NULL,
+    mime        VARCHAR(100) DEFAULT NULL,
+    size        INT DEFAULT NULL,
+    status      VARCHAR(40) DEFAULT NULL,          -- label bebas per kategori (mis. Diajukan/Menang/Final)
+    doc_date    DATE DEFAULT NULL,
+    uploaded_by VARCHAR(100) DEFAULT NULL,
+    uploaded_at VARCHAR(19) DEFAULT NULL,
+    deleted_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_pf_project_cat (project_id, category),
+    CONSTRAINT fk_pf_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- baris gantt: chapter_block_id+doc_id terisi = representasi bab (PIC dibaca live dari cms_assign);
+-- NULL = task manual bebas (fase, tender, MoM, dll)
+CREATE TABLE IF NOT EXISTS cms_project_tasks (
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    project_id       INT NOT NULL,
+    doc_id           INT DEFAULT NULL,
+    chapter_block_id INT DEFAULT NULL,
+    parent_task_id   INT DEFAULT NULL,
+    title            VARCHAR(255) NOT NULL,
+    start_date       DATE DEFAULT NULL,
+    end_date         DATE DEFAULT NULL,
+    progress_percent TINYINT NOT NULL DEFAULT 0,
+    status           ENUM('belum_mulai','berjalan','selesai','terlambat') NOT NULL DEFAULT 'belum_mulai',
+    sort_order       DOUBLE NOT NULL DEFAULT 0,
+    created_by       VARCHAR(100) DEFAULT NULL,
+    created_at       VARCHAR(19) DEFAULT NULL,
+    updated_at       VARCHAR(19) DEFAULT NULL,
+    deleted_at       VARCHAR(19) DEFAULT NULL,
+    INDEX idx_pt_project (project_id),
+    UNIQUE KEY uq_pt_chapter (doc_id, chapter_block_id),
+    CONSTRAINT fk_pt_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_project_task_tags (
+    task_id    INT NOT NULL,
+    user_id    INT NOT NULL,
+    tagged_by  VARCHAR(100) DEFAULT NULL,
+    tagged_at  VARCHAR(19) DEFAULT NULL,
+    read_at    VARCHAR(19) DEFAULT NULL,
+    PRIMARY KEY (task_id, user_id),
+    KEY idx_ptt_user (user_id),
+    CONSTRAINT fk_ptt_task FOREIGN KEY (task_id) REFERENCES cms_project_tasks(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ptt_user FOREIGN KEY (user_id) REFERENCES cms_users(id)         ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

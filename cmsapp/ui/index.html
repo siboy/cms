@@ -32,9 +32,23 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 .fld{border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-height:2.6em;background:var(--bg);white-space:pre-wrap;word-break:break-word}.fld:focus{outline:2px solid var(--acc)}
 .fl.w2{grid-column:span 2}.fl.wall{grid-column:1/-1}.crow{display:grid;grid-template-columns:1fr auto 84px 64px auto;gap:6px;margin:4px 0;align-items:center}
 .ftools{display:flex;gap:6px;align-items:center;margin-left:auto}
+.gantt{overflow:auto}.gantt .ghead{display:grid;grid-template-columns:240px 1fr;font-size:11px;color:var(--mut);margin-bottom:4px}
+.gantt .grow{display:grid;grid-template-columns:240px 1fr;align-items:center;border-bottom:1px solid var(--line);min-height:32px;gap:6px}
+.gantt .glabel{padding:4px 6px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gantt .gtrack{position:relative;height:20px;margin:4px 8px 4px 0;background:var(--bg);border-radius:4px}
+.gantt .gbar{position:absolute;top:0;bottom:0;border-radius:4px;background:#8fb8f0;cursor:pointer;overflow:hidden}
+.gantt .gbar i{position:absolute;inset:0;background:var(--acc);border-radius:4px 0 0 4px}
+.gantt .gbar.unsched{background:transparent;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--mut);width:140px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:10px;flex-wrap:wrap}
+.tabs button{border:none;border-radius:6px 6px 0 0;background:transparent;padding:6px 12px}
+.tabs button.cur{background:var(--card);border:1px solid var(--line);border-bottom-color:var(--card);font-weight:600}
+.pbar{background:var(--bg);border-radius:6px;height:10px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--acc)}
+.notifd{position:fixed;right:12px;top:42px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px #0003;width:320px;max-height:60vh;overflow:auto;z-index:25;padding:6px}
+.notifd .ni{padding:6px 8px;border-radius:6px;cursor:pointer;font-size:12.5px}.notifd .ni:hover{background:var(--bg)}.notifd .ni b{display:block}
 </style></head><body>
 <header><b>CMS Kolaborasi</b><span id="who"></span><span id="pres" title="online"></span>
-<button id="badm" hidden>Admin</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
+<span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
+<button id="bdocs" hidden>Dokumen</button><button id="badm" hidden>Admin</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
@@ -91,10 +105,23 @@ function dom2mk(root){let out='';const walk=(n,first)=>{for(const c of n.childNo
  walk(root);out=out.replace(/(\\*)(\*\*|__|\+\+|\^\^|~~)\2/g,(m,bs,mk)=>bs.length%2?m:bs);return out.replace(/\n+$/,'') }
 function note(t,err){const b=$('#bar');b.hidden=!t;b.className=err?'err':'';b.textContent=t||'';if(t)setTimeout(()=>{b.hidden=true},4000)}
 async function boot(){try{me=(await api('GET','/me')).user}catch(e){return loginView()}
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#badm').hidden=me.role!=='admin';docsView()}
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#badm').hidden=me.role!=='admin';$('#bdocs').hidden=false;
+ setNotif(me.unread_tags||0);projectsView()}
+function setNotif(n){const b=$('#bnotif');b.hidden=!n;b.textContent='🔔 '+n}
+async function notifPanel(){document.querySelector('.notifd')?.remove();
+ let tags=[];try{tags=(await api('GET','/me/tags?unread=1')).tags}catch(e){}
+ const d=document.createElement('div');d.className='notifd';
+ d.innerHTML=tags.length?tags.map((t,i)=>`<div class=ni data-i="${i}"><b>${esc(t.project_name)}</b>${esc(t.title||'')}<br><small>${esc(t.tagged_at||'')}</small></div>`).join('')
+  :'<p style="padding:8px;color:var(--mut)">Tidak ada tugas baru.</p>';
+ document.body.append(d);
+ d.querySelectorAll('.ni').forEach(x=>x.onclick=async()=>{const t=tags[+x.dataset.i];try{await api('POST',`/tasks/${t.task_id}/read`)}catch(e){}
+  d.remove();me.unread_tags=Math.max(0,(me.unread_tags||1)-1);setNotif(me.unread_tags);projectDetailView(t.project_id,{tab:'gantt'})});
+ setTimeout(()=>document.addEventListener('click',function h(e){if(!d.contains(e.target)&&e.target!==$('#bnotif')){d.remove();document.removeEventListener('click',h)}}),0)}
 function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder=username autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span></form>`;
  $('#login').onsubmit=async e=>{e.preventDefault();try{await api('POST','/login',{username:e.target.u.value,password:e.target.p.value});boot()}catch(x){$('#le').textContent=x.message}}}
 $('#badm').onclick=()=>adminView();
+$('#bdocs').onclick=()=>docsView();
+$('#bnotif').onclick=notifPanel;
 $('#bout').onclick=async()=>{await api('POST','/logout');location.reload()};
 async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
  $('#app').innerHTML='<div id=docs><h3>Dokumen</h3>'+(me.role==='admin'?'<p><button id=up>+ Unggah DOCX</button></p>':'')+(docs.map(d=>`<p><a href="#" data-id="${d.id}">${esc(d.filename)}</a> <small>${esc(d.status)}</small></p>`).join('')||'<p>Belum ada dokumen.</p>')+'</div>';
@@ -102,6 +129,183 @@ async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
  if($('#up'))$('#up').onclick=uploadDoc}
 function uploadDoc(){const f=document.createElement('input');f.type='file';f.accept='.docx';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);
  note('Mengunggah & mengekstrak… (bisa beberapa detik)');try{const r=await api('POST','/admin/docs',fd,true);note('Selesai: '+r.blocks+' blok');docsView()}catch(e){note(e.message,1)}};f.click()}
+
+// ===================== Manajemen Proyek =====================
+let curProj=null,curTab='ringkasan',curCat='surat';
+const FILE_CATS=[['surat','Surat'],['data_mentah','Data Mentah'],['dokumen_pendukung','Dokumen Pendukung'],['galeri','Galeri'],
+ ['tender','Tender'],['pitching','Pitching'],['lab','Permohonan Lab'],['mom','Minutes of Meeting']];
+
+async function projectsView(){closeDoc();const {projects}=await api('GET','/projects');
+ $('#app').innerHTML='<div id=docs><h3>Manajemen Proyek</h3>'+(me.role==='admin'?'<p><button id=npr>+ Proyek baru</button></p>':'')
+ +'<div class=rg>'+(projects.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
+  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span></div>
+  <div style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
+  <div style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
+  <div style="font-size:11px;color:var(--mut)">${esc(p.start_date||'?')} → ${esc(p.end_date||'?')}</div>
+  <div style="margin-top:6px">${['draft','interim','final'].map(t=>rc[t]?`<span class=badge style="background:var(--mut)">${t}: ${rc[t]}</span> `:'').join('')}</div></div>`}).join('')
+  ||'<p>Belum ada proyek.</p>')+'</div></div>';
+ document.querySelectorAll('#docs .rc[data-id]').forEach(c=>c.onclick=()=>projectDetailView(+c.dataset.id));
+ if($('#npr'))$('#npr').onclick=projectDlg}
+
+function projectDlg(){const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>Proyek baru</b>
+ <label>Nama<input name=name required></label>
+ <label>Klien<input name=client></label>
+ <label>Lokasi<input name=location></label>
+ <label>Deskripsi<textarea name=description rows=2></textarea></label>
+ <div style="display:flex;gap:8px"><label style="flex:1">Mulai<input name=start_date type=date></label><label style="flex:1">Selesai<input name=end_date type=date></label></div>
+ <label>Status<select name=status><option value=planning>Planning</option><option value=ongoing>Ongoing</option><option value=on_hold>On hold</option><option value=completed>Completed</option></select></label>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();try{await api('POST','/projects',{name:f.name.value,client:f.client.value,location:f.location.value,
+  description:f.description.value,start_date:f.start_date.value||null,end_date:f.end_date.value||null,status:f.status.value});
+  m.remove();projectsView()}catch(x){note(x.message,1)}}}
+
+async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
+ $('#app').innerHTML='<div id=docs><p><a href="#" id=pback>← Proyek</a></p><div id=ptabs class=tabs></div><div id=ptab></div></div>';
+ $('#pback').onclick=e=>{e.preventDefault();projectsView()};
+ const tabs=[['ringkasan','Ringkasan'],['laporan','Laporan'],['gantt','Gantt'],['pic','PIC'],['berkas','Berkas']];
+ const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l])=>`<button data-k="${k}" class="${k===curTab?'cur':''}">${l}</button>`).join('');
+  $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
+ paintTabs();await renderTab()}
+async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,pic:tabPic,berkas:tabBerkas};
+ try{await fns[curTab]()}catch(e){note(e.message,1)}}
+
+async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${curProj}`);const adm=me.role==='admin';
+ $('#ptab').innerHTML=`<div class=rc>
+ <div style="display:flex;align-items:center;gap:8px"><div class=pbar style="max-width:300px;flex:1"><i style="width:${p.progress_effective}%"></i></div>
+ <b>${p.progress_effective}%</b><small style="color:var(--mut)">(otomatis: ${p.progress_auto}%)</small></div>
+ <div class=rg style="margin-top:10px">
+ <label class=fl><small>Nama</small><div class=fld contenteditable="${adm}" data-f=name>${esc(p.name)}</div></label>
+ <label class=fl><small>Klien</small><div class=fld contenteditable="${adm}" data-f=client>${esc(p.client||'')}</div></label>
+ <label class=fl><small>Lokasi</small><div class=fld contenteditable="${adm}" data-f=location>${esc(p.location||'')}</div></label>
+ <label class="fl w2"><small>Deskripsi</small><div class=fld contenteditable="${adm}" data-f=description>${esc(p.description||'')}</div></label>
+ </div>
+ ${adm?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+ <label>Mulai <input type=date id=pstart value="${p.start_date||''}"></label>
+ <label>Selesai <input type=date id=pend value="${p.end_date||''}"></label>
+ <label>Status <select id=pstatus>${['planning','ongoing','on_hold','completed'].map(s=>`<option value=${s} ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></label>
+ <label>Override progress % <input type=number id=pov min=0 max=100 value="${p.progress_override??''}" placeholder="(otomatis)" style="width:70px"></label>
+ </div>`:''}</div>`;
+ if(!adm)return;
+ $('#ptab').querySelectorAll('[data-f]').forEach(el=>el.onblur=()=>api('PATCH',`/projects/${curProj}`,{[el.dataset.f]:el.textContent.trim()}).catch(e=>note(e.message,1)));
+ $('#pstart').onchange=e=>api('PATCH',`/projects/${curProj}`,{start_date:e.target.value||null}).catch(x=>note(x.message,1));
+ $('#pend').onchange=e=>api('PATCH',`/projects/${curProj}`,{end_date:e.target.value||null}).catch(x=>note(x.message,1));
+ $('#pstatus').onchange=e=>api('PATCH',`/projects/${curProj}`,{status:e.target.value}).catch(x=>note(x.message,1));
+ $('#pov').onchange=e=>api('PATCH',`/projects/${curProj}`,{progress_override:e.target.value===''?null:+e.target.value}).catch(x=>note(x.message,1))}
+
+async function tabLaporan(){const [{documents},u]=await Promise.all([api('GET',`/projects/${curProj}/documents`),
+ me.role==='admin'?api('GET',`/projects/${curProj}/unlinked-docs`):Promise.resolve({docs:[]})]);
+ const docsFree=u.docs;const grp=t=>documents.filter(d=>d.report_type===t);
+ const row=d=>`<p><a href="#" data-open="${d.doc_id}">${esc(d.label||d.filename)}</a> <small>${esc(d.doc_status)}</small> ${d.is_printed?'<span class=badge>Dicetak</span>':''}
+ ${me.role==='admin'?`<button data-pr="${d.id}" data-v="${d.is_printed?0:1}">${d.is_printed?'Batal cetak':'Tandai dicetak'}</button>`:''}</p>`;
+ $('#ptab').innerHTML=['draft','interim','final'].map(t=>`<div class=rc><div class=rh><b>${t[0].toUpperCase()+t.slice(1)}</b></div>${grp(t).map(row).join('')||'<p style="color:var(--mut)">Belum ada.</p>'}</div>`).join('')
+ +(me.role==='admin'?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
+ <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+ <select id=lrt><option value=draft>Draft</option><option value=interim>Interim</option><option value=final>Final</option></select>
+ <select id=lex><option value="">— pilih dokumen ada —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
+ <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div></div>`:'');
+ $('#ptab').querySelectorAll('[data-open]').forEach(a=>a.onclick=e=>{e.preventDefault();openDoc(+a.dataset.open)});
+ $('#ptab').querySelectorAll('[data-pr]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/projects/${curProj}/documents/${b.dataset.pr}/print`,{printed:!!+b.dataset.v});tabLaporan()}catch(e){note(e.message,1)}});
+ if(me.role!=='admin')return;
+ $('#ltaut').onclick=async()=>{if(!$('#lex').value)return note('Pilih dokumen dulu',1);
+  try{await api('POST',`/projects/${curProj}/documents`,{doc_id:+$('#lex').value,report_type:$('#lrt').value});tabLaporan()}catch(e){note(e.message,1)}};
+ $('#lup').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='.docx';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('report_type',$('#lrt').value);
+  note('Mengunggah & mengekstrak…');try{await api('POST',`/projects/${curProj}/documents`,fd,true);note('Selesai');tabLaporan()}catch(e){note(e.message,1)}};f.click()}}
+
+async function tabPic(){if(me.role!=='admin'){$('#ptab').innerHTML='<p style="color:var(--mut)">PIC per bab bisa dilihat di tab Gantt. Hanya admin yang bisa mengubah penugasan.</p>';return}
+ const [{users},{documents}]=await Promise.all([api('GET','/admin/users'),api('GET',`/projects/${curProj}/documents`)]);
+ if(!documents.length){$('#ptab').innerHTML='<p style="color:var(--mut)">Tautkan laporan dulu di tab Laporan.</p>';return}
+ $('#ptab').innerHTML=`<p><select id=ad>${documents.map(d=>`<option value=${d.doc_id}>${esc(d.label||d.filename)} (#${d.doc_id})</option>`).join('')}</select></p><div id=asg></div>`;
+ $('#ad').onchange=()=>assignView(users);assignView(users)}
+
+async function tabGantt(){const [{project:p},{tasks},scurve]=await Promise.all([api('GET',`/projects/${curProj}`),
+  api('GET',`/projects/${curProj}/tasks`),api('GET',`/projects/${curProj}/scurve`).catch(()=>({points:[]}))]);
+ const dates=tasks.flatMap(t=>[t.start_date,t.end_date]).filter(Boolean).concat([p.start_date,p.end_date].filter(Boolean)).map(d=>+new Date(d));
+ const lo=dates.length?Math.min(...dates):+new Date(),hi=dates.length?Math.max(...dates):+new Date()+7*86400000;
+ const span=Math.max(hi-lo,86400000),pos=d=>(+new Date(d)-lo)/span*100;
+ const row=(t,i)=>{const pics=[...new Set([...(t.pic||[]),...(t.tags||[])].map(u=>u.username))];
+  const bar=t.start_date&&t.end_date
+   ?`<div class=gtrack><div class=gbar data-idx="${i}" style="left:${pos(t.start_date)}%;width:${Math.max(pos(t.end_date)-pos(t.start_date),2)}%"><i style="width:${t.progress_percent||0}%"></i></div></div>`
+   :`<div class=gtrack><div class="gbar unsched" data-idx="${i}">+ jadwalkan</div></div>`;
+  return `<div class=grow><div class=glabel title="${esc(t.title||'')}">${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,34))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
+ $('#ptab').innerHTML=(me.role==='admin'?'<p><button id=ntask>+ Task manual</button></p>':'')
+  +'<div class=gantt><div class=ghead><span></span><span>'+new Date(lo).toLocaleDateString()+' → '+new Date(hi).toLocaleDateString()+'</span></div>'
+  +tasks.map(row).join('')+'</div>'
+  +'<div class=rc style="margin-top:14px"><div class=rh><b>Kurva S — rencana vs realisasi</b></div><div id=scurve></div></div>';
+ $('#ptab').querySelectorAll('.gbar').forEach(el=>el.onclick=()=>taskDlg(tasks[+el.dataset.idx]));
+ if($('#ntask'))$('#ntask').onclick=()=>taskDlg({});
+ renderSCurve($('#scurve'),scurve)}
+
+function renderSCurve(el,{points,today}){
+ if(!points||points.length<2){el.innerHTML='<p style="color:var(--mut)">Butuh minimal 1 task berjadwal (tanggal mulai & selesai) untuk kurva S.</p>';return}
+ const W=640,H=220,ML=34,MR=10,MT=10,MB=22,pw=W-ML-MR,ph=H-MT-MB;
+ const x=i=>ML+i/(points.length-1)*pw,y=pct=>MT+ph-Math.max(0,Math.min(100,pct))/100*ph;
+ const plannedPts=points.map((p,i)=>`${x(i)},${y(p.planned)}`).join(' ');
+ const actualPts=points.map((p,i)=>p.actual!=null?`${x(i)},${y(p.actual)}`:null).filter(Boolean).join(' ');
+ const todayIdx=points.findIndex(p=>p.date>=today);
+ const grid=[0,25,50,75,100].map(g=>`<line x1="${ML}" y1="${y(g)}" x2="${W-MR}" y2="${y(g)}" stroke="var(--line)" stroke-width="1"/>
+  <text x="2" y="${y(g)+4}" font-size="10" fill="var(--mut)">${g}%</text>`).join('');
+ const step=Math.max(1,Math.round(points.length/6));
+ const xlabels=points.map((p,i)=>i%step===0||i===points.length-1?`<text x="${x(i)}" y="${H-6}" font-size="9" fill="var(--mut)" text-anchor="middle">${p.date.slice(5)}</text>`:'').join('');
+ const todayLine=todayIdx>0&&todayIdx<points.length?`<line x1="${x(todayIdx)}" y1="${MT}" x2="${x(todayIdx)}" y2="${MT+ph}" stroke="var(--acc)" stroke-dasharray="2,3" stroke-width="1"/>`:'';
+ el.innerHTML=`<div style="display:flex;gap:14px;font-size:11px;color:var(--mut);margin-bottom:4px">
+  <span><i style="display:inline-block;width:10px;height:2px;background:var(--mut);vertical-align:middle"></i> Rencana</span>
+  <span><i style="display:inline-block;width:10px;height:2px;background:var(--acc);vertical-align:middle"></i> Realisasi</span>
+  <span>Hari ini: ${esc(today)}</span></div>
+  <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${grid}${xlabels}${todayLine}
+  <polyline points="${plannedPts}" fill="none" stroke="var(--mut)" stroke-width="2" stroke-dasharray="5,3"/>
+  ${actualPts?`<polyline points="${actualPts}" fill="none" stroke="var(--acc)" stroke-width="2"/>`:''}
+  </svg>`}
+
+async function taskDlg(t){const m=document.createElement('div');m.className='mask';const isChapter=!!t.chapter_block_id;
+ let users=[];if(me.role==='admin'&&t.id&&!isChapter){try{users=(await api('GET','/admin/users')).users.filter(u=>u.active)}catch(e){}}
+ const tagged=new Set((t.tags||[]).map(u=>u.user_id));
+ m.innerHTML=`<form class=dlg><b>${isChapter?(t.id?'Ubah jadwal bab':'Jadwalkan bab'):(t.id?'Ubah task':'Task baru')}</b>
+ ${isChapter?`<div><small>${esc(t.title||'')}</small></div>`:`<label>Judul<input name=title value="${esc(t.title||'')}" required></label>`}
+ <div style="display:flex;gap:8px"><label style="flex:1">Mulai<input name=start_date type=date value="${t.start_date||''}"></label><label style="flex:1">Selesai<input name=end_date type=date value="${t.end_date||''}"></label></div>
+ <label>Progress % <input name=progress_percent type=number min=0 max=100 value="${t.progress_percent||0}"></label>
+ <label>Status<select name=status>${['belum_mulai','berjalan','selesai','terlambat'].map(s=>`<option value=${s} ${s===t.status?'selected':''}>${s}</option>`).join('')}</select></label>
+ ${users.length?`<label>Tag PIC (notifikasi)<select name=pics multiple size=4>${users.map(u=>`<option value=${u.id} ${tagged.has(u.id)?'selected':''}>${esc(u.username)}</option>`).join('')}</select></label>`:''}
+ <div style="display:flex;gap:8px;justify-content:flex-end">
+ ${isChapter&&t.id?'<button type=button id=resync>Tag ulang PIC</button>':''}
+ ${t.id&&me.role==='admin'?'<button type=button id=del style="color:#d1242f">Hapus</button>':''}
+ <button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ if(f.resync)f.resync.onclick=async()=>{try{await api('POST',`/tasks/${t.id}/resync-pic`);note('PIC disinkron ulang');m.remove();tabGantt()}catch(e){note(e.message,1)}};
+ if(f.del)f.del.onclick=async()=>{if(confirm('Hapus task ini?')){try{await api('DELETE',`/tasks/${t.id}`);m.remove();tabGantt()}catch(e){note(e.message,1)}}};
+ f.onsubmit=async e=>{e.preventDefault();const b={start_date:f.start_date.value||null,end_date:f.end_date.value||null,
+  progress_percent:+f.progress_percent.value,status:f.status.value};
+  try{
+   if(t.id){await api('PATCH',`/tasks/${t.id}`,b);if(f.pics)await api('POST',`/tasks/${t.id}/tag`,{user_ids:[...f.pics.selectedOptions].map(o=>+o.value)})}
+   else{b.title=isChapter?t.title:f.title.value;if(isChapter){b.doc_id=+t.doc_id;b.chapter_block_id=+t.chapter_block_id}
+    await api('POST',`/projects/${curProj}/tasks`,b)}
+   m.remove();tabGantt()
+  }catch(x){note(x.message,1)}}}
+
+async function tabBerkas(){const {files}=await api('GET',`/projects/${curProj}/files?category=${curCat}`);
+ $('#ptab').innerHTML='<div class=tabs style="border-bottom:none">'+FILE_CATS.map(([k,l])=>`<button data-c="${k}" class="${k===curCat?'cur':''}">${l}</button>`).join('')+'</div>'
+ +(me.role!=='reviewer'?'<p><button id=fup>+ Unggah</button></p>':'')
+ +'<div class=rg>'+(files.map(f=>`<div class=rc>${curCat==='galeri'?`<a href="/api/project-files/${f.id}/raw" target=_blank><img src="/api/project-files/${f.id}/raw" style="max-width:100%;border-radius:6px"></a>`:''}
+  <b>${esc(f.title||f.filename)}</b><br><small style="color:var(--mut)">${esc(f.doc_date||'')} ${f.status?'· '+esc(f.status):''} · ${esc(f.uploaded_by||'')}</small>
+  ${f.description?`<div style="font-size:12px;margin-top:4px">${esc(f.description)}</div>`:''}
+  <div style="margin-top:6px"><a href="/api/project-files/${f.id}/raw" download>Unduh</a> ${me.role!=='reviewer'?`<button data-del="${f.id}">Hapus</button>`:''}</div></div>`).join('')
+  ||'<p style="color:var(--mut)">Belum ada berkas.</p>')+'</div>';
+ $('#ptab').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{curCat=b.dataset.c;tabBerkas()});
+ $('#ptab').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus berkas ini?')){try{await api('DELETE',`/project-files/${b.dataset.del}`);tabBerkas()}catch(e){note(e.message,1)}}});
+ if($('#fup'))$('#fup').onclick=fileDlg}
+function fileDlg(){const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>Unggah berkas — ${FILE_CATS.find(c=>c[0]===curCat)[1]}</b>
+ <label>Berkas<input type=file name=file required></label>
+ <label>Judul<input name=title></label>
+ <label>Deskripsi<textarea name=description rows=2></textarea></label>
+ <div style="display:flex;gap:8px"><label style="flex:1">Tanggal<input type=date name=doc_date></label><label style="flex:1">Status<input name=status placeholder="mis. Final / Diajukan"></label></div>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Unggah</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();const fd=new FormData(f);fd.append('category',curCat);
+  try{await api('POST',`/projects/${curProj}/files`,fd,true);m.remove();tabBerkas()}catch(x){note(x.message,1)}}}
+// ===================== /Manajemen Proyek =====================
+
 async function adminView(){closeDoc();const [{users},{docs}]=await Promise.all([api('GET','/admin/users'),api('GET','/docs')]);
  $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Pengguna</h3>
  <table><tr><th>Username</th><th>Nama</th><th>Peran</th><th>Aktif</th><th></th></tr>${users.map(u=>`<tr><td>${esc(u.username)}</td><td>${esc(u.name)}</td><td>${u.role}</td><td>${u.active?'ya':'tidak'}</td>

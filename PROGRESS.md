@@ -5,7 +5,7 @@
 > Perbarui file ini (status, tanggal, centang, temuan baru) sebelum menutup sesi, lalu commit.
 > Jangan menaruh sandi/token di sini. Bahasa pengguna: Indonesia; gaya jawab ringkas (lihat preferensi pengguna).
 
-Terakhir diperbarui: **2026-09-30** (tahap 3 + editor tabel mode form).
+Terakhir diperbarui: **2026-09-30** (tahap 3 + editor tabel mode form + manajemen proyek).
 
 ## 1. Tujuan
 Tim (target minimal **500–1000 koneksi**, realistisnya ~100–200 penulis aktif) + AI mengerjakan dokumen resmi
@@ -86,6 +86,36 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   UI: tombol "✎ Edit form" (kartu per record, label = jalur header, WYSIWYG, cari, pratinjau tabel, tempel baris Excel, judul/span, pindah/duplikat/hapus), "Kolom & header…" (edit jalur, urutan, merge, format + pratinjau), "→ Mode grid".
   Uji: `scripts/tablemodel_test.py` (engine), e2e sqlite+build DOCX manual, UI di jsdom (12 cek) — **belum dicoba di browser sungguhan / server MySQL**.
   **Perlu dilakukan di server:** deploy, lalu `docx_tool.py --mysql --doc N tables-long` untuk tabel yang sudah terlanjur diimpor (backup dulu). Belum ada event SSE khusus record (memakai event `block`).
+- [x] **Manajemen proyek (2026-09-30)** — halaman utama diubah dari "daftar dokumen + unggah" jadi dashboard proyek
+  (docsView() lama masih ada, dipindah ke tombol "Dokumen" di header). Model: 1 proyek = banyak laporan (dokumen
+  docx existing ditaut via tipe draft/interim/final + status dicetak), progress % gabungan (otomatis dari status
+  blok, bisa override manual), Gantt gabungan (baris otomatis per bab dari outline+`cms_assign` yang sudah ada,
+  materialize on-demand saat dijadwalkan + bisa tambah task manual bebas), repository berkas 8 kategori (surat/
+  data mentah/dokumen pendukung/galeri/tender/pitching/lab/MoM), tag PIC + badge notifikasi in-app (bukan realtime
+  SSE, dihitung ulang tiap boot()/buka dropdown — scope cut yg disengaja, lihat plan).
+  Skema baru: `cms_projects`, `cms_project_documents`, `cms_project_files`, `cms_project_tasks`,
+  `cms_project_task_tags` (`scripts/init_schema.sql` + `SQLITE_DDL` di `utils/blockstore.py`). Backend: ~25 metode
+  baru di `BlockStore` (utils/blockstore.py) + blueprint baru `cmsapp/projects_api.py` (didaftarkan di
+  `cmsapp/__init__.py`), `unread_tags` disisipkan ke `GET /api/me`. Frontend: `projectsView()`/`projectDetailView()`
+  (5 tab: Ringkasan/Laporan/Gantt/PIC/Berkas) + badge notifikasi header, ditambahkan ke `cmsapp/ui/index.html`
+  mengikuti gaya/konvensi yang sudah ada (dialog `.mask/.dlg`, upload `FormData`, dll — tanpa library chart eksternal).
+  **Diuji**: sintaks Python semua file + JS (`node --check`) lolos; seluruh alur BlockStore baru (buat/ubah/hapus
+  proyek, taut dokumen, hitung progress otomatis, upload/hapus berkas, materialize+hapus task gantt, tag+notifikasi)
+  diuji lewat SQLite sementara; seluruh endpoint API diuji end-to-end lewat Flask test client (app di-boot dgn
+  Redis+MySQL di-stub) — login, CRUD proyek, task, tag/unread/read, upload/unduh/hapus berkas, 404 setelah hapus,
+  semua lolos. **Belum dicoba** di browser sungguhan / stack MySQL+Redis asli (sandbox ini tak punya VPN ke
+  dbscraping) — perlu `make stack`/`make dev` di server lalu uji manual sebelum dianggap production-ready.
+  (Re-verifikasi independen sesi lain, hari sama: 34/34 skenario BlockStore/SQLite lolos — proyek, taut/cegah dobel
+  taut, progress otomatis tertimbang, repository berkas, materialize+idempoten task bab, task manual, tag/unread/read,
+  soft-delete proyek/task/berkas, 404 setelah hapus; `list_assign`/`list_task_tags` terbukti aman [] saat `cms_users`/
+  `cms_assign` tak ada di skema SQLite, sesuai desain best-effort.)
+  **Susulan (sama hari): Kurva S** pelengkap Gantt — `BlockStore.project_scurve()` hitung rencana kumulatif (ramp
+  linear tiap task antara start/end, tertimbang durasi) vs realisasi (ramp linear dari 0% ke `progress_percent`
+  task saat ini, garis berhenti di hari ini). **Bukan histori sungguhan** — skema tak simpan snapshot progress
+  harian, jadi garis realisasi cuma tren aproksimasi, didokumentasikan di docstring. Endpoint `GET /api/projects/<id>/scurve`.
+  UI: dirender di dalam tab Gantt (bukan tab baru) via SVG polyline murni (tanpa library chart), garis putus abu
+  = rencana, solid aksen = realisasi, garis vertikal putus = hari ini. Diuji: skenario 2 task (satu lewat, satu
+  berjalan) hasil masuk akal, sintaks Python+JS bersih, rute terdaftar.
 - [ ] **0. Housekeeping**: commit/push perubahan yang belum ter-commit (lihat `git status`); alur lama (`app.py`, chunk, templates) SUDAH DIHAPUS 2026-09-30 (masih ada di riwayat git); DDL tabel lama dibuang dari `init_schema.sql`; tabelnya di DB server dibiarkan (drop manual setelah backup bila mau). Makefile disesuaikan (`make stack`/`dev`). Tinggal commit.
 - [~] **1. Tahap 3 — UI web** (DRAFT awal `cmsapp/ui/index.html`, dilayani di `/`: login, daftar dok, outline, edit+lock, sel tabel, gambar, riwayat/revert, status, SSE, ekspor; diuji di Chromium headless (login, edit, simpan, admin API); komentar per blok/bab (H1) + balasan + resolve via `cms_comments`, event `comment`; sisip tabel (grid/paste Excel) + tambah/hapus baris + pindah ↑↓ + toolbar inline-markup; event SSE difilter per bab (`?chapter=`, `ch`/`g` di payload, `realtime.wants`), halaman Admin (pengguna, penugasan bab, unggah DOCX); editor WYSIWYG contenteditable (B/I/U/sup/sub/tautan, Enter=baris baru, Ctrl+Enter=simpan, tombol </> = kode markup; konverter `mk2dom`/`dom2mk` cermin `parse_inline`, teruji round-trip di Chromium via Playwright); sel tabel juga WYSIWYG) (Flask templates/JS atau SPA ringan, memakai API yang sudah ada):
   login; daftar dokumen; outline bab (tandai bab milik user via `outline[].mine`); editor blok; editor tabel (sel/baris);
