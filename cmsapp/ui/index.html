@@ -38,6 +38,7 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
 let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,es=null,outline=[],locks={},hb=null;
+function cellText(c){let n=0;return (c.blocks||[]).map(x=>{const d=x.data||{};if(x.kind==='list_item'){if(d.ordered){n=(d.restart||!n)?1:n+1;return n+') '+x.text}n=0;return '• '+x.text}n=0;return x.text}).join('\n')}
 async function api(m,u,b,raw){const r=await fetch('/api'+u,{method:m,headers:raw?{'X-CMS':'1'}:H,body:raw?b:(b?JSON.stringify(b):undefined),credentials:'same-origin'});
  let j={};try{j=await r.json()}catch(e){}if(!r.ok){const e=new Error(j.error||r.status);e.status=r.status;e.body=j;throw e}return j}
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -131,9 +132,9 @@ function cmPanel(b){const box=document.createElement('div');box.className='cm';c
 function bodyOf(b){
  if(b.kind==='table'&&b.data.long)return tblPreview(b.data,360);
  if(b.kind==='table'){const t=document.createElement('table');(b.data.rows||[]).forEach((r,ri)=>{const tr=t.insertRow();r.cells.forEach(c=>{const td=document.createElement(r.header?'th':'td');
-  const orig=(c.blocks||[]).map(x=>x.text).join('\n');td.append(mk2dom(orig));td.onfocus=()=>{t.dataset.row=ri};td.contentEditable=!b.locked_by;
+  const orig=cellText(c);td.append(mk2dom(orig));td.onfocus=()=>{t.dataset.row=ri};td.contentEditable=!b.locked_by;
   td.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();document.execCommand('insertLineBreak')}};td.onpaste=plainPaste;
-  td.onblur=async()=>{const v0=dom2mk(td);if(v0===(c.blocks||[]).map(x=>x.text).join('\n'))return;
+  td.onblur=async()=>{const v0=dom2mk(td);if(v0===cellText(c))return;
   try{const v=await api('PATCH',`/blocks/${b.id}/cell`,{row:ri,col:c.col,text:v0,version:b.version});b.version=v.version;c.blocks=[{text:v0}]}catch(e){note(e.message,1)}};tr.append(td)});});const w=document.createElement('div');w.className='tw';w.append(t);return w}
  if(b.kind==='image'){const i=document.createElement('img');i.src=`/api/docs/${doc}/asset/${b.data.asset}`;i.alt=b.data.alt||'';return i}
  if(b.kind==='page_break'){const d=document.createElement('div');d.textContent='— pindah halaman —';d.style.color='var(--mut)';return d}
@@ -202,7 +203,7 @@ function tableDlg(b){const m=document.createElement('div');m.className='mask';m.
 let fe=null;
 function tblPreview(data,maxh){const w=document.createElement('div');w.className='tw';if(maxh)w.style.maxHeight=maxh+'px';const t=document.createElement('table');
  (data.rows||[]).forEach(r=>{const tr=t.insertRow();r.cells.forEach(c=>{const td=document.createElement(r.header?'th':'td');if(c.colspan>1)td.colSpan=c.colspan;if(c.rowspan>1)td.rowSpan=c.rowspan;
-  td.append(mk2dom((c.blocks||[]).map(x=>x.text).join('\n')));tr.append(td)})});w.append(t);return w}
+  td.append(mk2dom(cellText(c)));tr.append(td)})});w.append(t);return w}
 function runOf(L,i,key){const R=L.records,v=k=>R[k].v[key],sp=k=>(R[k].span||{})[key]||1;if(!(L.merge||[]).includes(key)||!v(i))return[i,i];
  const same=(a,b)=>v(a)===v(b)&&sp(a)===sp(b);let s=i,e=i;while(s>0&&!(R[s].nm||[]).includes(key)&&same(s,s-1))s--;while(e+1<R.length&&!(R[e+1].nm||[]).includes(key)&&same(e,e+1))e++;return[s,e]}
 function pathLine(c){const p=c.path.slice();if(c.brk!=null&&c.brk<p.length)p[c.brk]='/'+p[c.brk];return p.join(' > ')}

@@ -23,6 +23,7 @@ builder DOCX, ekspor, dan tampilan tidak perlu tahu soal long-form.
 from __future__ import annotations
 
 import copy
+import re
 from collections import Counter
 from typing import Any, Optional
 
@@ -41,8 +42,31 @@ def para(text: str, fmt: Optional[dict] = None) -> dict:
     return {"kind": "paragraph", "level": 0, "style": "Normal" if fmt else "", "text": text, "data": dict(fmt or {})}
 
 
+_OL = re.compile(r"^\s*\d{1,3}[.)]\s+(.*)$")
+_UL = re.compile(r"^\s*[•▪◦]\s+(.*)$")
+
+
 def _cell_text(cell: dict) -> str:
-    return "\n".join(b.get("text", "") for b in cell.get("blocks", []))
+    """Teks sel; item daftar diberi penanda `1) ` (bernomor, urut & mulai ulang) atau `• ` (bullet) supaya bisa diedit
+    sebagai teks dan dibentuk lagi oleh `blocks_of`."""
+    out, n = [], 0
+    for b in cell.get("blocks", []):
+        t = b.get("text", "")
+        if b.get("kind") == "list_item":
+            d = b.get("data") or {}
+            if d.get("ordered"):
+                n = 1 if (d.get("restart") or n == 0) else n + 1
+                t = f"{n}) {t}"
+            else:
+                n, t = 0, f"• {t}"
+        else:
+            n = 0
+        out.append(t)
+    return "\n".join(out)
+
+
+def has_list_markup(text: str) -> bool:
+    return any(_OL.match(ln) or _UL.match(ln) for ln in text.split("\n"))
 
 
 def _plain_fmt(cell: dict):
@@ -72,7 +96,35 @@ def _fmt_key(f: Optional[dict]) -> tuple:
 def blocks_of(text: str, fmt: Optional[dict]) -> list[dict]:
     if text == "":
         return []
-    return [para(text, fmt)]                        # "\n" = baris baru di dalam satu paragraf
+    if not has_list_markup(text):
+        return [para(text, fmt)]                    # "\n" = baris baru di dalam satu paragraf
+    # ada baris `1) ...` / `• ...`: baris biasa berurutan = satu paragraf, tiap item daftar = satu blok list_item;
+    # nomor otomatis, dimulai ulang dari 1 di tiap kelompok bernomor (flag `restart`)
+    out: list[dict] = []
+    plain: list[str] = []
+    prev_ol = False
+
+    def flush():
+        t = "\n".join(plain).strip("\n")
+        plain.clear()
+        if t.strip():
+            out.append(para(t, fmt))
+
+    for ln in text.split("\n"):
+        mo, mu = _OL.match(ln), _UL.match(ln)
+        if mo or mu:
+            flush()
+            ordered = bool(mo)
+            d: dict[str, Any] = {"ordered": ordered, "ilvl": 0}
+            if ordered and not prev_ol:
+                d["restart"] = True
+            out.append({"kind": "list_item", "level": 0, "style": "", "text": (mo or mu).group(1), "data": d})
+            prev_ol = ordered
+        else:
+            plain.append(ln)
+            prev_ol = False
+    flush()
+    return out
 
 
 # ------------------------------------------------------------------ grid -> long

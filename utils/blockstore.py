@@ -484,7 +484,7 @@ class BlockStore:
         if "long" in b["data"]:
             raise ValueError("tabel mode form: ubah lewat record (set_field/rec)")
         cell = self._find_cell(b["data"], row, col)
-        cell["blocks"] = [cell_block(text)]
+        cell["blocks"] = tm.blocks_of(text, None) if tm.has_list_markup(text) else [cell_block(text)]
         return self.update_block(block_id, user, data=b["data"], expected_version=expected_version)
 
     @staticmethod

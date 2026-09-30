@@ -379,7 +379,7 @@ class Builder:
         p.alignment = WD_ALIGN_PARAGRAPH.LEFT if in_cell else None
         if ordered:
             key = id(container)
-            if not self._num_ctx or self._num_ctx[0] != key:
+            if not self._num_ctx or self._num_ctx[0] != key or d.get("restart"):
                 self._num_ctx = (key, _new_restart_num(self.doc, "List Number"))
             nid = self._num_ctx[1]
             if nid is not None:
