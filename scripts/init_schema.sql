@@ -56,3 +56,57 @@ CREATE TABLE IF NOT EXISTS cms_media (
     CONSTRAINT fk_media_doc FOREIGN KEY (doc_id) REFERENCES cms_documents(id) ON DELETE CASCADE,
     INDEX idx_doc_rid (doc_id, rid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---- Engine blok (utils/docx_blocks.py + utils/blockstore.py). Padanan 1:1 dengan SQLite BlockStore ----
+-- cms_documents (di atas) dipakai apa adanya: manifest = meta dokumen, media_dir = folder gambar.
+CREATE TABLE IF NOT EXISTS cms_blocks (
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    doc_id       INT NOT NULL,
+    seq          DOUBLE NOT NULL,                 -- urutan; sisip = titik tengah, tanpa renumber massal
+    part         ENUM('cover','front','body','lampiran') NOT NULL,
+    kind         VARCHAR(20) NOT NULL,            -- heading paragraph list_item caption table image note page_break
+    level        TINYINT NOT NULL DEFAULT 0,
+    style        VARCHAR(100) DEFAULT NULL,
+    text         LONGTEXT,                        -- inline-markup (sumber edit)
+    plain        LONGTEXT,                        -- teks polos untuk pencarian
+    data         LONGTEXT,                        -- JSON: atribut / isi tabel / ref gambar
+    version      INT NOT NULL DEFAULT 1,          -- optimistic locking
+    status       ENUM('draft','review','approved') NOT NULL DEFAULT 'draft',
+    assignee     VARCHAR(100) DEFAULT NULL,
+    updated_by   VARCHAR(100) DEFAULT NULL,
+    updated_at   VARCHAR(19) DEFAULT NULL,
+    locked_by    VARCHAR(100) DEFAULT NULL,       -- lock lunak per blok (TTL)
+    locked_until VARCHAR(19) DEFAULT NULL,
+    deleted_at   VARCHAR(19) DEFAULT NULL,        -- soft delete
+    INDEX idx_doc_seq (doc_id, seq),
+    FULLTEXT KEY ft_plain (plain),
+    CONSTRAINT fk_blk_doc FOREIGN KEY (doc_id) REFERENCES cms_documents(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_block_history (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    block_id    INT NOT NULL,
+    version     INT NOT NULL,
+    text        LONGTEXT,
+    data        LONGTEXT,
+    changed_by  VARCHAR(100) DEFAULT NULL,        -- penulis versi ini
+    changed_at  VARCHAR(19) DEFAULT NULL,
+    note        VARCHAR(255) DEFAULT NULL,        -- edit/delete/move/restore + siapa yang menggantikan
+    CONSTRAINT fk_bh_blk FOREIGN KEY (block_id) REFERENCES cms_blocks(id) ON DELETE CASCADE,
+    INDEX idx_blk_ver (block_id, version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_assets (
+    doc_id      INT NOT NULL,
+    sha1        CHAR(40) NOT NULL,
+    filename    VARCHAR(255) NOT NULL,
+    path        VARCHAR(1024) NOT NULL,
+    mime        VARCHAR(100) DEFAULT NULL,
+    px_w        INT DEFAULT NULL,
+    px_h        INT DEFAULT NULL,
+    size        INT DEFAULT NULL,
+    uses        INT DEFAULT 0,
+    orig_part   VARCHAR(255) DEFAULT NULL,
+    PRIMARY KEY (doc_id, sha1),
+    CONSTRAINT fk_asset_doc FOREIGN KEY (doc_id) REFERENCES cms_documents(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

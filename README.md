@@ -661,3 +661,29 @@ docker inspect mysql-8 --format '{{range $k, $v := .NetworkSettings.Networks}}{{
 # Jika berbeda, pastikan NETWORK di ~/flask/.env sama
 # Lalu restart: make rr
 ```
+
+## Engine blok: DOCX ⇄ database (kolaborasi tim + AI)
+
+Pengganti alur chunk-HTML untuk dokumen resmi (mis. UKL-UPL). Dokumen dipecah per **blok**
+(heading, paragraf, list, caption, tabel, gambar, catatan textbox), disimpan lewat `utils/blockstore.py`
+(SQLite untuk uji/offline, MySQL produksi: tabel `cms_blocks`, `cms_block_history`, `cms_assets`).
+
+```
+python scripts/docx_tool.py --db out/doc.db import dok.docx out/media      # -> doc_id
+python scripts/docx_tool.py --db out/doc.db show                           # [id] blok
+python scripts/docx_tool.py --db out/doc.db --user ani edit 12 "teks" --version 3
+python scripts/docx_tool.py --db out/doc.db --user ani insert 72 heading "Bab baru" --level 1
+python scripts/docx_tool.py --db out/doc.db --user ani table 365 data.csv --caption "Judul tabel"
+python scripts/docx_tool.py --db out/doc.db --user ani image 367 foto.png --alt "..." --caption "..."
+python scripts/docx_tool.py --db out/doc.db --user ani pagebreak 368
+python scripts/docx_tool.py --db out/doc.db build hasil.docx
+```
+`--mysql` (env `CMS_DB_HOST/USER/PASS/NAME`) atau `--razan` menggantikan `--db`. Perintah lain:
+`delete/restore/move/cell/addrow/delrow/lock/unlock/history/revert` (lihat `docx_tool.py --help`).
+
+- Kolaborasi: optimistic locking (`--version`), lock lunak per blok (TTL 15 menit), riwayat tiap blok,
+  hapus = soft delete. Sisip/pindah blok tidak me-renumber (seq = titik tengah).
+- `text` memakai inline-markup: `**tebal** __miring__ ++garis-bawah++ ^^sup^^ ~~sub~~ [teks](url)`.
+- Gambar/lampiran diekstrak terpisah ke `media/` (dedup sha1), blok gambar hanya menyimpan referensi.
+- Build: style seragam, nomor heading otomatis, H1 halaman baru, tabel tidak terpotong,
+  Daftar Isi/Tabel/Gambar berupa field Word (klik "Yes" saat Word menawarkan update fields).
