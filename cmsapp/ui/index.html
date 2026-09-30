@@ -213,10 +213,12 @@ async function tabLaporan(){const [{documents},u]=await Promise.all([api('GET',`
  $('#lup').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='.docx';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('report_type',$('#lrt').value);
   note('Mengunggah & mengekstrak…');try{await api('POST',`/projects/${curProj}/documents`,fd,true);note('Selesai');tabLaporan()}catch(e){note(e.message,1)}};f.click()}}
 
-async function tabPic(){if(me.role!=='admin'){$('#ptab').innerHTML='<p style="color:var(--mut)">PIC per bab bisa dilihat di tab Gantt. Hanya admin yang bisa mengubah penugasan.</p>';return}
- const [{users},{documents}]=await Promise.all([api('GET','/admin/users'),api('GET',`/projects/${curProj}/documents`)]);
+async function tabPic(){const {documents}=await api('GET',`/projects/${curProj}/documents`);
  if(!documents.length){$('#ptab').innerHTML='<p style="color:var(--mut)">Tautkan laporan dulu di tab Laporan.</p>';return}
- $('#ptab').innerHTML=`<p><select id=ad>${documents.map(d=>`<option value=${d.doc_id}>${esc(d.label||d.filename)} (#${d.doc_id})</option>`).join('')}</select></p><div id=asg></div>`;
+ let users=[];if(me.role==='admin'){try{users=(await api('GET','/admin/users')).users}catch(e){}}
+ $('#ptab').innerHTML=`<p><select id=ad>${documents.map(d=>`<option value=${d.doc_id}>${esc(d.label||d.filename)} (#${d.doc_id})</option>`).join('')}</select>
+ ${me.role==='admin'?' <button type=button id=goadm>Kelola pengguna…</button>':''}</p><div id=asg></div>`;
+ if($('#goadm'))$('#goadm').onclick=()=>adminView();
  $('#ad').onchange=()=>assignView(users);assignView(users)}
 
 async function tabGantt(){const [{project:p},{tasks},scurve]=await Promise.all([api('GET',`/projects/${curProj}`),
@@ -268,10 +270,12 @@ async function taskDlg(t){const m=document.createElement('div');m.className='mas
  <label>Status<select name=status>${['belum_mulai','berjalan','selesai','terlambat'].map(s=>`<option value=${s} ${s===t.status?'selected':''}>${s}</option>`).join('')}</select></label>
  ${users.length?`<label>Tag PIC (notifikasi)<select name=pics multiple size=4>${users.map(u=>`<option value=${u.id} ${tagged.has(u.id)?'selected':''}>${esc(u.username)}</option>`).join('')}</select></label>`:''}
  <div style="display:flex;gap:8px;justify-content:flex-end">
- ${isChapter&&t.id?'<button type=button id=resync>Tag ulang PIC</button>':''}
+ ${isChapter?'<button type=button id=pic>👤 Kelola PIC…</button>':''}
+ ${isChapter&&t.id?'<button type=button id=resync>Tag ulang notifikasi</button>':''}
  ${t.id&&me.role==='admin'?'<button type=button id=del style="color:#d1242f">Hapus</button>':''}
  <button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ if(f.pic)f.pic.onclick=()=>picDlg(+t.doc_id,+t.chapter_block_id,t.title||'',()=>tabGantt());
  if(f.resync)f.resync.onclick=async()=>{try{await api('POST',`/tasks/${t.id}/resync-pic`);note('PIC disinkron ulang');m.remove();tabGantt()}catch(e){note(e.message,1)}};
  if(f.del)f.del.onclick=async()=>{if(confirm('Hapus task ini?')){try{await api('DELETE',`/tasks/${t.id}`);m.remove();tabGantt()}catch(e){note(e.message,1)}}};
  f.onsubmit=async e=>{e.preventDefault();const b={start_date:f.start_date.value||null,end_date:f.end_date.value||null,
@@ -317,20 +321,42 @@ async function adminView(){closeDoc();const [{users},{docs}]=await Promise.all([
  document.querySelectorAll('[data-u]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/admin/users/${b.dataset.u}/active`,{active:!!+b.dataset.a});adminView()}catch(e){note(e.message,1)}});
  $('#nu').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await api('POST','/admin/users',{username:f.username.value,name:f.name.value,password:f.password.value,role:f.role.value});note('Pengguna dibuat');adminView()}catch(x){note(x.message,1)}};
  $('#ad').onchange=()=>assignView(users);if(docs.length)assignView(users)}
-async function assignView(users){const d=+$('#ad').value;const [{outline},{assignments}]=await Promise.all([api('GET',`/docs/${d}/outline?max_level=1`),api('GET',`/admin/docs/${d}/assign`)]);
- const scopes=[...['cover','front','body','lampiran'].map(p=>({scope:'part:'+p,label:'Bagian: '+p})),...outline.map(h=>({scope:'h1:'+h.id,label:'Bab: '+(h.text||'(tanpa judul)').slice(0,70)}))];
+async function assignView(users){const d=+$('#ad').value;const isAdmin=me.role==='admin';
+ const [{items},{map}]=await Promise.all([api('GET',`/docs/${d}/taggable`),api('GET',`/docs/${d}/pic-map`)]);
+ const {assignments}=await api('GET',`/admin/docs/${d}/assign`).catch(()=>({assignments:[]}));
+ const parts=['cover','front','body','lampiran'].map(p=>({scope:'part:'+p,label:'Bagian: '+p}));
  const who=sc=>assignments.filter(a=>a.scope===sc);const nonAdmin=users.filter(u=>u.role!=='admin'&&u.active);
- $('#asg').innerHTML='<table>'+scopes.map(x=>`<tr><td>${esc(x.label)}</td><td>${who(x.scope).map(a=>`<span class=badge style="background:var(--mut)">${esc(a.username)} <a href="#" data-rm="${a.user_id}|${x.scope}" style="color:#fff">×</a></span>`).join(' ')}</td>
- <td><select data-add="${x.scope}"><option value="">+ tugaskan…</option>${nonAdmin.map(u=>`<option value=${u.id}>${esc(u.username)}</option>`).join('')}</select></td></tr>`).join('')+'</table><p><small>Admin otomatis boleh mengedit semua bab.</small></p>';
- document.querySelectorAll('[data-add]').forEach(sel=>sel.onchange=async()=>{if(!sel.value)return;try{await api('POST','/admin/assign',{doc_id:d,user_id:+sel.value,scope:sel.dataset.add});assignView(users)}catch(e){note(e.message,1)}});
- document.querySelectorAll('[data-rm]').forEach(a=>a.onclick=async e=>{e.preventDefault();const [u,sc]=a.dataset.rm.split('|');try{await api('POST','/admin/assign',{doc_id:d,user_id:+u,scope:sc,remove:true});assignView(users)}catch(x){note(x.message,1)}})}
+ const partRows=parts.map(x=>`<tr><td>${esc(x.label)}</td><td>${who(x.scope).map(a=>`<span class=badge style="background:var(--mut)">${esc(a.username)}${isAdmin?` <a href="#" data-rm="${a.user_id}|${x.scope}" style="color:#fff">×</a>`:''}</span>`).join(' ')||'<small style="color:var(--mut)">—</small>'}</td>
+ ${isAdmin?`<td><select data-add="${x.scope}"><option value="">+ tugaskan…</option>${nonAdmin.map(u=>`<option value=${u.id}>${esc(u.username)}</option>`).join('')}</select></td>`:''}</tr>`).join('');
+ let curHLevel=1;
+ const itemRows=items.map(it=>{const indent=it.kind==='heading'?(it.level-1)*2:curHLevel*2+2;
+  if(it.kind==='heading')curHLevel=it.level;
+  const node=map[it.id]||{pics:[],direct:false,scope:null};
+  const icon=it.kind==='heading'?'📖':it.kind==='caption'?'🏷':it.kind==='table'?'▦':'🖼';
+  const done=node.pics.length&&node.pics.every(p=>p.status==='done');
+  const pics=node.pics.map(p=>`<span class=badge style="background:${p.status==='done'?'#2da44e':'var(--mut)'}">${esc(p.username)}${p.status==='done'?' ✓':''}</span>`).join(' ')
+   ||(node.scope?'<small style="color:var(--mut)">(warisan, kosong)</small>':'<small style="color:var(--mut)">—</small>');
+  return `<tr><td style="padding-left:${indent}ch">${icon} ${esc((it.label||'').slice(0,70))}${node.scope&&!node.direct?' <small style="color:var(--mut)">(warisan)</small>':''}${done?' ✓':''}</td>
+  <td>${pics}</td><td><button type=button data-pic="${it.id}">Kelola PIC…</button></td></tr>`}).join('');
+ $('#asg').innerHTML='<table><tr><th>Bagian</th><th>PIC</th>'+(isAdmin?'<th></th>':'')+'</tr>'+partRows+'</table>'
+  +'<h4 style="margin-top:14px">Heading, caption, tabel & gambar</h4>'
+  +'<table><tr><th>Item</th><th>PIC</th><th></th></tr>'+(itemRows||'<tr><td colspan=3 style="color:var(--mut)">Belum ada isi.</td></tr>')+'</table>'
+  +`<p><small>Admin otomatis boleh mengedit semua bab. PIC di heading/caption/tabel/gambar tertentu meng-override warisan dari atasannya (H1/bagian) hanya utk bagian itu ke bawah — klik "Kelola PIC…" utk menambah/melepas/menandai selesai.${isAdmin?'':' Hanya admin yang bisa menambah/melepas penugasan; PIC yang bersangkutan boleh menandai selesai, admin/reviewer boleh mengembalikan.'}</small></p>`;
+ if(isAdmin){
+  document.querySelectorAll('[data-add]').forEach(sel=>sel.onchange=async()=>{if(!sel.value)return;try{await api('POST','/admin/assign',{doc_id:d,user_id:+sel.value,scope:sel.dataset.add});assignView(users)}catch(e){note(e.message,1)}});
+  document.querySelectorAll('[data-rm]').forEach(a=>a.onclick=async e=>{e.preventDefault();const [u,sc]=a.dataset.rm.split('|');try{await api('POST','/admin/assign',{doc_id:d,user_id:+u,scope:sc,remove:true});assignView(users)}catch(x){note(x.message,1)}})}
+ document.querySelectorAll('[data-pic]').forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===+b.dataset.pic);picDlg(d,it.id,it.label,()=>assignView(users))})}
 function closeDoc(){if(es)es.close();es=null;doc=null;chapter=null;section=null;clearInterval(hb);$('#bexp').hidden=true;$('#pres').textContent=''}
 async function openDoc(id){doc=id;$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div>';$('#bexp').hidden=false;
  await loadOutline();subscribe();hb=setInterval(async()=>{for(const b of Object.keys(locks)){try{await api('POST',`/blocks/${b}/lock`)}catch(e){}}
   try{const p=await api('GET',`/docs/${doc}/presence`);$('#pres').textContent='● '+p.count+' online'}catch(e){}},60000)}
 async function loadOutline(){const r=await api('GET',`/docs/${doc}/outline?max_level=4`);outline=r.outline;
  let chId=null;outline.forEach(h=>{if(h.level===1)chId=h.id;h.chapId=chId==null?h.id:chId});
- $('#side').innerHTML='<a id=back>← Dokumen</a>'+outline.map(h=>`<a data-id="${h.id}" data-level="${h.level}" data-chapter="${h.chapId}" style="padding-left:${(h.level-1)*2}ch" class="lv${h.level} ${h.mine?'mine':''} ${h.id===(section||chapter)?'cur':''}">${esc((h.text||'(tanpa judul)').slice(0,60))}</a>`).join('');
+ $('#side').innerHTML='<a id=back>← Dokumen</a>'+outline.map(h=>{const done=(h.pic||[]).length&&h.pic.every(p=>p.status==='done');
+  const picBadge=(h.pic||[]).length?` <span class=badge data-pic="${h.id}" style="background:${done?'#2da44e':'var(--mut)'}${h.pic_direct?'':';opacity:.7'}" title="${h.pic_direct?'':'warisan — '}${h.pic.map(p=>p.username).join(', ')}">${h.pic.length}${done?' ✓':''}</span>`:'';
+  return `<a data-id="${h.id}" data-level="${h.level}" data-chapter="${h.chapId}" style="padding-left:${(h.level-1)*2}ch" class="lv${h.level} ${h.mine?'mine':''} ${h.id===(section||chapter)?'cur':''}">${esc((h.text||'(tanpa judul)').slice(0,60))}${picBadge}</a>`}).join('');
+ document.querySelectorAll('#side [data-pic]').forEach(s=>s.onclick=e=>{e.preventDefault();e.stopPropagation();
+  const h=outline.find(x=>x.id===+s.dataset.pic);picDlg(doc,h.id,h.text||'H'+h.level,()=>loadOutline())});
  $('#back').onclick=docsView;document.querySelectorAll('#side a[data-id]').forEach(a=>a.onclick=async()=>{
   const id=+a.dataset.id,lvl=+a.dataset.level,chId2=+a.dataset.chapter;
   if(lvl===1){const same=chId2===chapter&&section===null;chapter=chId2;section=null;
@@ -384,6 +410,8 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
  el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
  el.append(bodyOf(b));const a=document.createElement('div');a.className='acts';
  const btn=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
+ if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
+  btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
  if(['paragraph','heading','list_item','caption','note'].includes(b.kind)&&canEdit)btn('Edit',()=>edit(el,b));
  if(me.role!=='reviewer'){btn('+ Blok',()=>blockDlg(b));
   btn('+ Gambar',async()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('after_id',b.id);
@@ -427,6 +455,33 @@ async function wrapLandscape(el,b){const prevEl=el.previousElementSibling;
  layoutDlg({orientation:'landscape',size:'A4'},async layout=>{
   await api('POST',`/docs/${doc}/pagebreak`,{after_id:+prevEl.dataset.id,layout});
   await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id,layout:{orientation:'portrait',size:'A4'}})})}
+async function picDlg(docId,blockId,label,onClose){
+ const m=document.createElement('div');m.className='mask';document.body.append(m);
+ let users=[];if(me.role==='admin'){try{users=(await api('GET','/admin/users')).users.filter(u=>u.active&&u.role!=='admin')}catch(e){}}
+ const paint=async()=>{
+  let info;try{info=await api('GET',`/blocks/${blockId}/pic`)}catch(e){m.remove();note(e.message,1);return}
+  const tagged=new Set(info.pics.map(p=>p.user_id));
+  const rows=info.pics.length?info.pics.map(p=>{const mine=p.user_id===me.id,canReturn=(me.role==='admin'||me.role==='reviewer')&&p.status==='done';
+   return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid var(--line)">
+    <b>${esc(p.username)}</b><span class=badge style="background:${p.status==='done'?'#2da44e':'var(--mut)'}">${p.status==='done'?'✓ selesai':'⏳ berjalan'}</span>
+    ${p.note?`<small style="color:var(--mut)" title="dikembalikan oleh ${esc(p.returned_by||'')}">📝 ${esc(p.note)}</small>`:''}
+    <span style="flex:1"></span>
+    ${mine?`<button type=button data-toggle="${p.user_id}" data-cur="${p.status}">${p.status==='done'?'Buka lagi':'Tandai selesai'}</button>`:''}
+    ${canReturn&&!mine?`<button type=button data-return="${p.user_id}">Kembalikan</button>`:''}
+    ${me.role==='admin'&&info.direct?`<button type=button data-rm="${p.user_id}" style="color:#d1242f">Lepas</button>`:''}
+   </div>`}).join(''):'<p style="color:var(--mut)">Belum ada PIC.</p>';
+  const inherit=info.scope&&!info.direct?`<p><small style="color:var(--mut)">Mewarisi penugasan dari atasan (<code>${esc(info.scope)}</code>). Menambah PIC di sini akan meng-override khusus utk bagian ini ke bawah.</small></p>`:'';
+  const addSel=me.role==='admin'?`<label>+ tugaskan di sini<select id=picadd><option value="">— pilih user —</option>${users.filter(u=>!(info.direct&&tagged.has(u.id))).map(u=>`<option value=${u.id}>${esc(u.username)}</option>`).join('')}</select></label>`:'';
+  m.innerHTML=`<form class=dlg><b>PIC — ${esc((label||'').slice(0,70))}</b>${inherit}<div>${rows}</div>${addSel}
+   <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Tutup</button></div></form>`;
+  const f=m.querySelector('form');f.onsubmit=e=>e.preventDefault();
+  m.querySelector('#x').onclick=()=>{m.remove();if(onClose)onClose()};
+  f.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/blocks/${blockId}/pic/status`,{done:b.dataset.cur!=='done'});paint()}catch(e){note(e.message,1)}});
+  f.querySelectorAll('[data-return]').forEach(b=>b.onclick=async()=>{const t=prompt('Catatan utk PIC (apa yang perlu dilengkapi)?');if(t===null)return;
+   try{await api('POST',`/blocks/${blockId}/pic/status`,{user_id:+b.dataset.return,done:false,note:t});paint()}catch(e){note(e.message,1)}});
+  f.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{try{await api('POST','/admin/assign',{doc_id:docId,user_id:+b.dataset.rm,scope:info.scope,remove:true});paint()}catch(e){note(e.message,1)}});
+  if(f.picadd)f.picadd.onchange=async()=>{if(!f.picadd.value)return;try{await api('POST','/admin/assign',{doc_id:docId,user_id:+f.picadd.value,scope:info.own_scope});paint()}catch(e){note(e.message,1)}}};
+ await paint()}
 async function mv(el,b,dir){let after;
  if(dir<0){const p=el.previousElementSibling,pp=p&&p.previousElementSibling;if(!pp)throw new Error('sudah paling atas dalam bab');after=+pp.dataset.id}
  else{const n=el.nextElementSibling;if(!n)throw new Error('sudah paling bawah dalam bab');after=+n.dataset.id}

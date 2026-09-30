@@ -902,6 +902,192 @@ class BlockStore:
         except Exception:                                     # noqa: BLE001
             return []
 
+    # -------- PIC berjenjang (heading H1..Hn / caption / tabel / gambar, override turunan menang)
+    def heading_chain(self, block_id: int) -> list[dict]:
+        """Rantai heading yang membungkus blok ini, dari PALING SPESIFIK (diri sendiri bila blok ini
+        sendiri heading, atau heading terdekat) ke PALING LUAR (H1). Urutan blok dianggap global per
+        seq spt chapter_of() (part tak diselingi, jadi tak perlu difilter)."""
+        with self._tx() as c:
+            b = self._one(c, "SELECT doc_id, seq FROM cms_blocks WHERE id=?", (block_id,))
+            if not b:
+                return []
+            heads = self._all(c, "SELECT id, seq, level, text FROM cms_blocks WHERE doc_id=? AND kind='heading' "
+                                 "AND deleted_at IS NULL AND seq<=? ORDER BY seq", (b["doc_id"], b["seq"]))
+        stack: list[dict] = []
+        for h in heads:
+            while stack and stack[-1]["level"] >= h["level"]:
+                stack.pop()
+            stack.append(h)
+        return list(reversed(stack))
+
+    def assign_candidates(self, block_id: int) -> list[str]:
+        """Kandidat scope dari PALING SPESIFIK ke PALING UMUM: blok ini sendiri (kalau bukan heading,
+        mis. caption/tabel/gambar) -> tiap heading pembungkus (spesifik->umum; H1 disertai alias lama
+        'h1:') -> bagian dokumen ('part:'). Dipakai resolve PIC berjenjang: scope pertama yang punya
+        penugasan MENANG (override, bukan gabungan dgn level di atasnya)."""
+        with self._tx() as c:
+            b = self._one(c, "SELECT part, kind FROM cms_blocks WHERE id=?", (block_id,))
+        if not b:
+            return []
+        cands: list[str] = []
+        if b["kind"] != "heading":
+            cands.append(f"block:{block_id}")
+        for h in self.heading_chain(block_id):
+            cands.append(f"heading:{h['id']}")
+            if h["level"] == 1:
+                cands.append(f"h1:{h['id']}")
+        cands.append(f"part:{b['part']}")
+        return cands
+
+    def effective_pic(self, doc_id: int, block_id: int) -> tuple[list[dict], Optional[str]]:
+        """PIC yang berlaku utk blok ini (user_id/username/scope) + scope yang menang, atau ([], None)
+        kalau tak ada penugasan di sepanjang rantai. Best-effort spt list_assign (cms_assign/cms_users
+        cuma ada di skema MySQL)."""
+        cands = self.assign_candidates(block_id)
+        if not cands:
+            return [], None
+        try:
+            with self._tx() as c:
+                ph = ",".join(["?"] * len(cands))
+                rows = self._all(c, f"SELECT a.user_id, u.username, a.scope FROM cms_assign a "
+                                     f"JOIN cms_users u ON u.id=a.user_id WHERE a.doc_id=? AND a.scope IN ({ph})",
+                                 [doc_id] + cands)
+        except Exception:                                     # noqa: BLE001
+            return [], None
+        by_scope: dict[str, list[dict]] = {}
+        for r in rows:
+            by_scope.setdefault(r["scope"], []).append(r)
+        for sc in cands:
+            if sc in by_scope:
+                return sorted(by_scope[sc], key=lambda x: x["username"]), sc
+        return [], None
+
+    def pic_of(self, doc_id: int, block_id: int) -> dict:
+        """PIC efektif blok ini + status done/catatan masing-masing (utk dialog 'PIC' satu blok).
+        `own_scope` = scope kanonis utk menugaskan PIC BARU langsung di blok ini (dipakai UI, selalu
+        'heading:<id>'/'block:<id>', tak pernah alias lama); `direct` = scope yg menang saat ini
+        (`scope`) memang salah satu bentuk milik blok ini sendiri (bukan warisan atasan)."""
+        with self._tx() as c:
+            b = self._one(c, "SELECT kind, level FROM cms_blocks WHERE id=?", (block_id,))
+        own = []
+        if b:
+            own = [f"heading:{block_id}"] + ([f"h1:{block_id}"] if b["level"] == 1 else []) \
+                if b["kind"] == "heading" else [f"block:{block_id}"]
+        pics, scope = self.effective_pic(doc_id, block_id)
+        if not scope:
+            return {"scope": None, "direct": False, "own_scope": own[0] if own else None, "pics": []}
+        try:
+            with self._tx() as c:
+                statuses = self._all(c, "SELECT * FROM cms_assign_status WHERE doc_id=? AND scope=?", (doc_id, scope))
+        except Exception:                                     # noqa: BLE001
+            statuses = []
+        stat = {s["user_id"]: s for s in statuses}
+        out = []
+        for p in pics:
+            s = stat.get(p["user_id"])
+            out.append({"user_id": p["user_id"], "username": p["username"],
+                        "status": s["status"] if s else "in_progress", "done_at": s["done_at"] if s else None,
+                        "note": s["note"] if s else None, "returned_by": s["returned_by"] if s else None,
+                        "returned_at": s["returned_at"] if s else None})
+        return {"scope": scope, "direct": scope in own, "own_scope": own[0] if own else None, "pics": out}
+
+    def set_pic_status(self, doc_id: int, block_id: int, user_id: int, done: bool, note: str = "", by: str = "") -> None:
+        """PIC menandai bagiannya (scope efektif blok ini) selesai, atau admin/reviewer mengembalikan
+        (done=False + note + by=siapa yg mengembalikan). `user_id` wajib PIC efektif blok ini -> ValueError."""
+        pics, scope = self.effective_pic(doc_id, block_id)
+        if not scope or user_id not in [p["user_id"] for p in pics]:
+            raise ValueError("pengguna ini bukan PIC bagian ini")
+        with self._tx() as c:
+            exists = self._one(c, "SELECT 1 AS x FROM cms_assign_status WHERE doc_id=? AND user_id=? AND scope=?",
+                               (doc_id, user_id, scope))
+            if done:
+                if exists:
+                    self._x(c, "UPDATE cms_assign_status SET status='done', done_at=?, note=NULL, returned_by=NULL, "
+                               "returned_at=NULL, updated_at=? WHERE doc_id=? AND user_id=? AND scope=?",
+                            (_now(), _now(), doc_id, user_id, scope))
+                else:
+                    self._x(c, "INSERT INTO cms_assign_status(doc_id,user_id,scope,status,done_at,updated_at) "
+                               "VALUES (?,?,?,'done',?,?)", (doc_id, user_id, scope, _now(), _now()))
+            else:
+                rby = by or None
+                rat = _now() if (note or by) else None
+                if exists:
+                    self._x(c, "UPDATE cms_assign_status SET status='in_progress', note=?, returned_by=?, "
+                               "returned_at=?, updated_at=? WHERE doc_id=? AND user_id=? AND scope=?",
+                            (note or None, rby, rat, _now(), doc_id, user_id, scope))
+                else:
+                    self._x(c, "INSERT INTO cms_assign_status(doc_id,user_id,scope,status,note,returned_by,"
+                               "returned_at,updated_at) VALUES (?,?,?,'in_progress',?,?,?,?)",
+                            (doc_id, user_id, scope, note or None, rby, rat, _now()))
+
+    def list_taggable_blocks(self, doc_id: int) -> list[dict]:
+        """Semua blok yang bisa langsung ditandai PIC: heading (semua level) + caption/tabel/gambar,
+        urut seq. Label ramah: teks heading/caption sendiri; tabel/gambar tanpa caption sendiri memakai
+        label caption tetangga (sebelum/sesudah) kalau ada, else generik."""
+        with self._tx() as c:
+            rows = self._all(c, "SELECT id, seq, part, kind, level, text, data FROM cms_blocks WHERE doc_id=? "
+                                 "AND deleted_at IS NULL AND (kind='heading' OR kind IN ('caption','table','image')) "
+                                 "ORDER BY seq", (doc_id,))
+        out = []
+        for i, r in enumerate(rows):
+            label = (r["text"] or "").strip()
+            if r["kind"] in ("table", "image") and not label:
+                near = rows[i - 1] if i > 0 else None
+                nxt = rows[i + 1] if i + 1 < len(rows) else None
+                cap = near if (near and near["kind"] == "caption") else (nxt if (nxt and nxt["kind"] == "caption") else None)
+                if cap:
+                    label = _jload(cap["data"]).get("orig_label") or (cap["text"] or "").strip()
+                label = label or f"({'tabel' if r['kind'] == 'table' else 'gambar'} #{r['id']})"
+            out.append({"id": r["id"], "seq": r["seq"], "part": r["part"], "kind": r["kind"], "level": r["level"],
+                       "label": label or f"(#{r['id']})"})
+        return out
+
+    def pic_map(self, doc_id: int) -> dict[int, dict]:
+        """Peta blockId -> {scope, kind, level, direct, pics:[...]} utk SEMUA heading + caption/tabel/
+        gambar dokumen ini, dihitung sekali (bukan N query per blok) -> panel penugasan & badge editor.
+        Best-effort: pics=[] per blok bila cms_assign/cms_users/cms_assign_status tak ada (SQLite CLI)."""
+        items = self.list_taggable_blocks(doc_id)
+        try:
+            with self._tx() as c:
+                assigns = self._all(c, "SELECT a.user_id, u.username, a.scope FROM cms_assign a "
+                                        "JOIN cms_users u ON u.id=a.user_id WHERE a.doc_id=?", (doc_id,))
+                statuses = self._all(c, "SELECT * FROM cms_assign_status WHERE doc_id=?", (doc_id,))
+        except Exception:                                     # noqa: BLE001
+            return {it["id"]: {"scope": None, "kind": it["kind"], "level": it["level"], "label": it["label"],
+                               "direct": False, "pics": []} for it in items}
+        by_scope: dict[str, list[dict]] = {}
+        for a in assigns:
+            by_scope.setdefault(a["scope"], []).append(a)
+        stat = {(s["user_id"], s["scope"]): s for s in statuses}
+
+        def pics_of(scope: str) -> list[dict]:
+            out = []
+            for a in sorted(by_scope.get(scope, []), key=lambda x: x["username"]):
+                s = stat.get((a["user_id"], scope))
+                out.append({"user_id": a["user_id"], "username": a["username"],
+                            "status": s["status"] if s else "in_progress",
+                            "done_at": s["done_at"] if s else None, "note": s["note"] if s else None,
+                            "returned_by": s["returned_by"] if s else None,
+                            "returned_at": s["returned_at"] if s else None})
+            return out
+
+        stack: list[tuple[int, str, list[str]]] = []   # (level, heading_id, kandidat scope di level ini)
+        out: dict[int, dict] = {}
+        for it in items:
+            if it["kind"] == "heading":
+                while stack and stack[-1][0] >= it["level"]:
+                    stack.pop()
+                own = [f"heading:{it['id']}"] + ([f"h1:{it['id']}"] if it["level"] == 1 else [])
+                cands = own + [sc for _, _, frame in reversed(stack) for sc in frame] + [f"part:{it['part']}"]
+                stack.append((it["level"], it["id"], own))
+            else:
+                own = [f"block:{it['id']}"]
+                cands = own + [sc for _, _, frame in reversed(stack) for sc in frame] + [f"part:{it['part']}"]
+            winner = next((sc for sc in cands if by_scope.get(sc)), None)
+            out[it["id"]] = {"scope": winner, "kind": it["kind"], "level": it["level"], "label": it["label"],
+                             "direct": bool(winner and winner in own), "pics": pics_of(winner) if winner else []}
+        return out
+
     def upsert_project_task(self, project_id: int, title: str = "", doc_id: Optional[int] = None,
                             chapter_block_id: Optional[int] = None, start_date=None, end_date=None,
                             progress_percent: Optional[int] = None, status: Optional[str] = None,
@@ -971,7 +1157,7 @@ class BlockStore:
         for t in tasks:
             t["scheduled"] = True
             t["tags"] = self.list_task_tags(t["id"])
-            t["pic"] = self.list_assign(t["doc_id"], f"h1:{t['chapter_block_id']}") if t["chapter_block_id"] else []
+            t["pic"] = self.effective_pic(t["doc_id"], t["chapter_block_id"])[0] if t["chapter_block_id"] else []
         candidates = []
         for d in docs:
             for h in self.outline(d["doc_id"], max_level=1):
@@ -981,7 +1167,7 @@ class BlockStore:
                     "id": None, "project_id": project_id, "doc_id": d["doc_id"], "chapter_block_id": h["id"],
                     "parent_task_id": None, "title": h["text"] or "(tanpa judul)", "doc_label": d["label"] or d["filename"],
                     "start_date": None, "end_date": None, "progress_percent": 0, "status": "belum_mulai",
-                    "pic": self.list_assign(d["doc_id"], f"h1:{h['id']}"), "tags": [], "scheduled": False,
+                    "pic": self.effective_pic(d["doc_id"], h["id"])[0], "tags": [], "scheduled": False,
                 })
         return tasks + candidates
 
@@ -1004,7 +1190,7 @@ class BlockStore:
             t = self._one(c, "SELECT doc_id, chapter_block_id FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (task_id,))
         if not t or not t["chapter_block_id"]:
             return
-        pics = self.list_assign(t["doc_id"], f"h1:{t['chapter_block_id']}")
+        pics, _ = self.effective_pic(t["doc_id"], t["chapter_block_id"])
         if pics:
             self.tag_task(task_id, [p["user_id"] for p in pics], tagged_by="system")
 

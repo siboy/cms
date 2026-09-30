@@ -49,6 +49,38 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **PIC berjenjang (H1..Hn + caption/tabel/gambar) + status done/kembalikan (2026-09-30)** — sebelumnya PIC cuma bisa
+  per-H1 (`h1:<id>`), single-scope, tanpa status pengerjaan, dan dialog "Tag PIC" di Gantt kosong utk baris bab (bug:
+  `taskDlg` cuma fetch daftar user saat `!isChapter`). Diminta: heading level berapa pun (turunan otomatis mewarisi PIC
+  atasan, KECUALI ada override eksplisit di heading lebih dalam — itu menang khusus utk subtree situ), caption
+  tabel/gambar bisa ditag independen, multi-PIC per scope, tiap PIC klik "Tandai selesai" sendiri, admin/reviewer bisa
+  "Kembalikan" (+catatan). Desain: scope digeneralisasi jadi `heading:<id blok>` (semua level) / `block:<id>` (caption/
+  tabel/gambar) / `part:<x>`; `h1:<id>` lama tetap dibaca sbg alias (tak dimigrasi, tak ditulis lagi). Resolusi berjenjang
+  = `BlockStore.heading_chain`/`assign_candidates`/`effective_pic` (rantai kandidat scope spesifik→umum, scope PERTAMA yg
+  punya penugasan MENANG — override, bukan gabungan). `auth.can_edit` sekarang IKUT scope ini (PIC = juga izin edit,
+  bukan cuma label, sesuai keputusan user) — jadi delegasi di H3 juga memindah siapa yg boleh edit subtree itu.
+  Status done/kembalikan: tabel baru `cms_assign_status` (doc_id,user_id,scope PK; best-effort spt cms_assign — tak ada
+  di `SQLITE_DDL`, cuma skema MySQL). Metode baru `BlockStore`: `heading_chain`, `assign_candidates`, `effective_pic`,
+  `pic_of` (1 blok + `direct`/`own_scope`), `pic_map` (SEMUA heading+caption/tabel/gambar dokumen sekaligus, O(1) query
+  bukan N+1, dipakai panel & badge), `set_pic_status`, `list_taggable_blocks` (label ramah, tabel/gambar tanpa caption
+  sendiri pinjam label caption tetangga). API baru (`cmsapp/api.py`): `GET /docs/<id>/pic-map`, `GET /docs/<id>/taggable`,
+  `GET /blocks/<id>/pic`, `POST /blocks/<id>/pic/status`; `GET /docs/<id>/outline` & `GET /docs/<id>/blocks` & `GET
+  /blocks/<id>` disisipi info PIC. Mutasi tag tetap lewat `/admin/assign` yang sudah ada (validator scope di `auth.assign`
+  diperluas, bukan endpoint baru). UI (`cmsapp/ui/index.html`): dialog baru `picDlg()` (lihat PIC efektif + warisan/
+  override, tandai selesai, kembalikan+catatan, admin tambah/lepas) dipanggil dari (1) tombol "👤 PIC" di tiap blok
+  heading/caption/tabel/gambar di editor, (2) badge jumlah PIC di sidebar outline, (3) tombol "Kelola PIC…" di `taskDlg`
+  gantt (baris bab kini tak lagi kosong saat diklik — itu bug yg dilaporkan), (4) tab Proyek→PIC yang sekarang jadi
+  pohon lengkap (dulu cuma tabel H1 datar, admin-only) + bisa dilihat (read-only utk non-admin, boleh tandai selesai
+  milik sendiri). Gantt/`list_project_tasks`/`sync_task_pic_from_assign` dipindah ke `effective_pic` (otomatis dapat
+  fallback ke part-level & override berjenjang utk PIC baris bab).
+  **Diuji**: `py_compile` semua file Python + `node --check` JS lolos; skenario end-to-end manual via SQLite dgn tabel
+  `cms_users/cms_assign/cms_assign_status` dibuat manual (krn best-effort, SQLITE_DDL tak punyai): waris H1→H2→H3,
+  override eksplisit di satu H3 (menang khusus subtree itu, saudara H3 lain tetap waris H1), caption override
+  independen dari tabel induknya, `pic_map` vs `effective_pic` per-node konsisten, tandai selesai, dikembalikan
+  +catatan, penolakan user bukan-PIC — semua lolos (skrip tak disimpan, ad-hoc). **Belum dicoba** di browser sungguhan/
+  server MySQL asli (sandbox ini tak ada VPN) — perlu `make stack`/`make dev` lalu uji manual: buka dokumen, tag PIC
+  bertingkat lewat panel di blok & tab Proyek→PIC, cek delegasi H3 benar2 mengubah siapa yg bisa edit, alur done/
+  kembalikan dgn 2 akun berbeda peran.
 - [x] **Tata letak halaman per bagian: landscape/A3 dll. (2026-09-30)** — sebelumnya engine SAMA SEKALI tak mendeteksi/menyimpan orientasi
   atau ukuran kertas per section Word (mis. tabel Matriks UKL-UPL yang landscape di sumber, halaman lampiran peta A3): `docx_blocks.py`
   cuma memakai `w:sectPr` utk batas `part`, geometrinya dibuang; `docx_build.py` selalu paksa A4 potrait di semua section.

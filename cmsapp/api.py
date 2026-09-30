@@ -139,10 +139,50 @@ def docs():
 @auth.require()
 def outline(doc_id):
     o = S().outline(doc_id, int(request.args.get("max_level", 3)))
-    mine = auth.scopes(doc_id, g.user["id"])
+    pm = S().pic_map(doc_id)
     for h in o:
-        h["mine"] = g.user["role"] == "admin" or (h["level"] == 1 and f"h1:{h['id']}" in mine) or f"part:{h['part']}" in mine
+        node = pm.get(h["id"]) or {}
+        pics = node.get("pics") or []
+        h["pic"] = [{"user_id": p["user_id"], "username": p["username"], "status": p["status"]} for p in pics]
+        h["pic_direct"] = bool(node.get("direct"))
+        h["mine"] = g.user["role"] == "admin" or any(p["user_id"] == g.user["id"] for p in pics)
     return jsonify(outline=o, rev=S().fingerprint(doc_id))
+
+
+@bp.get("/docs/<int:doc_id>/pic-map")
+@auth.require()
+def pic_map(doc_id):
+    return jsonify(map=S().pic_map(doc_id))
+
+
+@bp.get("/docs/<int:doc_id>/taggable")
+@auth.require()
+def taggable(doc_id):
+    return jsonify(items=S().list_taggable_blocks(doc_id))
+
+
+@bp.get("/blocks/<int:block_id>/pic")
+@auth.require()
+def block_pic(block_id):
+    b = S().get_block(block_id)
+    return jsonify(**S().pic_of(b["doc_id"], block_id))
+
+
+@bp.post("/blocks/<int:block_id>/pic/status")
+@auth.require()
+def set_block_pic_status(block_id):
+    d = body()
+    b = S().get_block(block_id)
+    target = int(d["user_id"]) if d.get("user_id") else g.user["id"]
+    done = bool(d.get("done"))
+    note = (d.get("note") or "").strip()
+    if target != g.user["id"]:
+        if g.user["role"] not in ("admin", "reviewer"):
+            abort(403, description="hanya admin/reviewer boleh mengembalikan status PIC lain")
+        if done:
+            raise ValueError("hanya bisa mengembalikan (done=false), bukan menandai selesai utk PIC lain")
+    S().set_pic_status(b["doc_id"], block_id, target, done, note, by=g.user["username"])
+    return jsonify(ok=True)
 
 
 @bp.get("/docs/<int:doc_id>/blocks")
@@ -167,11 +207,16 @@ def blocks(doc_id):
         ts = nxt[0]["seq"] if nxt else None
     bl = s.blocks_range(doc_id, fs, ts, limit=min(request.args.get("limit", 500, type=int), 500))
     locks = current_app.extensions["cms_locks"].holders([b["id"] for b in bl])
+    pm = s.pic_map(doc_id)
     res = []
     for b in bl:
         o = out(b)
         if b["id"] in locks:
             o["locked_by"] = locks[b["id"]]
+        node = pm.get(b["id"])
+        if node:
+            o["pic"] = [{"user_id": p["user_id"], "username": p["username"], "status": p["status"]} for p in node["pics"]]
+            o["pic_direct"] = node["direct"]
         res.append(o)
     return jsonify(blocks=res, rev=s.fingerprint(doc_id))
 
@@ -184,6 +229,9 @@ def block(bid):
     h = current_app.extensions["cms_locks"].holder(bid)
     if h:
         o["locked_by"] = h[0]
+    if b["kind"] in ("heading", "caption", "table", "image"):
+        node = S().pic_of(b["doc_id"], bid)
+        o["pic"] = [{"user_id": p["user_id"], "username": p["username"], "status": p["status"]} for p in node["pics"]]
     return jsonify(block=o)
 
 

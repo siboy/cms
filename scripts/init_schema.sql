@@ -96,7 +96,9 @@ CREATE TABLE IF NOT EXISTS cms_users (
     UNIQUE KEY uq_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- scope: 'h1:<id blok heading level 1>' (satu bab) atau 'part:<cover|front|body|lampiran>'
+-- scope: 'heading:<id blok heading level berapa pun>' (H1..H4 dst, override turunan) | 'block:<id>'
+-- (caption/tabel/gambar spesifik) | 'part:<cover|front|body|lampiran>'. 'h1:<id>' data lama = alias
+-- 'heading:<id>' utk heading level 1, tetap dibaca (tak dimigrasi), tak ditulis lagi oleh UI baru.
 CREATE TABLE IF NOT EXISTS cms_assign (
     doc_id   INT NOT NULL,
     user_id  INT NOT NULL,
@@ -105,6 +107,23 @@ CREATE TABLE IF NOT EXISTS cms_assign (
     KEY idx_user (user_id),
     CONSTRAINT fk_as_doc  FOREIGN KEY (doc_id)  REFERENCES cms_documents(id) ON DELETE CASCADE,
     CONSTRAINT fk_as_user FOREIGN KEY (user_id) REFERENCES cms_users(id)     ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- status penyelesaian PIC per (doc,user,scope) dari cms_assign di atas: PIC menandai 'done' sendiri;
+-- admin/reviewer bisa mengembalikan ke 'in_progress' + catatan (kolom note/returned_by/returned_at).
+CREATE TABLE IF NOT EXISTS cms_assign_status (
+    doc_id      INT NOT NULL,
+    user_id     INT NOT NULL,
+    scope       VARCHAR(40) NOT NULL,
+    status      ENUM('in_progress','done') NOT NULL DEFAULT 'in_progress',
+    done_at     VARCHAR(19) DEFAULT NULL,
+    note        TEXT,
+    returned_by VARCHAR(100) DEFAULT NULL,
+    returned_at VARCHAR(19) DEFAULT NULL,
+    updated_at  VARCHAR(19) DEFAULT NULL,
+    PRIMARY KEY (doc_id, user_id, scope),
+    CONSTRAINT fk_ast_doc  FOREIGN KEY (doc_id)  REFERENCES cms_documents(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ast_user FOREIGN KEY (user_id) REFERENCES cms_users(id)     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---- Tahap 4: manajemen proyek (dashboard, laporan draft/interim/final, repository berkas, gantt, tag PIC) ----

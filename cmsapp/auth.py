@@ -51,8 +51,10 @@ def set_active(user_id: int, active: bool):
 
 
 def assign(doc_id: int, user_id: int, scope: str):
-    if not (scope.startswith("h1:") or scope.startswith("part:")):
-        raise ValueError("scope: 'h1:<id>' atau 'part:<cover|front|body|lampiran>'")
+    if not (scope.startswith("heading:") or scope.startswith("block:") or scope.startswith("part:")
+            or scope.startswith("h1:")):
+        raise ValueError("scope: 'heading:<id blok heading>', 'block:<id caption/tabel/gambar>', "
+                          "atau 'part:<cover|front|body|lampiran>'")
     s = store()
     with s._tx() as c:
         if s._one(c, "SELECT 1 AS x FROM cms_assign WHERE doc_id=? AND user_id=? AND scope=?", (doc_id, user_id, scope)) is None:
@@ -139,14 +141,13 @@ def require(*roles):
 
 
 def can_edit(doc_id: int, block_id: int) -> bool:
-    """admin: semua; author: bila bab/bagian blok ini ditugaskan; reviewer: tidak."""
+    """admin: semua; author: bila PIC efektif blok ini (heading/caption/tabel/gambar terdekat yang
+    ditugaskan, berjenjang - override di level lebih dalam menang atas warisan dari H1/bagian di
+    atasnya, lihat BlockStore.effective_pic); reviewer: tidak."""
     u = g.user
     if u["role"] == "admin":
         return True
     if u["role"] != "author":
         return False
-    ch = store().chapter_of(block_id)
-    if ch is None:
-        return False
-    sc = scopes(doc_id, u["id"])
-    return (ch["id"] is not None and f"h1:{ch['id']}" in sc) or f"part:{ch['part']}" in sc
+    pics, _ = store().effective_pic(doc_id, block_id)
+    return any(p["user_id"] == u["id"] for p in pics)
