@@ -33,6 +33,12 @@ services:
       - ${HOST_HOME}/.claude/projects:/claude-home/.claude/projects
       # Aturan global host (read-only) supaya perilaku Claude sama.
       - ${HOST_HOME}/.claude/CLAUDE.md:/claude-home/.claude/CLAUDE.md:ro
+      # Setting host dipakai bersama (izin, model, tema, autoMode). rw: "always allow" dari
+      # container ikut tersimpan ke host.
+      - ${HOST_HOME}/.claude/settings.json:/claude-home/.claude/settings.json
+      # Skills host (read-only: folder `synced` dikelola sinkronisasi akun host; jangan biarkan
+      # akun container menimpanya).
+      - ${HOST_HOME}/.claude/skills:/claude-home/.claude/skills:ro
 
 volumes:
   claude-home:
