@@ -102,8 +102,32 @@ ovpn-status:
 	@tmux ls 2>/dev/null | grep vpn || echo "No VPN sessions running"
 	@echo "=========================================="
 
+# ---- Claude CLI di container (lintas repo: flask, cms, sekda, newflask, diskusidata) ----
+# File dibuat dgn uid/gid host (bukan root). Login tersimpan di volume claude-home.
+CLAUDEDOCKER ?= cms-claude
+CLAUDE_DC = HOST_HOME=$(HOME) HOST_UID=$(shell id -u) HOST_GID=$(shell id -g) docker compose -f docker/claude.yml -p cms-claude
+
+cbuild:
+	$(CLAUDE_DC) build cms-claude
+
+cup:
+	$(CLAUDE_DC) up -d cms-claude
+
+cdown:
+	$(CLAUDE_DC) stop cms-claude
+
+clog:
+	docker logs -f --tail=100 $(CLAUDEDOCKER)
+
+csh:
+	docker exec -it -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) $(CLAUDEDOCKER) bash -l
+
+# clogin: jalankan Claude di container (login akun Claude via /login pada pemakaian pertama).
+clogin:
+	docker exec -it -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) -e CLAUDE_CONFIG_DIR=/claude-home/.claude $(CLAUDEDOCKER) claude
+
 # Catch extra args so make doesn't error on them
 %:
 	@:
 
-.PHONY: push stack stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status
+.PHONY: push stack stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin

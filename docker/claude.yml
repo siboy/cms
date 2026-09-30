@@ -1,0 +1,39 @@
+# Container Claude lintas repo. Dikelola lewat Makefile (make cbuild/cup/cdown/clogin) yang
+# mengekspor HOST_HOME, HOST_UID, HOST_GID. Terpisah dari stack collab.yml.
+services:
+  cms-claude:
+    build:
+      context: ..
+      dockerfile: Dockerfile.claude
+    image: cms-claude:latest
+    container_name: cms-claude
+    restart: unless-stopped
+    # Network SAMA dgn newflask-claude. Jangan biarkan compose membuat bridge baru:
+    # subnet otomatisnya (172.20.0.0/16) bentrok dgn rute VPN ke DB 172.20.0.0/23.
+    networks:
+      - appnet
+    environment:
+      HOST_UID: ${HOST_UID:?jalankan lewat make}
+      HOST_GID: ${HOST_GID:?jalankan lewat make}
+      HOME: ${HOST_HOME:?jalankan lewat make}
+      CLAUDE_WORKDIR: ${HOST_HOME}/cms
+    working_dir: ${HOST_HOME}/cms
+    volumes:
+      # Path container = path host → skrip/Makefile yang pakai ~/flask dst. tetap jalan.
+      - ${HOST_HOME}/flask:${HOST_HOME}/flask
+      - ${HOST_HOME}/cms:${HOST_HOME}/cms
+      - ${HOST_HOME}/sekda:${HOST_HOME}/sekda
+      - ${HOST_HOME}/newflask:${HOST_HOME}/newflask
+      - ${HOST_HOME}/diskusidata:${HOST_HOME}/diskusidata
+      # Login Claude milik container ini (persisten, akun terpisah dari host).
+      - claude-home:/claude-home
+      # Aturan global host (read-only) supaya perilaku Claude sama.
+      - ${HOST_HOME}/.claude/CLAUDE.md:/claude-home/.claude/CLAUDE.md:ro
+
+volumes:
+  claude-home:
+
+networks:
+  appnet:
+    external: true
+    name: ${DOCKER_NETWORK:-my-network}

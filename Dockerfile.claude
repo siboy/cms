@@ -1,0 +1,34 @@
+# Container KHUSUS menjalankan Claude Code CLI untuk LINTAS REPO (flask, cms, sekda,
+# newflask, diskusidata). Repo di-mount dari host di PATH ABSOLUT YANG SAMA dgn host
+# (mis. /home/databoks/flask) supaya path di skrip/Makefile tetap valid, dan file
+# yang dibuat dimiliki uid/gid host (bukan root) → bisa diedit dari host maupun dari
+# container lain (mis. newflask-claude).
+#
+# Base = newflask:latest (env python lengkap: pandas dll). Kalau image itu belum ada:
+#   docker build -f Dockerfile.claude --build-arg BASE_IMAGE=python:3.12-slim .
+#
+# Kelola lewat Makefile repo cms:  make cbuild · make cup · make clogin · make csh
+ARG BASE_IMAGE=newflask:latest
+FROM ${BASE_IMAGE}
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates git ripgrep make \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @anthropic-ai/claude-code \
+    && npm cache clean --force \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY scripts/claude-runner.sh /usr/local/bin/claude-runner.sh
+RUN chmod +x /usr/local/bin/claude-runner.sh
+
+# Auth Claude tinggal di volume /claude-home/.claude (CLAUDE_CONFIG_DIR), terpisah
+# dari HOME runner — HOME sengaja dibuat = HOME host (lihat compose) agar `~/flask`
+# dst. di skrip/Makefile menunjuk ke repo yang di-mount.
+ENV CLAUDE_CONFIG_DIR=/claude-home/.claude \
+    DISABLE_AUTOUPDATER=1
+RUN mkdir -p /claude-home && chmod 777 /claude-home
+
+ENTRYPOINT ["/usr/local/bin/claude-runner.sh"]
+CMD []
