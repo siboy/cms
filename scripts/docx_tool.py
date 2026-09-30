@@ -9,7 +9,7 @@ Dokumen dipilih dengan --doc N (default 1). ID blok = kolom `id` (lihat perintah
   edit    <id> "<teks>" [--version N]      # ubah teks blok
   insert  <after_id|0> <kind> "<teks>" [--level N]   # kind: heading paragraph list_item caption note
   delete  <id>   |  restore <id>  |  move <id> <after_id|0>
-  pagebreak <after_id|0>
+  pagebreak <after_id|0> [--layout potrait|landscape:A4|A3|A2|F4|Legal|LxT]  # LxT = ukuran custom cm mis. 30x40
   table   <after_id|0> <file.csv> [--caption "..."] [--no-header]
   cell    <id> <row> <col> "<teks>"        # ubah satu sel tabel (0-based)
   addrow  <id> <after_row> "a|b|c"  |  delrow <id> <row>
@@ -48,6 +48,17 @@ def get_store(a):
 
 def after(v):
     return None if str(v) in ("0", "", "none") else int(v)
+
+
+def parse_layout(v):
+    """"landscape:A3" / "portrait:A4" / "landscape:30x40" (cm custom) -> data.layout"""
+    orient, _, size = v.partition(":")
+    if orient not in ("portrait", "landscape"):
+        raise ValueError("--layout: orientasi harus portrait|landscape")
+    if "x" in size.lower():
+        w, h = size.lower().split("x", 1)
+        return {"orientation": orient, "size": {"w_cm": float(w), "h_cm": float(h)}}
+    return {"orientation": orient, "size": size or "A4"}
 
 
 def label(b) -> str:
@@ -89,6 +100,7 @@ def main():
     ap.add_argument("--alt", default="")
     ap.add_argument("--caption", default=None)
     ap.add_argument("--no-header", action="store_true")
+    ap.add_argument("--layout", default=None, help="pagebreak: potrait|landscape:A4|A3|A2|F4|Legal|LxT(cm)")
     ap.add_argument("cmd")
     ap.add_argument("args", nargs="*")
     a = ap.parse_args()
@@ -118,7 +130,8 @@ def main():
     elif a.cmd == "move":
         st.move_block(int(x[0]), after(x[1]), u, a.version); print("OK")
     elif a.cmd == "pagebreak":
-        print("id baru:", st.add_page_break(doc, after(x[0]), u))
+        data = {"layout": parse_layout(a.layout)} if a.layout else None
+        print("id baru:", st.add_page_break(doc, after(x[0]), u, data=data))
     elif a.cmd == "table":
         with open(x[1], newline="", encoding="utf-8-sig") as f:
             rows = list(csv.reader(f))

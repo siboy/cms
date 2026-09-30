@@ -49,6 +49,27 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Tata letak halaman per bagian: landscape/A3 dll. (2026-09-30)** — sebelumnya engine SAMA SEKALI tak mendeteksi/menyimpan orientasi
+  atau ukuran kertas per section Word (mis. tabel Matriks UKL-UPL yang landscape di sumber, halaman lampiran peta A3): `docx_blocks.py`
+  cuma memakai `w:sectPr` utk batas `part`, geometrinya dibuang; `docx_build.py` selalu paksa A4 potrait di semua section.
+  Sekarang: modul baru `utils/pagelayout.py` (preset A4/A3/A2/F4/Legal + custom cm). Impor (`docx_blocks._postprocess`) mendeteksi
+  section sumber yang geometrinya beda dari section sebelumnya → disimpan sbg blok `page_break` dgn `data.layout:{orientation,size}`
+  (bukan dibuang spt sebelumnya); section yg tak berubah tetap dibuang (tak ada regresi). `docx_build.build()` membuka section Word
+  sungguhan di tiap blok `page_break` ber-`layout` (berlaku sampai marker berikutnya/batas part), section tanpa layout tetap page-break
+  biasa. API: `POST /docs/<id>/pagebreak {layout}` (opsional) & `PATCH /blocks/<id> {data:{layout}}` (ubah/hapus di blok yg sudah ada) —
+  tanpa migrasi skema (`data` sudah JSON bebas). UI: tombol "+ Page break" & "⛶ Tata letak" (khusus blok page_break) buka dialog
+  Orientasi/Ukuran. CLI: `docx_tool.py pagebreak <id> --layout landscape:A3` (atau `LxT` custom cm). Diuji manual (SQLite, docx sintetis
+  landscape+A3 & revert, serta dokumen tanpa perubahan section) — **belum dicoba di server MySQL/browser sungguhan**.
+  **Keterbatasan**: deteksi hanya jalan saat (re-)impor dari .docx asli — dokumen yg sudah ada di DB (mis. doc 12 AGRO GREEN ASIA) tak
+  otomatis dapat marker, tapi TETAP BISA diubah manual lewat UI tanpa impor ulang: tombol "⛶ Landscape" baru di blok `table`/`image`
+  (`wrapLandscape` di ui/index.html) langsung membungkus blok itu dgn 2 marker `page_break` (sebelum=layout pilihan, sesudah=revert
+  potrait A4) via 2x `POST /docs/<id>/pagebreak`. Unwrap: hapus/ubah kedua blok marker itu (tombol "Hapus" / "⛶ Tata letak" yg sudah ada).
+  Margin belum disesuaikan proporsional utk A3.
+  **Perbaikan susulan (sama hari)**: awalnya lebar tabel/gambar/leader-titik TOC & footer masih pakai konstanta modul `TEXT_W` tetap
+  (dihitung dari A4), jadi di halaman landscape/A3 marginnya tetap kosong & tabel tak melebar. Diganti `self.text_w` (atribut Builder,
+  dihitung ulang tiap `_section_setup` dari `section.page_width` aktif) dipakai di `_table`/`_image`/footer/TOC leader — tabel & gambar
+  kini otomatis melebar mengikuti lebar halaman section yang sedang aktif. Diuji: tabel 3 kolom di halaman landscape A3 kini
+  total lebar 36.5cm (penuh, sebelumnya kepotong ke 15.5cm gaya A4).
 - [x] **Tabel existing tak bisa → Mode form (2026-09-30)** — Matriks UKL-UPL (doc 12, blok 4348) ditolak karena (1) kolom ke-13 "hantu" (lebar 0, kosong) dan (2) sel kosong berisi paragraf kosong.
   Perbaikan `utils/tablemodel.py`: `_trim_ghost_cols`, sel kosong berparagraf disimpan `raw`, kolom tanpa header ("Kolom N") tak dianggap selisih.
   Pesan gagal kini spesifik (`_describe_diff`: baris/kolom + sebab). **Konversi longgar** `grid_to_long_lenient` (badan tabel dinormalkan: rowspan diisi-salin, colspan bentrok digeser/dipersempit, sel di luar kolom dibuang, header boleh disusun ulang) —

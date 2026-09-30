@@ -476,8 +476,8 @@ class BlockStore:
             self._x(c, f"UPDATE cms_blocks SET {sets} WHERE id=?", (*args, block_id))
 
     # ------------------------------------------------------------ konten khusus
-    def add_page_break(self, doc_id: int, after_id: Optional[int], user: str = "") -> int:
-        return self.insert_block(doc_id, after_id, "page_break", user=user)
+    def add_page_break(self, doc_id: int, after_id: Optional[int], user: str = "", data: Optional[dict] = None) -> int:
+        return self.insert_block(doc_id, after_id, "page_break", data=data, user=user)
 
     def add_table(self, doc_id: int, after_id: Optional[int], rows: list[list[str]], header: bool = True,
                   widths: Optional[list[int]] = None, caption: Optional[str] = None, user: str = "") -> list[int]:

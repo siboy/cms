@@ -350,10 +350,12 @@ def table_columns(bid):
 @bp.post("/docs/<int:doc_id>/pagebreak")
 @auth.require("admin", "author")
 def pagebreak(doc_id):
-    after = need(body().get("after_id"), "after_id")
+    d = body()
+    after = need(d.get("after_id"), "after_id")
     if not auth.can_edit(doc_id, after):
         abort(403, description="tidak ditugaskan pada bab ini")
-    nid = S().add_page_break(doc_id, after, g.user["username"])
+    layout = d.get("layout")
+    nid = S().add_page_break(doc_id, after, g.user["username"], data={"layout": layout} if layout else None)
     emit(doc_id, "insert", ids=[nid], after=after)
     return jsonify(id=nid), 201
 

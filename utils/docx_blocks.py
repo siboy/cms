@@ -28,6 +28,7 @@ import re
 from collections import Counter
 from typing import Any, Optional
 
+from . import pagelayout
 from .tablemodel import attach_long
 
 from docx import Document
@@ -506,7 +507,30 @@ def _postprocess(blocks: list[dict], ctx: Ctx) -> list[dict]:
         elif b["kind"] == "image":
             b["data"]["role"] = "figure"
     # heading generated = lepas skip (heading H1-nya sendiri tetap dibangun)
-    # section_break tidak lagi diperlukan: part yang menentukan
+    # section_break: hanya dipertahankan (jadi page_break + data.layout) bila section yang
+    # dimulainya benar-benar berbeda tata letak (landscape / ukuran lain) dari section sebelumnya;
+    # sisanya dibuang seperti sebelumnya karena part sudah menentukan batasnya.
+    prev_layout = None
+    try:
+        s0 = ctx.doc.sections[0]
+        prev_layout = pagelayout.classify(s0.page_width, s0.page_height)
+    except Exception:
+        prev_layout = None
+    for b in blocks:
+        if b["kind"] != "section_break":
+            continue
+        cls = None
+        try:
+            sec_new = b["data"]["section_no"] + 1
+            if 0 <= sec_new < len(ctx.doc.sections):
+                s = ctx.doc.sections[sec_new]
+                cls = pagelayout.classify(s.page_width, s.page_height)
+        except Exception:
+            cls = None
+        if cls != prev_layout:
+            b["kind"] = "page_break"
+            b["data"]["layout"] = cls or {"orientation": "portrait", "size": "A4"}
+        prev_layout = cls
     blocks = [b for b in blocks if b["kind"] != "section_break"]
     for n, b in enumerate(blocks, 1):
         b["seq"] = n

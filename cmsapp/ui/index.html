@@ -152,7 +152,9 @@ function bodyOf(b){
   td.onblur=async()=>{const v0=dom2mk(td);if(v0===cellText(c))return;
   try{const v=await api('PATCH',`/blocks/${b.id}/cell`,{row:ri,col:c.col,text:v0,version:b.version});b.version=v.version;c.blocks=[{text:v0}]}catch(e){note(e.message,1)}};tr.append(td)});});const w=document.createElement('div');w.className='tw';w.append(t);return w}
  if(b.kind==='image'){const i=document.createElement('img');i.src=`/api/docs/${doc}/asset/${b.data.asset}`;i.alt=b.data.alt||'';return i}
- if(b.kind==='page_break'){const d=document.createElement('div');d.textContent='— pindah halaman —';d.style.color='var(--mut)';return d}
+ if(b.kind==='page_break'){const d=document.createElement('div'),L=b.data.layout;
+  d.textContent=L?`— ganti halaman: ${L.orientation==='landscape'?'Landscape':'Potrait'} ${typeof L.size==='object'?L.size.w_cm+'×'+L.size.h_cm+'cm':L.size} —`:'— pindah halaman —';
+  d.style.color='var(--mut)';return d}
  const d=document.createElement('div');d.className='txt';d.append(mk2dom(b.text));return d}
 function view(b){const el=document.createElement('div');el.className='blk'+(b.kind==='heading'?' h':'')+(b.locked_by?' locked':'');el.dataset.id=b.id;
  const canEdit=me.role!=='reviewer';
@@ -164,7 +166,8 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   btn('+ Gambar',async()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('after_id',b.id);
    try{await api('POST',`/docs/${doc}/images`,fd,true)}catch(e){note(e.message,1)}};f.click()});
   btn('+ Tabel',()=>tableDlg(b));
-  btn('+ Page break',async()=>{await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id})});
+  btn('+ Page break',async()=>{layoutDlg(null,async layout=>{await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id,layout})})});
+  if(b.kind==='page_break')btn('⛶ Tata letak',async()=>{layoutDlg(b.data.layout||null,async layout=>{await api('PATCH',`/blocks/${b.id}`,{data:{layout},version:b.version})})});
   btn('Hapus',async()=>{if(confirm('Hapus blok ini?'))await api('DELETE',`/blocks/${b.id}?version=${b.version}`)});
   btn('Riwayat',()=>hist(el,b));
   if(['heading','paragraph','list_item'].includes(b.kind)&&canEdit){const ls=document.createElement('select');ls.title='Ubah jenis blok (paragraf / heading / daftar)';
@@ -179,6 +182,7 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
    btn('⇥ Indent',()=>api('PATCH',`/blocks/${b.id}`,{data:{...d,ilvl:Math.min((d.ilvl||0)+1,3)},version:b.version}));
    btn('⇤ Outdent',()=>api('PATCH',`/blocks/${b.id}`,{data:{...d,ilvl:Math.max((d.ilvl||0)-1,0)},version:b.version}))}
   btn('↑',()=>mv(el,b,-1));btn('↓',()=>mv(el,b,1));
+  if(['table','image'].includes(b.kind))btn('⛶ Landscape',async()=>wrapLandscape(el,b));
   if(b.kind==='table'&&b.data.long){btn('✎ Edit form',async()=>formEd(b.id));btn('Kolom & header',async()=>formEd(b.id,'cols'));
    btn('→ Mode grid',async()=>{if(confirm('Kembali ke mode grid? Edit per record dinonaktifkan untuk tabel ini.'))await api('POST',`/blocks/${b.id}/long`,{on:false})})}
   else if(b.kind==='table'){const rw=()=>{const t=el.querySelector('table');return t.dataset.row!==undefined?+t.dataset.row:(b.data.rows.length-1)};
@@ -195,6 +199,11 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
  x.onclick=()=>{openCm.has(b.id)?openCm.delete(b.id):openCm.add(b.id);refreshBlock(b.id)};a.append(x)}
  const sel=document.createElement('select');['draft','review','approved'].forEach(s=>sel.add(new Option(s,s,0,s===b.status)));
  sel.onchange=()=>api('PATCH',`/blocks/${b.id}`,{status:sel.value,version:b.version}).catch(e=>note(e.message,1));a.append(sel);el.append(a);if(openCm.has(b.id))el.append(cmPanel(b));return el}
+async function wrapLandscape(el,b){const prevEl=el.previousElementSibling;
+ if(!prevEl){note('Tambahkan blok (mis. judul) sebelum ini dulu, baru bisa ditandai landscape.',1);return}
+ layoutDlg({orientation:'landscape',size:'A4'},async layout=>{
+  await api('POST',`/docs/${doc}/pagebreak`,{after_id:+prevEl.dataset.id,layout});
+  await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id,layout:{orientation:'portrait',size:'A4'}})})}
 async function mv(el,b,dir){let after;
  if(dir<0){const p=el.previousElementSibling,pp=p&&p.previousElementSibling;if(!pp)throw new Error('sudah paling atas dalam bab');after=+pp.dataset.id}
  else{const n=el.nextElementSibling;if(!n)throw new Error('sudah paling bawah dalam bab');after=+n.dataset.id}
@@ -222,6 +231,22 @@ function tableDlg(b){const m=document.createElement('div');m.className='mask';m.
   if(t.trim())rows=t.split('\n').map(l=>l.split('\t'));else rows=Array.from({length:+f.r.value},()=>Array(+f.c.value).fill(''));
   try{await api('POST',`/docs/${doc}/tables`,{after_id:b.id,rows,header:f.h.checked,caption:f.cap.value.trim()||null});m.remove()}catch(x){note(x.message,1)}}}
 
+function layoutDlg(cur,onSave){const m=document.createElement('div');m.className='mask';
+ const sizes=['A4','A3','A2','F4','Legal','Custom'];
+ const curSize=cur&&typeof cur.size==='object'?'Custom':(cur&&cur.size)||'A4';
+ const cw=(cur&&typeof cur.size==='object'&&cur.size.w_cm)||29.7,ch=(cur&&typeof cur.size==='object'&&cur.size.h_cm)||42;
+ m.innerHTML=`<form class=dlg><b>Tata letak halaman</b>
+ <label><span><input type=checkbox name=on ${cur?'checked':''}> tata letak khusus mulai halaman ini (kalau tidak: page break biasa)</span></label>
+ <label>Orientasi<select name=o><option value=portrait ${!cur||cur.orientation!=='landscape'?'selected':''}>Potrait</option><option value=landscape ${cur&&cur.orientation==='landscape'?'selected':''}>Landscape</option></select></label>
+ <label>Ukuran<select name=s>${sizes.map(s=>`<option value="${s}" ${s===curSize?'selected':''}>${s}</option>`).join('')}</select></label>
+ <div class=cw style="display:${curSize==='Custom'?'flex':'none'};gap:8px"><label>Lebar cm<input name=w type=number step=0.1 min=1 value=${cw}></label><label>Tinggi cm<input name=h type=number step=0.1 min=1 value=${ch}></label></div>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.s.onchange=()=>{f.querySelector('.cw').style.display=f.s.value==='Custom'?'flex':'none'};
+ f.onsubmit=async e=>{e.preventDefault();
+  let layout=null;
+  if(f.on.checked)layout={orientation:f.o.value,size:f.s.value==='Custom'?{w_cm:+f.w.value,h_cm:+f.h.value}:f.s.value};
+  try{await onSave(layout);m.remove()}catch(x){note(x.message,1)}}}
 let fe=null;
 function tblPreview(data,maxh){const w=document.createElement('div');w.className='tw';if(maxh)w.style.maxHeight=maxh+'px';const t=document.createElement('table');
  (data.rows||[]).forEach(r=>{const tr=t.insertRow();r.cells.forEach(c=>{const td=document.createElement(r.header?'th':'td');if(c.colspan>1)td.colSpan=c.colspan;if(c.rowspan>1)td.rowSpan=c.rowspan;

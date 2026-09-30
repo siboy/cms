@@ -27,6 +27,8 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.table import _Cell
 
+from . import pagelayout
+
 PAGE_W, PAGE_H = Cm(21.0), Cm(29.7)
 MARGIN_L, MARGIN_R, MARGIN_T, MARGIN_B = Cm(3.0), Cm(2.5), Cm(2.5), Cm(2.5)
 TEXT_W = PAGE_W - MARGIN_L - MARGIN_R
@@ -286,6 +288,7 @@ class Builder:
         self.fresh_cells: set[int] = set()
         self._num_ctx = None    # (container id, num id) untuk daftar bernomor yang sedang berjalan
         self.stats = {"blocks": 0, "tables": 0, "images": 0, "missing_images": 0}
+        self.text_w = TEXT_W    # lebar teks section yg sedang dibangun (berubah tiap _section_setup, mis. landscape/A3)
 
     # ---- util
     def _para(self, container, style=None):
@@ -404,8 +407,8 @@ class Builder:
             p.add_run(f"[gambar hilang: {d.get('asset', '')[:8]}]")
             return
         a = self.assets[d["asset"]]
-        w = Emu(d["cx"]) if d.get("cx") else Cm(a["px_w"] / 96 * 2.54) if a.get("px_w") else TEXT_W
-        maxw = Cm(7.5) if in_cell else TEXT_W
+        w = Emu(d["cx"]) if d.get("cx") else Cm(a["px_w"] / 96 * 2.54) if a.get("px_w") else self.text_w
+        maxw = Cm(7.5) if in_cell else self.text_w
         w = min(w, maxw)
         if a.get("px_w") and a.get("px_h") and w * a["px_h"] / a["px_w"] > MAX_IMG_H:
             w = int(MAX_IMG_H * a["px_w"] / a["px_h"])
@@ -426,7 +429,7 @@ class Builder:
         if top:
             t.autofit = False
             tot = sum(grid) if len(grid) == ncols and sum(grid) else 0
-            widths = [int(TEXT_W * g / tot) for g in grid] if tot else [int(TEXT_W / ncols)] * ncols
+            widths = [int(self.text_w * g / tot) for g in grid] if tot else [int(self.text_w / ncols)] * ncols
         merges = []
         for ri, row in enumerate(rows):
             text_len = sum(len(x["text"]) for c in row["cells"] for x in c["blocks"])
@@ -494,7 +497,7 @@ class Builder:
             p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
             p.paragraph_format.left_indent = Cm(0.6 * (lvl - 1))
             p.paragraph_format.space_after = Pt(2)
-            p.paragraph_format.tab_stops.add_tab_stop(TEXT_W, WD_TAB_ALIGNMENT.RIGHT, 1)  # titik-titik
+            p.paragraph_format.tab_stops.add_tab_stop(self.text_w, WD_TAB_ALIGNMENT.RIGHT, 1)  # titik-titik
             p.add_run(re.sub(r"\\(.)", r"\1", txt))
             paras.append(p)
         first, last = paras[0], paras[-1]
@@ -515,10 +518,11 @@ class Builder:
         last._p.append(fc("end", last, False))
 
     # ---- seksi & footer
-    def _section_setup(self, section, part):
-        section.page_width, section.page_height = PAGE_W, PAGE_H
+    def _section_setup(self, section, part, layout=None):
+        section.page_width, section.page_height, section.orientation = pagelayout.resolve(layout)
         section.left_margin, section.right_margin = MARGIN_L, MARGIN_R
         section.top_margin, section.bottom_margin = MARGIN_T, MARGIN_B
+        self.text_w = section.page_width - MARGIN_L - MARGIN_R
         sp = section._sectPr
         for e in sp.findall(qn("w:pgNumType")):
             sp.remove(e)
@@ -542,7 +546,7 @@ class Builder:
             add_field(p, "PAGE", "i", small)
         else:
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            p.paragraph_format.tab_stops.add_tab_stop(TEXT_W, WD_TAB_ALIGNMENT.RIGHT)
+            p.paragraph_format.tab_stops.add_tab_stop(self.text_w, WD_TAB_ALIGNMENT.RIGHT)
             ppr = p._p.get_or_add_pPr()
             bd = OxmlElement("w:pBdr"); top = OxmlElement("w:top")
             for a, v in (("val", "single"), ("sz", "4"), ("space", "4"), ("color", "808080")):
@@ -564,6 +568,8 @@ class Builder:
         doc = self.doc
         setup_styles(doc, self.meta.get("base_font") or "Times New Roman")
         cur_part = None
+        cur_sec_part = None
+        cur_layout = None      # tata letak (data.layout) section yang sedang terbuka; None = baku part ybs.
         buf: list[dict] = []
         parts = ["cover", "front", "body", "lampiran"]
 
@@ -583,14 +589,23 @@ class Builder:
                 elif not (cur_part == "body" and part == "lampiran"):
                     s = doc.add_section(WD_SECTION.NEW_PAGE)
                     self._section_setup(s, sec_part)
-                cur_part = part
+                cur_part, cur_sec_part, cur_layout = part, sec_part, None
             if part == "cover":
                 if b["kind"] == "paragraph" and not b["data"].get("skip_build"):
                     self._cover_block(b)
                 elif b["kind"] == "image" and not b["data"].get("skip_build"):
                     self.render(doc, [b])
-            else:
-                buf.append(b)
+                continue
+            layout = b["data"].get("layout") if b["kind"] == "page_break" else None
+            if layout is not None and layout != cur_layout:
+                # tata letak berbeda (landscape/A3/...) diminta lewat page_break -> section Word sungguhan,
+                # blok penanda sendiri tak perlu dirender (section break sudah memindah halaman)
+                flush()
+                s = doc.add_section(WD_SECTION.NEW_PAGE)
+                self._section_setup(s, cur_sec_part, layout=layout)
+                cur_layout = layout
+                continue
+            buf.append(b)
         flush()
 
         # field diperbarui otomatis saat dibuka
