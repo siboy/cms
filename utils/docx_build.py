@@ -245,6 +245,25 @@ def _new_restart_num(doc, style_name: str):
         return None
 
 
+def _filter_hidden(blocks: list[dict]) -> list[dict]:
+    """Buang heading yang ditandai `data.hidden` (lihat BlockStore.set_heading_hidden) + SELURUH subtree-nya
+    (sub-heading level lebih dalam, paragraf, tabel, gambar di dalamnya) dari daftar blok yang akan
+    diekspor -- blok ini TETAP ada di CMS (bukan soft-delete), cuma disembunyikan dari DOCX hasil ekspor
+    kali ini. Subtree berakhir saat ketemu heading lain dengan level <= level heading yang disembunyikan."""
+    out = []
+    hide_level: Optional[int] = None
+    for b in blocks:
+        if b["kind"] == "heading" and hide_level is not None and b["level"] <= hide_level:
+            hide_level = None
+        if hide_level is not None:
+            continue
+        if b["kind"] == "heading" and (b.get("data") or {}).get("hidden"):
+            hide_level = b["level"]
+            continue
+        out.append(b)
+    return out
+
+
 # ---------------------------------------------------------------- label pra-hitung
 def compute_labels(blocks: list[dict], per_chapter_captions: bool = False) -> tuple[dict[float, str], set[float]]:
     """seq -> label: prefix nomor heading, ATAU nomor caption Tabel/Gambar (TANPA kata 'Tabel'/'Gambar' itu
@@ -290,7 +309,7 @@ def compute_labels(blocks: list[dict], per_chapter_captions: bool = False) -> tu
 
 class Builder:
     def __init__(self, blocks, assets, meta, media_root=""):
-        self.blocks = sorted(blocks, key=lambda b: b["seq"])
+        self.blocks = _filter_hidden(sorted(blocks, key=lambda b: b["seq"]))
         self.assets = {a["sha1"]: a for a in assets}
         self.meta = meta
         self.media_root = media_root

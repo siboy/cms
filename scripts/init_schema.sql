@@ -137,12 +137,21 @@ CREATE TABLE IF NOT EXISTS cms_projects (
     end_date          DATE DEFAULT NULL,
     status            ENUM('planning','ongoing','completed','on_hold') NOT NULL DEFAULT 'planning',
     progress_override TINYINT DEFAULT NULL,        -- NULL = pakai hitung otomatis dari status blok
+    sales_team        VARCHAR(255) DEFAULT NULL,    -- nama tim/PIC sales yang menangani proyek ini
+    pic               VARCHAR(255) DEFAULT NULL,    -- PIC proyek keseluruhan (bukan per-bab, lihat cms_assign)
+    pemrakarsa_contact TEXT,                        -- nama/jabatan/kontak (telp/email) pemrakarsa (klien)
     created_by        VARCHAR(100) DEFAULT NULL,
     created_at        VARCHAR(19) DEFAULT NULL,
     updated_at        VARCHAR(19) DEFAULT NULL,
     deleted_at        VARCHAR(19) DEFAULT NULL,
     INDEX idx_proj_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- kolom ditambah belakangan (2026-09-30): CREATE TABLE IF NOT EXISTS di atas tak mengubah tabel yg sudah
+-- ada di server, jadi tambah lewat ALTER eksplisit (idempoten, MySQL 8.0.29+).
+ALTER TABLE cms_projects ADD COLUMN IF NOT EXISTS sales_team VARCHAR(255) DEFAULT NULL AFTER progress_override;
+ALTER TABLE cms_projects ADD COLUMN IF NOT EXISTS pic VARCHAR(255) DEFAULT NULL AFTER sales_team;
+ALTER TABLE cms_projects ADD COLUMN IF NOT EXISTS pemrakarsa_contact TEXT AFTER pic;
 
 CREATE TABLE IF NOT EXISTS cms_project_documents (
     id          INT AUTO_INCREMENT PRIMARY KEY,

@@ -300,6 +300,59 @@ def patch_block(bid):
     return jsonify(id=bid, version=v)
 
 
+@bp.post("/blocks/<int:bid>/generated")
+@auth.require("admin")
+def set_generated(bid):
+    """Set/ganti/hapus marker Daftar Isi/Tabel/Gambar pada heading yang sudah ada (admin-only, sama spt
+    menyisipkan daftar baru). generated: 'toc'|'tof_tabel'|'tof_gambar'|null (null = kembalikan jadi heading biasa)."""
+    d = body()
+    b = S().get_block(bid)
+    v = S().set_heading_generated(bid, d.get("generated") or None, g.user["username"], expected_version=d.get("version"))
+    emit(b["doc_id"], "block", id=bid, version=v, force_global=True)
+    return jsonify(id=bid, version=v)
+
+
+@bp.post("/docs/<int:doc_id>/outline")
+@auth.require("admin", "reviewer")
+def insert_outline(doc_id):
+    """Tambah heading (outline) langsung dari tab Proyek->PIC: admin/reviewer (QC) boleh menambah/mengurangi
+    outline independen dari penugasan PIC per-bab -- beda dari POST /docs/<id>/blocks (general, butuh
+    can_edit/author tertugas) yang dipakai editor dokumen biasa."""
+    d = body()
+    level = int(need(d.get("level"), "level"))
+    if not 1 <= level <= 4:
+        raise ValueError("level 1..4")
+    nid = S().insert_block(doc_id, d.get("after_id"), "heading", d.get("text", ""), level=level,
+                           part=d.get("part"), user=g.user["username"])
+    emit(doc_id, "insert", ids=[nid], after=d.get("after_id"))
+    return jsonify(id=nid), 201
+
+
+@bp.delete("/outline/<int:bid>")
+@auth.require("admin", "reviewer")
+def delete_outline(bid):
+    """Hapus (soft-delete) satu heading outline -- admin/reviewer (QC), lihat insert_outline."""
+    b = S().get_block(bid)
+    if b["kind"] != "heading":
+        raise ValueError("bukan blok heading")
+    S().delete_block(bid, g.user["username"], request.args.get("version", type=int))
+    emit(b["doc_id"], "delete", id=bid)
+    return jsonify(ok=True)
+
+
+@bp.post("/blocks/<int:bid>/hidden")
+@auth.require("admin", "reviewer")
+def set_hidden(bid):
+    """Sembunyikan/tampilkan heading dari ekspor DOCX TANPA dihapus (beda dari DELETE /outline/<id> yang
+    soft-delete) -- heading+seluruh subtree-nya (sub-heading, paragraf, tabel, gambar) ikut tak diekspor
+    selama hidden=true, lihat utils/docx_build._filter_hidden."""
+    d = body()
+    b = S().get_block(bid)
+    v = S().set_heading_hidden(bid, bool(d.get("hidden")), g.user["username"], expected_version=d.get("version"))
+    emit(b["doc_id"], "block", id=bid, version=v, force_global=True)
+    return jsonify(id=bid, version=v)
+
+
 @bp.post("/docs/<int:doc_id>/blocks")
 @auth.require("admin", "author")
 def insert(doc_id):
@@ -509,10 +562,11 @@ def _chapter_range(doc_id: int, ch: int):
 @bp.get("/docs/<int:doc_id>/comments")
 @auth.require()
 def comments(doc_id):
-    """?chapter=<id H1> -> semua komentar dalam bab; tanpa parameter -> seluruh dokumen."""
+    """?chapter=<id H1> -> semua komentar dalam bab; ?block_id=<id> -> satu blok saja (mis. catatan outline
+    di tab Proyek->PIC); tanpa parameter -> seluruh dokumen."""
     ch = request.args.get("chapter", type=int)
     fs, ts = _chapter_range(doc_id, ch) if ch else (None, None)
-    return jsonify(comments=S().list_comments(doc_id, fs, ts))
+    return jsonify(comments=S().list_comments(doc_id, fs, ts, block_id=request.args.get("block_id", type=int)))
 
 
 @bp.post("/blocks/<int:bid>/comments")

@@ -29,6 +29,7 @@ from .docx_blocks import plain
 TEXT_KINDS = {"paragraph", "heading", "list_item"}
 KINDS = {"heading", "paragraph", "list_item", "caption", "table", "image", "note", "page_break"}
 PARTS = ("cover", "front", "body", "lampiran")
+GENLIST_KINDS = {"toc", "tof_tabel", "tof_gambar"}
 GAP = 1024.0
 
 
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS cms_assets (
 CREATE TABLE IF NOT EXISTS cms_projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, client TEXT, description TEXT, location TEXT,
     start_date TEXT, end_date TEXT, status TEXT NOT NULL DEFAULT 'planning', progress_override INTEGER,
+    sales_team TEXT, pic TEXT, pemrakarsa_contact TEXT,
     created_by TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT);
 CREATE TABLE IF NOT EXISTS cms_project_documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, doc_id INTEGER NOT NULL,
@@ -413,6 +415,44 @@ class BlockStore:
             raise ValueError("tidak ada yang diubah")
         return self._mutate(block_id, user, expected_version, sets, "edit")
 
+    def set_heading_generated(self, block_id: int, generated: Optional[str], user: str = "",
+                              expected_version: Optional[int] = None) -> int:
+        """Set/ganti/hapus marker 'daftar otomatis' (Daftar Isi/Tabel/Gambar, lihat GENLIST_KINDS) pada
+        heading yang SUDAH ADA -- `generated` kosong/None = kembalikan jadi heading biasa: utk H1/body,
+        penomoran bab otomatis dipulihkan persis spt heading baru (lihat insert_block/_chapter_num_data)
+        krn tadinya sengaja dimatikan ('numbered':False) saat ditandai sbg daftar otomatis."""
+        b = self.get_block(block_id)
+        if b["kind"] != "heading":
+            raise ValueError("bukan blok heading")
+        if generated and generated not in GENLIST_KINDS:
+            raise ValueError(f"generated harus salah satu {sorted(GENLIST_KINDS)} atau kosong")
+        data = dict(b["data"] or {})
+        for k in ("generated", "numbered", "num_fmt", "num_text"):
+            data.pop(k, None)
+        if generated:
+            data["generated"] = generated
+            data["numbered"] = False
+        elif b["level"] == 1 and b["part"] == "body":
+            with self._tx() as c:
+                data.update(self._chapter_num_data(c, b["doc_id"]))
+        return self.update_block(block_id, user, data=data, expected_version=expected_version)
+
+    def set_heading_hidden(self, block_id: int, hidden: bool, user: str = "",
+                           expected_version: Optional[int] = None) -> int:
+        """Sembunyikan/tampilkan heading dari ekspor DOCX TANPA dihapus (beda dari delete_block yang
+        soft-delete, dan tetap tampil/bisa diedit penuh di CMS) -- cuma set/lepas `data.hidden`. Heading +
+        seluruh subtree-nya (sub-heading level lebih dalam, paragraf, tabel, gambar di dalamnya) ikut tak
+        diekspor selama hidden=True, lihat utils/docx_build._filter_hidden."""
+        b = self.get_block(block_id)
+        if b["kind"] != "heading":
+            raise ValueError("bukan blok heading")
+        data = dict(b["data"] or {})
+        if hidden:
+            data["hidden"] = True
+        else:
+            data.pop("hidden", None)
+        return self.update_block(block_id, user, data=data, expected_version=expected_version)
+
     def delete_block(self, block_id: int, user: str = "", expected_version: Optional[int] = None):
         """Soft delete (bisa di-restore lewat restore_block)."""
         self._mutate(block_id, user, expected_version, {"deleted_at": _now()}, "delete")
@@ -726,16 +766,19 @@ class BlockStore:
         name = (name or "").strip()
         if not name:
             raise ValueError("nama proyek wajib diisi")
-        cols = ["client", "description", "location", "start_date", "end_date", "status"]
+        cols = ["client", "description", "location", "start_date", "end_date", "status", "sales_team", "pic", "pemrakarsa_contact"]
         vals = [fields.get(k) for k in cols]
         with self._tx() as c:
             cur = self._x(c, "INSERT INTO cms_projects(name,client,description,location,start_date,end_date,status,"
-                             "created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                          (name, *vals[:-1], vals[-1] or "planning", user, _now(), _now()))
+                             "sales_team,pic,pemrakarsa_contact,created_by,created_at,updated_at) "
+                             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (name, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5] or "planning",
+                           vals[6], vals[7], vals[8], user, _now(), _now()))
             return cur.lastrowid
 
     def update_project(self, project_id: int, **fields) -> None:
-        allowed = {"name", "client", "description", "location", "start_date", "end_date", "status", "progress_override"}
+        allowed = {"name", "client", "description", "location", "start_date", "end_date", "status", "progress_override",
+                   "sales_team", "pic", "pemrakarsa_contact"}
         with self._tx() as c:
             if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
                 raise KeyError(f"proyek {project_id} tidak ada")
@@ -865,6 +908,116 @@ class BlockStore:
             return self._all(c, "SELECT pd.*, d.filename, d.status AS doc_status, d.updated_at AS doc_updated_at "
                                  "FROM cms_project_documents pd JOIN cms_documents d ON d.id=pd.doc_id "
                                  "WHERE pd.project_id=? ORDER BY pd.report_type, pd.id", (project_id,))
+
+    def apply_project_template(self, new_project_id: int, template_project_id: int, user: str = "") -> int:
+        """Untuk tiap laporan (dokumen tertaut) di proyek `template_project_id`, buat dokumen BARU KOSONG
+        berisi salinan outline (heading H1-H4, tanpa isi/tabel/gambar) + tim (cms_assign) lalu tautkan ke
+        `new_project_id` dengan report_type/label yang sama. Return jumlah dokumen yang dibuat.
+        (Tim ikut tersalin krn dokumen baru 1:1 hasil klon dokumen sumber -- beda dgn `copy_team_to_document`
+        yg dipakai saat dokumen & tim dipilih terpisah/independen, lihat situ.)"""
+        docs = self.list_project_documents(template_project_id)
+        for d in docs:
+            new_doc_id, idmap = self._clone_outline(d["doc_id"], user)
+            self._copy_assign_mapped(new_doc_id, d["doc_id"], idmap)
+            self.link_document(new_project_id, new_doc_id, d.get("report_type") or "draft", d.get("label") or "")
+        return len(docs)
+
+    def list_documents_with_project(self) -> list[dict]:
+        """Semua dokumen + (kalau tertaut) id/nama proyek & report_type -- dipakai dialog pilih dokumen
+        sumber salin outline/tim: bisa difilter per proyek, atau langsung dicari lintas proyek by nama."""
+        with self._tx() as c:
+            return self._all(c, "SELECT d.id, d.filename, d.status, d.updated_at, pd.project_id, "
+                                 "p.name AS project_name, pd.report_type FROM cms_documents d "
+                                 "LEFT JOIN cms_project_documents pd ON pd.doc_id=d.id "
+                                 "LEFT JOIN cms_projects p ON p.id=pd.project_id AND p.deleted_at IS NULL "
+                                 "ORDER BY d.id DESC")
+
+    def clone_document_outline(self, new_project_id: int, src_doc_id: int, report_type: str = "draft",
+                               label: str = "", user: str = "") -> int:
+        """Salin HANYA outline (heading H1-H4) SATU dokumen sumber (dipilih langsung, baik tertaut ke
+        proyek manapun atau tak tertaut sama sekali) jadi dokumen laporan BARU KOSONG ditautkan ke
+        `new_project_id`. Tim/PIC SENGAJA TIDAK ikut tersalin di sini -- tim bisa beda dari dokumen yang
+        dijadikan acuan outline; pakai `copy_team_to_document` terpisah kalau perlu. Return id dokumen baru."""
+        new_doc_id, _idmap = self._clone_outline(src_doc_id, user)
+        self.link_document(new_project_id, new_doc_id, report_type, label)
+        return new_doc_id
+
+    def copy_team_to_document(self, dst_doc_id: int, src_doc_id: int) -> int:
+        """Salin HANYA tim (cms_assign) dari `src_doc_id` ke `dst_doc_id` yang SUDAH ADA -- independen dari
+        salin outline, krn tim bisa dipilih dari dokumen/proyek lain yang tak ada hubungannya dgn outline
+        dokumen tujuan. Terbatas scope 'part:<cover|front|body|lampiran>' (penugasan tingkat bagian) karena
+        scope 'heading:<id>' hanya valid kalau id heading itu memang ada di dokumen tujuan -- tanpa struktur
+        bab yang sama/berkorespondensi, pemetaan heading->heading tak bisa dijamin benar. Return jumlah
+        penugasan baru yang ditambahkan (duplikat yg sudah ada dilewati)."""
+        try:
+            with self._tx() as c:
+                assigns = self._all(c, "SELECT user_id, scope FROM cms_assign WHERE doc_id=? AND scope LIKE 'part:%'",
+                                    (src_doc_id,))
+        except Exception:                                     # noqa: BLE001
+            return 0
+        n = 0
+        for a in assigns:
+            try:
+                with self._tx() as c:
+                    if self._one(c, "SELECT 1 AS x FROM cms_assign WHERE doc_id=? AND user_id=? AND scope=?",
+                                 (dst_doc_id, a["user_id"], a["scope"])) is None:
+                        self._x(c, "INSERT INTO cms_assign(doc_id,user_id,scope) VALUES (?,?,?)",
+                                (dst_doc_id, a["user_id"], a["scope"]))
+                        n += 1
+            except Exception:                                 # noqa: BLE001
+                pass
+        return n
+
+    def _clone_outline(self, src_doc_id: int, user: str = "") -> tuple[int, dict[int, int]]:
+        """Buat dokumen baru kosong (tanpa blok isi) berisi salinan heading H1-H4 dokumen sumber (urutan/
+        level/part/teks sama). Caption/tabel/gambar SENGAJA tak disalin (di luar cakupan 'outline').
+        Return (id dokumen baru, peta id heading lama->baru)."""
+        with self._tx() as c:
+            src = self._one(c, "SELECT filename FROM cms_documents WHERE id=?", (src_doc_id,))
+            headings = self._all(c, "SELECT id, part, level, text FROM cms_blocks WHERE doc_id=? AND kind='heading' "
+                                     "AND deleted_at IS NULL ORDER BY seq, id", (src_doc_id,))
+            cur = self._x(c, "INSERT INTO cms_documents(filename, orig_path, media_dir, manifest, status, "
+                             "uploaded_by, uploaded_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                          (f"Template: {(src or {}).get('filename') or 'dokumen'}", "", None, "{}", "split",
+                           user, _now(), _now()))
+            new_doc_id = cur.lastrowid
+        idmap: dict[int, int] = {}
+        last = None
+        for h in headings:
+            last = self.insert_block(new_doc_id, last, "heading", h["text"] or "", level=h["level"], part=h["part"], user=user)
+            idmap[h["id"]] = last
+        return new_doc_id, idmap
+
+    def _copy_assign_mapped(self, new_doc_id: int, src_doc_id: int, idmap: dict[int, int]) -> None:
+        """Salin cms_assign dari src_doc_id ke new_doc_id yang headingnya PERSIS hasil klon src_doc_id
+        (idmap dari `_clone_outline`) -- scope 'part:*' apa adanya, 'heading:<id>'/alias lama 'h1:<id>'
+        dipetakan via idmap (dilewati kalau id lama tak ada di idmap, mis. scope 'block:<id>' caption/
+        tabel/gambar yg memang tak ikut disalin)."""
+        try:
+            with self._tx() as c:
+                assigns = self._all(c, "SELECT user_id, scope FROM cms_assign WHERE doc_id=?", (src_doc_id,))
+        except Exception:                                     # noqa: BLE001
+            assigns = []
+        seen: set[tuple[int, str]] = set()
+        for a in assigns:
+            sc, new_sc = a["scope"], None
+            if sc.startswith("part:"):
+                new_sc = sc
+            elif sc.startswith("heading:") or sc.startswith("h1:"):
+                old_id = int(sc.split(":", 1)[1])
+                if old_id in idmap:
+                    new_sc = f"heading:{idmap[old_id]}"
+            if not new_sc or (a["user_id"], new_sc) in seen:
+                continue
+            seen.add((a["user_id"], new_sc))
+            try:
+                with self._tx() as c:
+                    if self._one(c, "SELECT 1 AS x FROM cms_assign WHERE doc_id=? AND user_id=? AND scope=?",
+                                 (new_doc_id, a["user_id"], new_sc)) is None:
+                        self._x(c, "INSERT INTO cms_assign(doc_id,user_id,scope) VALUES (?,?,?)",
+                                (new_doc_id, a["user_id"], new_sc))
+            except Exception:                                 # noqa: BLE001
+                pass
 
     def unlinked_documents(self) -> list[dict]:
         """Dokumen yang belum ditaut ke proyek manapun."""
@@ -1048,7 +1201,7 @@ class BlockStore:
         sendiri; tabel/gambar tanpa caption sendiri memakai label caption tetangga (sebelum/sesudah)
         kalau ada, else generik — INI yang membedakan 'caption daftar gambar' dari 'caption judul tabel'."""
         with self._tx() as c:
-            rows = self._all(c, "SELECT id, seq, part, kind, level, text, data FROM cms_blocks WHERE doc_id=? "
+            rows = self._all(c, "SELECT id, seq, part, kind, level, text, data, version FROM cms_blocks WHERE doc_id=? "
                                  "AND deleted_at IS NULL AND (kind='heading' OR kind IN ('caption','table','image')) "
                                  "ORDER BY seq", (doc_id,))
         out = []
@@ -1073,7 +1226,8 @@ class BlockStore:
                                 break
                     label = label or f"({'tabel' if r['kind'] == 'table' else 'gambar'} #{r['id']})"
             out.append({"id": r["id"], "seq": r["seq"], "part": r["part"], "kind": r["kind"], "level": r["level"],
-                       "subtype": subtype, "label": label or f"(#{r['id']})"})
+                       "subtype": subtype, "label": label or f"(#{r['id']})", "version": r["version"],
+                       "hidden": bool(d.get("hidden")) if r["kind"] == "heading" else False})
         return out
 
     def pic_map(self, doc_id: int) -> dict[int, dict]:
@@ -1120,6 +1274,30 @@ class BlockStore:
             winner = next((sc for sc in cands if by_scope.get(sc)), None)
             out[it["id"]] = {"scope": winner, "kind": it["kind"], "level": it["level"], "label": it["label"],
                              "direct": bool(winner and winner in own), "pics": pics_of(winner) if winner else []}
+        return out
+
+    def chapter_pic_summary(self, doc_id: int) -> dict[int, list[dict]]:
+        """id heading H1 -> daftar PIC unik yang ter-tag di MANA SAJA dalam subtree bab itu (heading
+        turunan H2-H4 maupun caption/tabel/gambar di dalamnya), dipakai badge ringkas per-baris Gantt --
+        beda dari `effective_pic` yang cuma melihat scope H1 itu sendiri + warisan ke ATASnya (part),
+        jadi PIC yang ditugaskan lebih dalam (mis. di satu sub-bab atau tabel) tetap kelihatan di baris
+        Gantt bab-nya walau tak pernah ditugaskan langsung di H1."""
+        items = self.list_taggable_blocks(doc_id)
+        pmap = self.pic_map(doc_id)
+        out: dict[int, list[dict]] = {}
+        cur_h1: Optional[int] = None
+        for it in items:
+            if it["kind"] == "heading" and it["level"] == 1:
+                cur_h1 = it["id"]
+                out.setdefault(cur_h1, [])
+            if cur_h1 is None:
+                continue
+            bucket = out[cur_h1]
+            for p in pmap.get(it["id"], {}).get("pics", []):
+                if not any(x["user_id"] == p["user_id"] for x in bucket):
+                    bucket.append(p)
+        for bucket in out.values():
+            bucket.sort(key=lambda x: x["username"])
         return out
 
     def upsert_project_task(self, project_id: int, title: str = "", doc_id: Optional[int] = None,
@@ -1188,10 +1366,20 @@ class BlockStore:
             docs = self._all(c, "SELECT pd.doc_id, pd.report_type, pd.label, d.filename FROM cms_project_documents pd "
                                  "JOIN cms_documents d ON d.id=pd.doc_id WHERE pd.project_id=?", (project_id,))
         scheduled = {(t["doc_id"], t["chapter_block_id"]) for t in tasks if t["chapter_block_id"]}
+        summaries: dict[int, dict[int, list[dict]]] = {}
+
+        def chapter_pics(doc_id: int, h1_id: int) -> list[dict]:
+            """PIC gabungan seluruh subtree bab ini (lihat chapter_pic_summary) -- beda dari
+            effective_pic yang cuma lihat scope H1 itu sendiri, supaya tagging di sub-bab/tabel/gambar
+            tetap muncul di baris Gantt bab-nya."""
+            if doc_id not in summaries:
+                summaries[doc_id] = self.chapter_pic_summary(doc_id)
+            return summaries[doc_id].get(h1_id, [])
+
         for t in tasks:
             t["scheduled"] = True
             t["tags"] = self.list_task_tags(t["id"])
-            t["pic"] = self.effective_pic(t["doc_id"], t["chapter_block_id"])[0] if t["chapter_block_id"] else []
+            t["pic"] = chapter_pics(t["doc_id"], t["chapter_block_id"]) if t["chapter_block_id"] else []
         candidates = []
         for d in docs:
             for h in self.outline(d["doc_id"], max_level=1):
@@ -1201,7 +1389,7 @@ class BlockStore:
                     "id": None, "project_id": project_id, "doc_id": d["doc_id"], "chapter_block_id": h["id"],
                     "parent_task_id": None, "title": h["text"] or "(tanpa judul)", "doc_label": d["label"] or d["filename"],
                     "start_date": None, "end_date": None, "progress_percent": 0, "status": "belum_mulai",
-                    "pic": self.effective_pic(d["doc_id"], h["id"])[0], "tags": [], "scheduled": False,
+                    "pic": chapter_pics(d["doc_id"], h["id"]), "tags": [], "scheduled": False,
                 })
         return tasks + candidates
 
@@ -1219,12 +1407,14 @@ class BlockStore:
                             (task_id, uid, tagged_by, _now()))
 
     def sync_task_pic_from_assign(self, task_id: int) -> None:
-        """Tag ulang PIC task bab ini dari cms_assign saat ini (dipanggil otomatis saat materialize, atau manual dari UI)."""
+        """Tag ulang PIC task bab ini dari cms_assign saat ini (dipanggil otomatis saat materialize, atau
+        manual dari UI) -- pakai `chapter_pic_summary` (gabungan subtree bab), bukan cuma `effective_pic`
+        di H1-nya sendiri, supaya PIC yang ditugaskan di sub-bab/caption/tabel/gambar ikut dinotifikasi."""
         with self._tx() as c:
             t = self._one(c, "SELECT doc_id, chapter_block_id FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (task_id,))
         if not t or not t["chapter_block_id"]:
             return
-        pics, _ = self.effective_pic(t["doc_id"], t["chapter_block_id"])
+        pics = self.chapter_pic_summary(t["doc_id"]).get(t["chapter_block_id"], [])
         if pics:
             self.tag_task(task_id, [p["user_id"] for p in pics], tagged_by="system")
 

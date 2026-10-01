@@ -92,7 +92,11 @@ def create_project():
     d = body()
     pid = S().create_project(d.get("name", ""), user=g.user["username"],
                              client=d.get("client"), description=d.get("description"), location=d.get("location"),
-                             start_date=d.get("start_date"), end_date=d.get("end_date"), status=d.get("status"))
+                             start_date=d.get("start_date"), end_date=d.get("end_date"), status=d.get("status"),
+                             sales_team=d.get("sales_team"), pic=d.get("pic"), pemrakarsa_contact=d.get("pemrakarsa_contact"))
+    tpl = d.get("template_project_id")
+    if tpl:
+        S().apply_project_template(pid, int(tpl), user=g.user["username"])
     return jsonify(id=pid), 201
 
 
@@ -114,6 +118,45 @@ def update_project(pid):
 def delete_project(pid):
     S().delete_project(pid)
     return jsonify(ok=True)
+
+
+@bp.get("/docs-index")
+@auth.require("admin")
+def docs_index():
+    """Semua dokumen di sistem + (kalau tertaut) nama proyek & report_type -- utk dialog pilih dokumen
+    sumber salin outline/tim, bisa difilter per proyek atau langsung dicari lintas proyek by nama."""
+    return jsonify(docs=S().list_documents_with_project())
+
+
+@bp.post("/projects/<int:pid>/clone-document")
+@auth.require("admin")
+def clone_document(pid):
+    """Proyek yang SUDAH ada: salin HANYA outline SATU dokumen (dipilih langsung by nama, tak peduli dia
+    tertaut ke proyek mana/tak tertaut sama sekali) jadi dokumen laporan BARU KOSONG di proyek ini.
+    Tim/PIC TIDAK ikut -- pakai /projects/<pid>/copy-team terpisah kalau perlu (bisa dari dokumen lain)."""
+    d = body()
+    src_doc_id = d.get("doc_id")
+    if not src_doc_id:
+        raise ValueError("doc_id wajib diisi")
+    new_doc_id = S().clone_document_outline(pid, int(src_doc_id), report_type=d.get("report_type") or "draft",
+                                            label=d.get("label", ""), user=g.user["username"])
+    return jsonify(ok=True, doc_id=new_doc_id), 201
+
+
+@bp.post("/projects/<int:pid>/copy-team")
+@auth.require("admin")
+def copy_team(pid):
+    """Salin tim (penugasan tingkat bagian: cover/depan/isi/lampiran) dari dokumen manapun (`src_doc_id`,
+    tak peduli proyeknya) ke dokumen `target_doc_id` yang SUDAH tertaut di proyek ini -- independen dari
+    salin outline, krn tim yang mengerjakan bisa beda dari dokumen yang dipakai acuan outline."""
+    d = body()
+    target_doc_id, src_doc_id = d.get("target_doc_id"), d.get("src_doc_id")
+    if not target_doc_id or not src_doc_id:
+        raise ValueError("target_doc_id dan src_doc_id wajib diisi")
+    if not any(x["doc_id"] == int(target_doc_id) for x in S().list_project_documents(pid)):
+        raise ValueError("dokumen tujuan bukan laporan proyek ini")
+    n = S().copy_team_to_document(int(target_doc_id), int(src_doc_id))
+    return jsonify(ok=True, assignments_added=n)
 
 
 # ---------------------------------------------------------------- laporan (dokumen ditaut)

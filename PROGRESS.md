@@ -5,7 +5,7 @@
 > Perbarui file ini (status, tanggal, centang, temuan baru) sebelum menutup sesi, lalu commit.
 > Jangan menaruh sandi/token di sini. Bahasa pengguna: Indonesia; gaya jawab ringkas (lihat preferensi pengguna).
 
-Terakhir diperbarui: **2026-09-30** (tahap 3 + editor tabel mode form + manajemen proyek).
+Terakhir diperbarui: **2026-09-30** (tahap 3 + editor tabel mode form + manajemen proyek + navigasi header proyek + template proyek).
 
 ## 1. Tujuan
 Tim (target minimal **500–1000 koneksi**, realistisnya ~100–200 penulis aktif) + AI mengerjakan dokumen resmi
@@ -49,6 +49,89 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Daftar Isi/Tabel/Gambar bisa dibatalkan; PIC Gantt agregat; tab PIC kelola outline+catatan+hidden (2026-10-01)**
+  - **Batalkan marker daftar otomatis**: sebelumnya heading yang ditandai Daftar Isi/Tabel/Gambar (`genListDlg`)
+    tak ada penanda visual & tak bisa dikembalikan jadi heading biasa (cuma 3 pilihan jenis, tanpa "kosongkan").
+    Badge `📑 <jenis>` baru di meta blok (`cmsapp/ui/index.html: view()`); tombol baru "📑 Jenis daftar…"
+    (admin) → `genTypeDlg` dgn opsi ke-4 "— Tidak ada —". Backend `BlockStore.set_heading_generated` +
+    `POST /blocks/<id>/generated`: kosongkan generated utk H1/body otomatis memulihkan `numbered:true`
+    (spt heading baru lazimnya, lihat `_chapter_num_data`), bukan dibiarkan tanpa status numbering.
+  - **PIC tak muncul di Gantt**: baris Gantt bab cuma cek PIC yg ditugaskan PERSIS di H1 (`effective_pic`),
+    jadi PIC yg ditandai di sub-bab/caption/tabel/gambar (umum dipakai, lihat PIC berjenjang) tak pernah
+    kelihatan di badge tagging baris Gantt walau badge-nya sendiri sudah ada di UI. `BlockStore.chapter_pic_summary`
+    baru: gabungan SEMUA PIC unik di subtree satu bab (bukan cuma warisan ke atas spt `effective_pic`), dipakai
+    `list_project_tasks` (badge Gantt) & `sync_task_pic_from_assign` (notifikasi tag ulang).
+  - **Tab Proyek→PIC: kelola outline + catatan + sembunyikan** — admin/reviewer (QC) kini bisa langsung dari tab
+    PIC (`assignView`): tombol "+ Tambah heading…" (`addHeadingDlg`, pilih posisi+level+judul) → `POST
+    /docs/<id>/outline`; tombol "Hapus" per baris heading → `DELETE /outline/<id>` (cuma heading, isi di
+    bawahnya tak ikut terhapus, sama spt hapus blok biasa); keduanya endpoint BARU gated admin+reviewer
+    (BUKAN `@auth.require("admin","author")` spt endpoint blok umum, krn reviewer biasanya tak boleh
+    edit konten — di sini sengaja diberi hak kelola outline independen dari penugasan PIC per-bab). Tombol
+    "📝 Catatan" (semua role komentar: admin/author/reviewer) → `blockNotesDlg`, reuse sistem komentar yang
+    sudah ada (`cms_comments`) scoped ke satu blok (`GET /docs/<id>/comments` skrg terima `?block_id=`).
+  - **Heading bisa disembunyikan dari ekspor (hidden, bukan dihapus)**: field baru `data.hidden` di heading
+    (`BlockStore.set_heading_hidden`, `POST /blocks/<id>/hidden`, admin+reviewer) — heading TETAP ada & bisa
+    diedit penuh di CMS, cuma di-skip saat `build_docx`. `utils/docx_build._filter_hidden` (baru, dipanggil di
+    `Builder.__init__`): buang heading `hidden` + SELURUH subtree-nya (sub-heading lebih dalam, paragraf,
+    tabel, gambar) dari daftar blok yang diekspor — berhenti saat ketemu heading level <= levelnya sendiri.
+    Toggle tersedia di editor (badge `🙈 Hidden` + tombol di `view()`) dan di tab PIC (kolom aksi tiap heading).
+  **Diuji**: `py_compile`+`node --check` lolos. `_filter_hidden` diuji langsung (bab disembunyikan + subtree
+  hilang, bab lain utuh); `set_heading_generated`/`set_heading_hidden` diuji via SQLite (toggle+pulih numbering,
+  tolak non-heading); `chapter_pic_summary` diuji (PIC di H2-only tetap muncul di `list_project_tasks` baris H1,
+  sebelumnya kosong). **Belum dicoba** di browser/server sungguhan.
+- [x] **Salin outline/tim: pilih dokumen langsung, bukan proyek (2026-10-01)** — koreksi dari kerja sebelumnya
+  (entri di bawah ini): awalnya kebab "Salin outline dokumen…"/"Salin tim…" di card proyek (`cloneDocDlg`,
+  `cmsapp/ui/index.html`, dulu `applyTemplateDlg`) cuma bisa pilih PROYEK sumber (lalu bulk-copy SEMUA
+  laporannya) — padahal dokumen bisa draft/final & terdaftar di proyek lain, user mau pilih dokumen (nama
+  filenya) langsung, boleh difilter per proyek atau lintas proyek. Diganti: dialog sekarang py select "Filter
+  proyek (opsional)" (mengosongkan = semua dokumen tampil) + select "Dokumen sumber" (label
+  `filename — ProyekX (report_type)` / `(tak tertaut proyek)`, terfilter live saat ganti filter proyek) + pilih
+  report_type tujuan + label opsional. Endpoint lama `POST /projects/<id>/apply-template` (proyek->proyek, bulk)
+  DIHAPUS krn jadi tak terpakai; ganti `GET /docs-index` (semua dokumen + project_id/project_name/report_type,
+  `BlockStore.list_documents_with_project`, admin-only) + `POST /projects/<id>/clone-document` {doc_id,
+  report_type, label} (`BlockStore.clone_document_outline`, wrapper tipis di atas `_clone_outline_and_team`
+  yg sudah ada dr fitur sebelumnya -- tak berubah, cuma sekarang dipanggil per-dokumen eksplisit bukan
+  dilooping dari proyek). `apply_project_template` (proyek->proyek bulk) TETAP ada & TETAP dipakai dialog
+  "+ Proyek baru" (select "Salin outline & tim dari proyek…" saat bikin proyek baru, TAK diubah -- itu kasus
+  pakai beda: bootstrap proyek baru sekaligus dari semua laporan proyek lain).
+  **Diuji**: `py_compile`+`node --check` lolos; `list_documents_with_project`+`clone_document_outline` diuji
+  langsung via SQLite (dokumen tertaut proyek lain ketemu di index dgn label benar, hasil klon cuma heading,
+  tertaut ke proyek tujuan dgn report_type/label sesuai input). **Belum dicoba** di browser/server sungguhan.
+- [x] **Kebab menu proyek (salin outline/tim, set tim sales/PIC/kontak pemrakarsa) (2026-09-30)** — titik tiga
+  "⋮" (admin-only) di tiap card `projectsView` (`cmsapp/ui/index.html: projectMenu`): (1) "Salin outline
+  dokumen…"/"Salin tim…" — keduanya buka dialog pilih proyek sumber yg sama (`applyTemplateDlg`), lalu panggil
+  endpoint BARU `POST /projects/<id>/apply-template` (`cmsapp/projects_api.py`, reuse
+  `BlockStore.apply_project_template` yg sebelumnya cuma jalan saat create) utk proyek yg SUDAH ada — outline+tim
+  selalu tersalin bareng (satu fungsi, dua label menu); (2) "Set tim sales…"/"Set PIC proyek…"/"Set kontak
+  pemrakarsa…" (`setProjectFieldDlg`) — dialog 1 input/textarea, `PATCH /projects/<id>` ke kolom baru.
+  Kolom baru `cms_projects`: `sales_team`, `pic` (VARCHAR 255, PIC keseluruhan proyek — beda dari PIC per-bab
+  `cms_assign`), `pemrakarsa_contact` (TEXT, kontak klien/pemrakarsa). Ditambah di `scripts/init_schema.sql`
+  (CREATE TABLE utk instalasi baru + `ALTER TABLE ADD COLUMN IF NOT EXISTS` utk server yg tabelnya sudah ada,
+  MySQL 8.0.29+) & `SQLITE_DDL` (`utils/blockstore.py`); `create_project`/`update_project` (allowed-fields) &
+  `POST /projects` (`projects_api.py`) diperluas. Field sama juga ditambah di dialog "+ Proyek baru" (opsional
+  saat create) & tab Ringkasan proyek (`tabRingkasan`, data-f generik yg sudah ada, jadi bisa diedit inline juga
+  dari situ bukan cuma lewat kebab). Card proyek: tanggal mulai/selesai kini format Indonesia (`idDate()`, "D
+  Bulan YYYY") bukan ISO mentah.
+  **Diuji**: `py_compile` + `node --check` lolos; `create_project`/`update_project` diuji langsung via SQLite
+  (kolom baru tersimpan & ter-update). **Belum dicoba** ALTER TABLE di MySQL server sungguhan (perlu
+  `make stack`/deploy) — cek dulu versi MySQL server mendukung `ADD COLUMN IF NOT EXISTS` (8.0.29+) sebelum
+  deploy; kalau tidak, ganti ke cek `INFORMATION_SCHEMA.COLUMNS` manual.
+- [x] **Navigasi header ke Proyek + template proyek (outline+tim) (2026-09-30)** — tombol "Proyek" baru di
+  header (`cmsapp/ui/index.html`, selalu terlihat stlh login, sejajar Dokumen/Admin) -> `projectsView()`, jadi
+  tak perlu logout/reload utk balik ke daftar proyek dari mana pun. Dialog "+ Proyek baru" (`projectDlg`) kini
+  ada select opsional "Salin outline & tim dari proyek…": kalau dipilih, `POST /projects` (`cmsapp/projects_api.py`)
+  terima `template_project_id` lalu panggil `BlockStore.apply_project_template` (baru, `utils/blockstore.py`) —
+  utk tiap laporan (dokumen tertaut) proyek sumber, dibuat dokumen BARU KOSONG (`_clone_outline_and_team`): hanya
+  heading H1-H4 tersalin (urutan/level/part/teks sama, isi paragraf/tabel/gambar TIDAK), lalu tim (`cms_assign`
+  scope `part:*` disalin apa adanya, `heading:<id>`/alias lama `h1:<id>` dipetakan ke id heading baru; scope
+  `block:<id>` caption/tabel/gambar SENGAJA dilewati krn blok itu tak ikut disalin) ditautkan ke proyek baru dgn
+  `report_type`/`label` sama. Tambah/hapus outline & tim sesudahnya CUKUP pakai jalur yang sudah ada (toolbar blok
+  "+ Blok"/"Hapus" di editor dokumen, tab Laporan->buka dokumen; tab PIC->assignView "+ tugaskan…"/"×") — tak ada
+  UI/endpoint baru utk itu, by design (dikonfirmasi ke pengguna).
+  **Diuji**: `py_compile` + `node --check` (skrip di `<script>`) lolos; skenario end-to-end via SQLite ad-hoc
+  (buat proyek sumber+dokumen+heading berjenjang+assign campuran part/heading, `apply_project_template`, cek
+  dokumen baru hanya berisi 3 heading yg sama persis tanpa paragraf, `cms_assign` baru berisi `heading:<id baru>`
+  & `part:body` yg benar). **Belum dicoba** di browser/server MySQL sungguhan.
 - [x] **Daftar Isi/Tabel/Gambar: sisip manual, H4, penomoran caption per-bab opsional (2026-09-30)** — sebelumnya
   Daftar Isi/Tabel/Gambar (field Word TOC/SEQ, `utils/docx_build.py`) cuma otomatis muncul kalau docx SUMBER yang
   diimpor sudah punya heading persis "DAFTAR ISI"/"DAFTAR TABEL"/"DAFTAR GAMBAR" (dideteksi sekali saat impor,
