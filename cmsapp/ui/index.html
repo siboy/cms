@@ -22,7 +22,7 @@ header b{flex:1}#login{max-width:320px;margin:15vh auto;display:grid;gap:8px}
 textarea{width:100%;min-height:90px}table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:3px 6px}
 td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 #bar{position:fixed;right:12px;bottom:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;max-width:320px}
-.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:30vh}}
+.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.dlg>*{min-width:0}.dlg select,.dlg input,.dlg textarea{width:100%;max-width:100%;box-sizing:border-box}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:30vh}}
 .tw{overflow:auto;max-width:100%}.tw table{width:auto;min-width:100%}.tw td,.tw th{min-width:120px;vertical-align:top;padding:6px 8px;white-space:pre-wrap;word-break:break-word}.tw th{background:var(--bg)}
 .tw td[contenteditable]{min-height:2.4em;font-size:13px}
 .fmask{position:fixed;inset:0;background:var(--bg);z-index:19;display:flex;flex-direction:column}.fhead{padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -51,7 +51,10 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 @media(max-width:640px){
  .otable td,.otable th{padding:4px}.otable .acell button{padding:5px 7px;font-size:14px}
  .rg{grid-template-columns:1fr!important}
- .dlg{width:94vw!important;padding:12px!important}
+ .dlg{width:100vw!important;max-width:100vw!important;padding:12px!important;border-radius:0!important}
+ #docs{padding:10px 0}
+ #ed{padding:10px 6px}
+ header{padding:8px 6px}
 }
 </style></head><body>
 <header><b>CMS Kolaborasi</b><span id="who"></span><span id="pres" title="online"></span>
@@ -420,29 +423,35 @@ async function assignView(users){const d=+$('#ad').value;const isAdmin=me.role==
   const pics=node.pics.map(p=>`<span class=badge style="background:${p.status==='done'?'#2da44e':'var(--mut)'}">${esc(p.username)}${p.status==='done'?' ✓':''}</span>`).join(' ')
    ||(node.scope?'<small style="color:var(--mut)">(warisan, kosong)</small>':'<small style="color:var(--mut)">—</small>');
   const hiddenBadge=it.hidden?' <span class=badge style="background:var(--warn)" title="Tak ikut diekspor DOCX">🙈</span>':'';
-  const actions=[`<button type=button data-pic="${it.id}" title="Kelola PIC">👤</button>`];
-  actions.push(`<button type=button data-note="${it.id}" title="Catatan">📝</button>`);
-  if(canOutline){actions.push(`<button type=button data-mv="${it.id}" title="Pindahkan posisi">⇅</button>`);
-   actions.push(`<button type=button data-hide="${it.id}" data-cur="${it.hidden?1:0}" title="${it.hidden?'Tampilkan lagi (ikut diekspor)':'Sembunyikan dari ekspor'}">${it.hidden?'👁':'🙈'}</button>`);
-   if(it.kind==='heading')actions.push(`<button type=button data-delh="${it.id}" data-v="${it.version}" title="Hapus heading ini" style="color:#d1242f">🗑</button>`)}
   return `<tr><td style="padding-left:${indent}ch">${icon} ${esc((it.label||'').slice(0,70))}${node.scope&&!node.direct?' <small style="color:var(--mut)">(warisan)</small>':''}${done?' ✓':''}${hiddenBadge}</td>
-  <td>${pics}</td><td class=acell>${actions.join('')}</td></tr>`}).join('');
+  <td>${pics}</td><td class=acell><button type=button data-menu="${it.id}" title="Aksi">⋮</button></td></tr>`}).join('');
  $('#asg').innerHTML='<div class=otable><table><tr><th>Bagian</th><th>PIC</th>'+(isAdmin?'<th></th>':'')+'</tr>'+partRows+'</table></div>'
   +'<h4 style="margin-top:14px">Heading, caption, tabel & gambar</h4>'
   +(canOutline?'<p><button type=button id=addh>+ Tambah heading…</button></p>':'')
   +'<div class=otable><table><tr><th>Item</th><th>PIC</th><th></th></tr>'+(itemRows||'<tr><td colspan=3 style="color:var(--mut)">Belum ada isi.</td></tr>')+'</table></div>'
-  +`<p><small>Admin otomatis boleh mengedit semua bab. PIC di heading/caption/tabel/gambar tertentu meng-override warisan dari atasannya (H1/bagian) hanya utk bagian itu ke bawah — 👤 Kelola PIC, 📝 catatan.${canOutline?' ⇅ pindahkan posisi (heading memindahkan seluruh isi di bawahnya juga), 🙈/👁 sembunyikan/tampilkan dari ekspor DOCX (tanpa dihapus), 🗑 hapus heading (isi di bawahnya tak ikut terhapus).':''}${isAdmin?'':' Hanya admin yang bisa menambah/melepas penugasan; PIC yang bersangkutan boleh menandai selesai, admin/reviewer boleh mengembalikan.'}</small></p>`;
+  +`<p><small>Admin otomatis boleh mengedit semua bab. PIC di heading/caption/tabel/gambar tertentu meng-override warisan dari atasannya (H1/bagian) hanya utk bagian itu ke bawah — klik ⋮ utk kelola PIC/catatan${canOutline?'/pindahkan posisi (heading memindahkan seluruh isi di bawahnya juga)/sembunyikan dari ekspor (tanpa dihapus)/hapus heading (isi di bawahnya tak ikut terhapus)':''}.${isAdmin?'':' Hanya admin yang bisa menambah/melepas penugasan; PIC yang bersangkutan boleh menandai selesai, admin/reviewer boleh mengembalikan.'}</small></p>`;
  if(isAdmin){
   document.querySelectorAll('[data-add]').forEach(sel=>sel.onchange=async()=>{if(!sel.value)return;try{await api('POST','/admin/assign',{doc_id:d,user_id:+sel.value,scope:sel.dataset.add});assignView(users)}catch(e){note(e.message,1)}});
   document.querySelectorAll('[data-rm]').forEach(a=>a.onclick=async e=>{e.preventDefault();const [u,sc]=a.dataset.rm.split('|');try{await api('POST','/admin/assign',{doc_id:d,user_id:+u,scope:sc,remove:true});assignView(users)}catch(x){note(x.message,1)}})}
- document.querySelectorAll('[data-pic]').forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===+b.dataset.pic);picDlg(d,it.id,it.label,()=>assignView(users))});
- document.querySelectorAll('[data-note]').forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===+b.dataset.note);blockNotesDlg(d,it.id,it.label)});
+ document.querySelectorAll('[data-menu]').forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===+b.dataset.menu);itemMenu(d,it,items,canOutline,()=>assignView(users))});
+ if(canOutline&&$('#addh'))$('#addh').onclick=()=>addHeadingDlg(d,items,()=>assignView(users))}
+
+function itemMenu(docId,it,items,canOutline,onDone){const m=document.createElement('div');m.className='mask';
+ const rows=[`<button type=button id=mpic>👤 Kelola PIC…</button>`,`<button type=button id=mnote>📝 Catatan…</button>`];
+ if(canOutline){rows.push(`<button type=button id=mmv>🔀 Pindahkan posisi…</button>`);
+  rows.push(`<button type=button id=mhide>${it.hidden?'👁 Tampilkan lagi (ikut diekspor)':'🙈 Sembunyikan dari ekspor'}</button>`);
+  if(it.kind==='heading')rows.push(`<button type=button id=mdel style="color:#d1242f">🗑 Hapus heading…</button>`)}
+ m.innerHTML=`<div class=dlg><b>${esc((it.label||'').slice(0,60)||'(tanpa judul)')}</b>${rows.join('')}
+ <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
+ document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();
+ m.querySelector('#mpic').onclick=()=>{m.remove();picDlg(docId,it.id,it.label,onDone)};
+ m.querySelector('#mnote').onclick=()=>{m.remove();blockNotesDlg(docId,it.id,it.label)};
  if(canOutline){
-  document.querySelectorAll('[data-mv]').forEach(b=>b.onclick=()=>{const it=items.find(x=>x.id===+b.dataset.mv);moveItemDlg(d,it,items,()=>assignView(users))});
-  document.querySelectorAll('[data-hide]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/blocks/${b.dataset.hide}/hidden`,{hidden:b.dataset.cur!=='1'});assignView(users)}catch(e){note(e.message,1)}});
-  document.querySelectorAll('[data-delh]').forEach(b=>b.onclick=async()=>{if(!confirm('Hapus heading ini? (isi di bawahnya TIDAK ikut terhapus, hanya baris heading-nya)'))return;
-   try{await api('DELETE',`/outline/${b.dataset.delh}?version=${b.dataset.v}`);assignView(users)}catch(e){note(e.message,1)}});
-  if($('#addh'))$('#addh').onclick=()=>addHeadingDlg(d,items,()=>assignView(users))}}
+  m.querySelector('#mmv').onclick=()=>{m.remove();moveItemDlg(docId,it,items,onDone)};
+  m.querySelector('#mhide').onclick=async()=>{m.remove();try{await api('POST',`/blocks/${it.id}/hidden`,{hidden:!it.hidden});if(onDone)onDone()}catch(e){note(e.message,1)}};
+  const delBtn=m.querySelector('#mdel');
+  if(delBtn)delBtn.onclick=async()=>{m.remove();if(!confirm('Hapus heading ini? (isi di bawahnya TIDAK ikut terhapus, hanya baris heading-nya)'))return;
+   try{await api('DELETE',`/outline/${it.id}?version=${it.version}`);if(onDone)onDone()}catch(e){note(e.message,1)}}}}
 
 function moveItemDlg(docId,it,items,onDone){const heads=items.filter(x=>x.kind==='heading'&&x.id!==it.id);const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<form class=dlg><b>Pindahkan — ${esc((it.label||'').slice(0,60)||'(tanpa judul)')}</b>

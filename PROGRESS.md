@@ -49,6 +49,17 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Tab PIC: kebab ⋮ per item + perbaikan overflow dialog di HP (2026-10-01)** — susulan entri di bawah
+  (sama hari). Baris aksi tiap item (dulu 4-5 tombol ikon berjejer: 👤📝⇅🙈🗑) disederhanakan jadi SATU tombol
+  "⋮" (`itemMenu`, mirip pola `projectMenu` yang sudah ada di kartu proyek) -> dialog berisi tombol teks
+  lengkap (Kelola PIC/Catatan/Pindahkan posisi/Sembunyikan-Tampilkan/Hapus heading); ikon pindah diganti
+  ⇅ -> 🔀. Ditemukan & diperbaiki akar masalah dialog meluber di HP: `.dlg` pakai `display:grid` tanpa
+  `min-width:0` di children, jadi `<select>` berisi opsi teks panjang (nama bab) memaksa lebar native-nya
+  sendiri dan mendorong tombol "Pindah" keluar viewport -- perbaikan CSS general (berlaku SEMUA dialog, bukan
+  cuma yang baru): `.dlg>*{min-width:0}` + `.dlg select,input,textarea{width:100%;box-sizing:border-box}`.
+  Margin kiri-kanan mobile dibuat nol (`@media max-width:640px`: `#docs{padding:10px 0}`, `#ed{padding:10px
+  6px}`, `header{padding:8px 6px}`, `.dlg{width:100vw;border-radius:0}` jadi mode lembar-penuh).
+  **Diuji**: `node --check` lolos. **Belum dicoba** di browser/HP sungguhan.
 - [x] **Tab PIC: hidden utk tabel/gambar/caption + pindah posisi (move) + tombol ikon ramah HP (2026-10-01)**
   — susulan entri di bawah ini (sama hari): 3 perbaikan kecil atas fitur tab PIC yang baru ditambahkan.
   1) `set_heading_hidden` digeneralisasi jadi `BlockStore.set_block_hidden` (`HIDEABLE_KINDS = heading|table|
