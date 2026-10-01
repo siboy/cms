@@ -343,14 +343,33 @@ def delete_outline(bid):
 @bp.post("/blocks/<int:bid>/hidden")
 @auth.require("admin", "reviewer")
 def set_hidden(bid):
-    """Sembunyikan/tampilkan heading dari ekspor DOCX TANPA dihapus (beda dari DELETE /outline/<id> yang
-    soft-delete) -- heading+seluruh subtree-nya (sub-heading, paragraf, tabel, gambar) ikut tak diekspor
-    selama hidden=true, lihat utils/docx_build._filter_hidden."""
+    """Sembunyikan/tampilkan blok (heading/tabel/gambar/caption) dari ekspor DOCX TANPA dihapus (beda dari
+    DELETE /outline/<id> yang soft-delete) -- utk heading, seluruh subtree-nya (sub-heading, paragraf,
+    tabel, gambar) ikut tak diekspor selama hidden=true; utk tabel/gambar/caption cuma blok itu sendiri.
+    Lihat utils/docx_build._filter_hidden."""
     d = body()
     b = S().get_block(bid)
-    v = S().set_heading_hidden(bid, bool(d.get("hidden")), g.user["username"], expected_version=d.get("version"))
+    v = S().set_block_hidden(bid, bool(d.get("hidden")), g.user["username"], expected_version=d.get("version"))
     emit(b["doc_id"], "block", id=bid, version=v, force_global=True)
     return jsonify(id=bid, version=v)
+
+
+@bp.post("/blocks/<int:bid>/outline-move")
+@auth.require("admin", "reviewer")
+def move_outline(bid):
+    """Pindahkan posisi heading (+seluruh subtree-nya)/tabel/gambar/caption dari tab Proyek->PIC --
+    admin/reviewer (QC), independen dari penugasan PIC per-bab (beda dari POST /blocks/<id>/move yang
+    general & butuh can_edit/penugasan). after_id=null -> pindah ke paling awal dokumen."""
+    d = body()
+    b = S().get_block(bid)
+    after_id = d.get("after_id")
+    if b["kind"] == "heading":
+        n = S().move_subtree(bid, after_id, g.user["username"])
+    else:
+        S().move_block(bid, after_id, g.user["username"])
+        n = 1
+    emit(b["doc_id"], "move", id=bid, after=after_id, force_global=True)
+    return jsonify(ok=True, moved=n)
 
 
 @bp.post("/docs/<int:doc_id>/blocks")

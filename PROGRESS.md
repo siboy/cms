@@ -49,6 +49,27 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Tab PIC: hidden utk tabel/gambar/caption + pindah posisi (move) + tombol ikon ramah HP (2026-10-01)**
+  — susulan entri di bawah ini (sama hari): 3 perbaikan kecil atas fitur tab PIC yang baru ditambahkan.
+  1) `set_heading_hidden` digeneralisasi jadi `BlockStore.set_block_hidden` (`HIDEABLE_KINDS = heading|table|
+     image|caption`) — tabel/gambar/caption kini juga bisa disembunyikan dari ekspor independen (beda dari
+     heading yang membawa subtree); `utils/docx_build._filter_hidden` diperluas jadi dua jalur: heading hidden
+     = buang seluruh subtree, tabel/gambar/caption hidden = buang blok itu sendiri saja. `list_taggable_blocks`
+     sekarang laporkan `hidden` utk SEMUA kind (dulu dipaksa False selain heading).
+  2) **Pindah posisi** dari tab PIC (bukan cuma di editor dgn ↑/↓ satu-satu): `BlockStore.move_subtree` (baru)
+     pindahkan 1 heading + SELURUH isi di bawahnya (dihitung batas subtree via `list_blocks`, lalu tiap blok
+     digeser berurutan pakai `move_block` yg sudah ada) ke setelah heading tujuan (atau paling awal dokumen);
+     tabel/gambar/caption pindah sebagai blok tunggal via `move_block` langsung. Endpoint baru `POST
+     /blocks/<id>/outline-move` (admin+reviewer, independen dari penugasan PIC per-bab/can_edit — beda dari
+     `/blocks/<id>/move` umum). UI: tombol ⇅ per baris → `moveItemDlg` (pilih "taruh setelah [bab]").
+  3) **Tombol jadi ikon+title** (👤/📝/⇅/🙈|👁/🗑, teks lengkap jadi tooltip `title`) supaya baris tabel tak
+     melebar; CSS baru `.otable` (scroll horizontal, bukan numpuk) + media query `max-width:640px` (padding
+     lebih kecil, target sentuh lebih besar, grid kartu proyek 1 kolom) biar tab PIC & daftar proyek enak
+     dilihat di HP.
+  **Diuji**: `py_compile`+`node --check` lolos; `move_subtree` diuji SQLite (reorder antar-bab benar urut,
+  tolak pindah ke subtree sendiri, pindah ke awal dokumen); `set_block_hidden`/`_filter_hidden` diuji (tabel
+  hidden independen, caption/paragraf tetangga TETAP ada, tolak kind yg tak didukung mis. paragraph).
+  **Belum dicoba** di browser/server sungguhan — terutama rasakan sendiri tampilan mobile & drag urutan pindah.
 - [x] **Daftar Isi/Tabel/Gambar bisa dibatalkan; PIC Gantt agregat; tab PIC kelola outline+catatan+hidden (2026-10-01)**
   - **Batalkan marker daftar otomatis**: sebelumnya heading yang ditandai Daftar Isi/Tabel/Gambar (`genListDlg`)
     tak ada penanda visual & tak bisa dikembalikan jadi heading biasa (cuma 3 pilihan jenis, tanpa "kosongkan").

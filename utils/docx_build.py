@@ -246,10 +246,11 @@ def _new_restart_num(doc, style_name: str):
 
 
 def _filter_hidden(blocks: list[dict]) -> list[dict]:
-    """Buang heading yang ditandai `data.hidden` (lihat BlockStore.set_heading_hidden) + SELURUH subtree-nya
-    (sub-heading level lebih dalam, paragraf, tabel, gambar di dalamnya) dari daftar blok yang akan
+    """Buang blok yang ditandai `data.hidden` (lihat BlockStore.set_block_hidden) dari daftar yang akan
     diekspor -- blok ini TETAP ada di CMS (bukan soft-delete), cuma disembunyikan dari DOCX hasil ekspor
-    kali ini. Subtree berakhir saat ketemu heading lain dengan level <= level heading yang disembunyikan."""
+    kali ini. Heading hidden membuang SELURUH subtree-nya juga (sub-heading level lebih dalam, paragraf,
+    tabel, gambar di dalamnya; berakhir saat ketemu heading lain dengan level <= level heading yang
+    disembunyikan); tabel/gambar/caption hidden cuma membuang blok itu sendiri (independen)."""
     out = []
     hide_level: Optional[int] = None
     for b in blocks:
@@ -259,6 +260,8 @@ def _filter_hidden(blocks: list[dict]) -> list[dict]:
             continue
         if b["kind"] == "heading" and (b.get("data") or {}).get("hidden"):
             hide_level = b["level"]
+            continue
+        if b["kind"] in ("table", "image", "caption") and (b.get("data") or {}).get("hidden"):
             continue
         out.append(b)
     return out

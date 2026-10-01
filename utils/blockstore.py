@@ -437,15 +437,20 @@ class BlockStore:
                 data.update(self._chapter_num_data(c, b["doc_id"]))
         return self.update_block(block_id, user, data=data, expected_version=expected_version)
 
-    def set_heading_hidden(self, block_id: int, hidden: bool, user: str = "",
-                           expected_version: Optional[int] = None) -> int:
-        """Sembunyikan/tampilkan heading dari ekspor DOCX TANPA dihapus (beda dari delete_block yang
-        soft-delete, dan tetap tampil/bisa diedit penuh di CMS) -- cuma set/lepas `data.hidden`. Heading +
-        seluruh subtree-nya (sub-heading level lebih dalam, paragraf, tabel, gambar di dalamnya) ikut tak
-        diekspor selama hidden=True, lihat utils/docx_build._filter_hidden."""
+    HIDEABLE_KINDS = {"heading", "table", "image", "caption"}
+
+    def set_block_hidden(self, block_id: int, hidden: bool, user: str = "",
+                         expected_version: Optional[int] = None) -> int:
+        """Sembunyikan/tampilkan blok dari ekspor DOCX TANPA dihapus (beda dari delete_block yang
+        soft-delete, dan tetap tampil/bisa diedit penuh di CMS) -- cuma set/lepas `data.hidden`.
+        - heading: heading + SELURUH subtree-nya (sub-heading level lebih dalam, paragraf, tabel, gambar
+          di dalamnya) ikut tak diekspor selama hidden=True.
+        - table/image/caption: cuma blok itu sendiri yang disembunyikan (independen, tabel/gambar dan
+          caption-nya harus disembunyikan terpisah kalau mau keduanya hilang dari ekspor).
+        Lihat utils/docx_build._filter_hidden."""
         b = self.get_block(block_id)
-        if b["kind"] != "heading":
-            raise ValueError("bukan blok heading")
+        if b["kind"] not in self.HIDEABLE_KINDS:
+            raise ValueError(f"kind {b['kind']} tidak bisa disembunyikan (hanya {sorted(self.HIDEABLE_KINDS)})")
         data = dict(b["data"] or {})
         if hidden:
             data["hidden"] = True
@@ -557,6 +562,43 @@ class BlockStore:
                 sets += ", part=?"
                 args.append(anchor["part"])
             self._x(c, f"UPDATE cms_blocks SET {sets} WHERE id=?", (*args, block_id))
+
+    def move_subtree(self, heading_id: int, after_id: Optional[int], user: str = "") -> int:
+        """Pindahkan satu heading BESERTA SELURUH subtree-nya (sub-heading level lebih dalam, paragraf,
+        tabel, gambar, caption di dalamnya) ke posisi baru -- dipakai tab Proyek->PIC utk reorder bab/
+        sub-bab (mis. "pindah BAB 4 ke posisi setelah BAB 2"), beda dari move_block yang cuma 1 blok.
+        `after_id` = id heading/blok tujuan: kalau itu sendiri heading, subtree disisipkan SETELAH
+        SELURUH subtree heading tujuan itu (bukan cuma baris judulnya) -- supaya jadi reorder antar-bab
+        yang intuitif, bukan nyelip di tengah isinya. after_id=None -> pindah ke paling awal dokumen.
+        Return jumlah blok yang ikut berpindah."""
+        root = self.get_block(heading_id)
+        if root["kind"] != "heading":
+            raise ValueError("bukan blok heading")
+        blocks = self.list_blocks(root["doc_id"])
+        idx = next((i for i, b in enumerate(blocks) if b["id"] == heading_id), None)
+        if idx is None:
+            raise KeyError(f"blok {heading_id} tidak ada")
+        end = idx + 1
+        while end < len(blocks) and not (blocks[end]["kind"] == "heading" and blocks[end]["level"] <= root["level"]):
+            end += 1
+        moving_ids = [b["id"] for b in blocks[idx:end]]
+        anchor = after_id
+        if after_id is not None:
+            if after_id in moving_ids:
+                raise ValueError("tidak bisa dipindah ke dalam subtree-nya sendiri")
+            a_idx = next((i for i, b in enumerate(blocks) if b["id"] == after_id), None)
+            if a_idx is None:
+                raise ValueError("blok tujuan tidak ditemukan di dokumen yang sama")
+            if blocks[a_idx]["kind"] == "heading":
+                a_level = blocks[a_idx]["level"]
+                j = a_idx + 1
+                while j < len(blocks) and not (blocks[j]["kind"] == "heading" and blocks[j]["level"] <= a_level):
+                    j += 1
+                anchor = blocks[j - 1]["id"]
+        for bid in moving_ids:
+            self.move_block(bid, anchor, user=user)
+            anchor = bid
+        return len(moving_ids)
 
     # ------------------------------------------------------------ konten khusus
     def add_page_break(self, doc_id: int, after_id: Optional[int], user: str = "", data: Optional[dict] = None) -> int:
@@ -1227,7 +1269,7 @@ class BlockStore:
                     label = label or f"({'tabel' if r['kind'] == 'table' else 'gambar'} #{r['id']})"
             out.append({"id": r["id"], "seq": r["seq"], "part": r["part"], "kind": r["kind"], "level": r["level"],
                        "subtype": subtype, "label": label or f"(#{r['id']})", "version": r["version"],
-                       "hidden": bool(d.get("hidden")) if r["kind"] == "heading" else False})
+                       "hidden": bool(d.get("hidden"))})
         return out
 
     def pic_map(self, doc_id: int) -> dict[int, dict]:
