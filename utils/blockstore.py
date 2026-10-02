@@ -539,6 +539,132 @@ class BlockStore:
                              [*p, limit, offset])
         return rows, total
 
+    ACTION_LABELS = {
+        "block.edit": "blok diedit", "block.insert": "blok ditambahkan", "block.delete": "blok dihapus",
+        "block.move": "blok dipindahkan", "block.restore": "blok dipulihkan", "block.revert": "blok dikembalikan ke versi lama",
+        "block.hidden": "blok disembunyikan/ditampilkan", "comment.add": "komentar ditulis",
+        "comment.resolve": "komentar ditandai selesai/dibuka lagi", "comment.delete": "komentar dihapus",
+    }
+
+    def _heading_label_of(self, block_id: int) -> str:
+        """Heading terdekat yg membungkus blok ini, utk pengelompokan daily_digest; blok di luar heading
+        manapun (cover/depan/lampiran) dikelompokkan per nama bagian dokumen."""
+        chain = self.heading_chain(block_id)
+        if chain:
+            h = chain[0]
+            return (h.get("text") or "").strip() or f"(heading #{h['id']})"
+        with self._tx() as c:
+            b = self._one(c, "SELECT part, kind, text FROM cms_blocks WHERE id=?", (block_id,))
+        if not b:
+            return "(blok sudah dihapus)"
+        if b["kind"] == "heading":
+            return (b["text"] or "").strip() or f"(heading #{block_id})"
+        return {"cover": "Cover", "front": "Bagian Depan", "lampiran": "Lampiran"}.get(b["part"], "(tanpa bab)")
+
+    def daily_digest(self, doc_id: int, date: str, username: Optional[str] = None) -> list[dict]:
+        """Ringkasan perubahan 1 hari (gaya ringkas 'git log') dari cms_activity_log, dikelompokkan per
+        (user, heading): hitung aksi per jenis + contoh cuplikan teks + utk blok yg di-edit hari itu,
+        perbandingan teks sebelum (snapshot terakhir SEBELUM hari ini di cms_block_history, atau '(blok
+        baru)' kalau tak ada) vs sesudah (teks blok saat ini -- kalau blok diedit lagi di hari BERIKUTNYA
+        sebelum laporan ini dibuka, 'sesudah' sudah mencerminkan itu juga, bukan cuma akhir hari tsb).
+        `date`: 'YYYY-MM-DD'."""
+        lo, hi = f"{date} 00:00:00", f"{date} 23:59:59"
+        where, args = ["doc_id=?", "created_at>=?", "created_at<=?"], [doc_id, lo, hi]
+        if username:
+            where.append("username=?"); args.append(username)
+        with self._tx() as c:
+            rows = self._all(c, f"SELECT * FROM cms_activity_log WHERE {' AND '.join(where)} ORDER BY id", args)
+        groups: dict[tuple[str, str], dict] = {}
+        edited_block_ids: set[int] = set()
+        for r in rows:
+            if r["target_type"] != "block" or not r["target_id"]:
+                continue
+            heading = self._heading_label_of(r["target_id"])
+            key = (r["username"], heading)
+            grp = groups.setdefault(key, {"counts": {}, "examples": [], "edited_ids": []})
+            grp["counts"][r["action"]] = grp["counts"].get(r["action"], 0) + 1
+            if r["summary"] and len(grp["examples"]) < 5:
+                grp["examples"].append(r["summary"])
+            if r["action"] == "block.edit":
+                grp["edited_ids"].append(r["target_id"])
+                edited_block_ids.add(r["target_id"])
+        before_text: dict[int, str] = {}
+        with self._tx() as c:
+            for bid in edited_block_ids:
+                h = self._one(c, "SELECT text FROM cms_block_history WHERE block_id=? AND changed_at<? "
+                                 "ORDER BY id DESC LIMIT 1", (bid, lo))
+                before_text[bid] = (h["text"] if h else "") or ""
+        cur_text: dict[int, str] = {}
+        if edited_block_ids:
+            with self._tx() as c:
+                ph = ",".join(["?"] * len(edited_block_ids))
+                for b in self._all(c, f"SELECT id, text FROM cms_blocks WHERE id IN ({ph})", list(edited_block_ids)):
+                    cur_text[b["id"]] = b["text"] or ""
+        out = []
+        for (user, heading), data in groups.items():
+            diffs = []
+            for bid in data["edited_ids"][:3]:
+                bef, aft = (before_text.get(bid) or "").strip(), (cur_text.get(bid) or "").strip()
+                if bef != aft:
+                    diffs.append({"block_id": bid, "before": bef[:160], "after": aft[:160]})
+            out.append({"username": user, "heading": heading,
+                       "counts": [{"action": a, "label": self.ACTION_LABELS.get(a, a), "n": n}
+                                 for a, n in sorted(data["counts"].items())],
+                       "examples": data["examples"], "diffs": diffs})
+        out.sort(key=lambda x: (x["username"], x["heading"]))
+        return out
+
+    def daily_digest_by_project(self, project_id: Optional[int], date: str, username: Optional[str] = None) -> list[dict]:
+        """Rekap harian lintas SEMUA dokumen yg tertaut ke satu proyek (atau ke SEMUA proyek kalau
+        project_id=None), dikelompokkan per pengguna -> proyek -> heading (urutan dibalik dari
+        daily_digest krn satu pengguna bisa kerja di >1 proyek sehari). Ringkas: hitungan aksi per bab +
+        SATU cuplikan singkat (bukan cuplikan penuh/diff spt daily_digest per-dokumen) supaya tetap
+        kebaca "bagian apa yang diubah" tanpa bikin tampilan panjang -- dipakai sbg rekapitulasi cepat
+        "siapa ngapain hari ini" lintas proyek. Dokumen yg tak tertaut proyek manapun tidak ikut (mode
+        ini khusus rekap per-proyek)."""
+        with self._tx() as c:
+            if project_id:
+                links = self._all(c, "SELECT project_id, doc_id FROM cms_project_documents WHERE project_id=?", (project_id,))
+            else:
+                links = self._all(c, "SELECT DISTINCT project_id, doc_id FROM cms_project_documents")
+            proj_names = {r["id"]: r["name"] for r in self._all(c, "SELECT id, name FROM cms_projects WHERE deleted_at IS NULL")}
+        if not links:
+            return []
+        doc_to_proj: dict[int, int] = {}
+        for l in links:
+            doc_to_proj.setdefault(l["doc_id"], l["project_id"])    # asumsi 1 dokumen = 1 proyek
+        doc_ids = sorted(doc_to_proj)
+        lo, hi = f"{date} 00:00:00", f"{date} 23:59:59"
+        ph = ",".join(["?"] * len(doc_ids))
+        where = [f"doc_id IN ({ph})", "created_at>=?", "created_at<=?", "target_type='block'"]
+        args: list = [*doc_ids, lo, hi]
+        if username:
+            where.append("username=?"); args.append(username)
+        with self._tx() as c:
+            rows = self._all(c, f"SELECT * FROM cms_activity_log WHERE {' AND '.join(where)} ORDER BY id", args)
+        by_user: dict[str, dict[int, dict[str, dict]]] = {}
+        for r in rows:
+            if not r["target_id"]:
+                continue
+            pid = doc_to_proj.get(r["doc_id"])
+            if pid is None:
+                continue
+            heading = self._heading_label_of(r["target_id"])
+            node = by_user.setdefault(r["username"], {}).setdefault(pid, {}).setdefault(heading, {"counts": {}, "example": None})
+            node["counts"][r["action"]] = node["counts"].get(r["action"], 0) + 1
+            if r["summary"] and not node["example"]:
+                node["example"] = r["summary"][:70]
+        out = []
+        for user in sorted(by_user):
+            projs = []
+            for pid in sorted(by_user[user], key=lambda x: proj_names.get(x, "")):
+                headings = sorted(({"heading": h, "example": node["example"], "counts": [
+                    {"action": a, "label": self.ACTION_LABELS.get(a, a), "n": n} for a, n in sorted(node["counts"].items())]}
+                    for h, node in by_user[user][pid].items()), key=lambda x: x["heading"])
+                projs.append({"project_id": pid, "project_name": proj_names.get(pid, f"Proyek #{pid}"), "headings": headings})
+            out.append({"username": user, "projects": projs})
+        return out
+
     # ------------------------------------------------------------ posisi
     def _renumber(self, c, doc_id: int):
         rows = self._all(c, "SELECT id FROM cms_blocks WHERE doc_id=? ORDER BY seq, id", (doc_id,))

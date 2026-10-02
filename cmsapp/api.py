@@ -1061,6 +1061,43 @@ def admin_activity_actions():
     return jsonify(actions=[r["action"] for r in rows])
 
 
+@bp.get("/admin/activity/digest")
+@auth.require("activity_view")
+def admin_activity_digest():
+    """Ringkasan perubahan 1 hari per dokumen, dikelompokkan per (user, heading) -- gaya ringkas 'git log'
+    (jumlah aksi + contoh cuplikan + before/after teks blok yg diedit). ?doc_id= & ?date=YYYY-MM-DD wajib,
+    ?user= opsional."""
+    doc_id = request.args.get("doc_id", type=int)
+    date = request.args.get("date") or ""
+    if not doc_id or not date:
+        raise ValueError("doc_id dan date wajib")
+    return jsonify(items=S().daily_digest(doc_id, date, request.args.get("user") or None))
+
+
+@bp.get("/admin/activity/projects")
+@auth.require("activity_view")
+def admin_activity_projects():
+    """Daftar SEMUA proyek (id+nama saja, tanpa batasan project_view_all) -- khusus utk selector mode
+    Per Proyek di halaman Aktivitas; pengguna dgn activity_view dianggap perlu lihat semua proyek demi
+    tujuan pengawasan/rekap, independen dari hak akses sehari-hari ke isi proyek tsb."""
+    st = S()
+    with st._tx() as c:
+        rows = st._all(c, "SELECT id, name FROM cms_projects WHERE deleted_at IS NULL ORDER BY name")
+    return jsonify(projects=rows)
+
+
+@bp.get("/admin/activity/digest-project")
+@auth.require("activity_view")
+def admin_activity_digest_project():
+    """Rekap harian lintas dokumen dlm 1 proyek (?project_id=, atau SEMUA proyek bila dikosongkan),
+    dikelompokkan per pengguna -> proyek -> heading. ?date=YYYY-MM-DD wajib, ?user= opsional."""
+    date = request.args.get("date") or ""
+    if not date:
+        raise ValueError("date wajib")
+    pid = request.args.get("project_id", type=int)
+    return jsonify(items=S().daily_digest_by_project(pid, date, request.args.get("user") or None))
+
+
 @bp.post("/admin/docs")
 @auth.require("doc_upload")
 def admin_upload_doc():

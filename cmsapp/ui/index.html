@@ -463,19 +463,28 @@ function fileDlg(){const m=document.createElement('div');m.className='mask';
 
 // ===================== Aktivitas (admin) =====================
 let actState={offset:0,limit:50,user:'',action:'',from:'',to:''};
+let actMode='daftar';
 async function activityView(){closeDoc();
- const [{users},{actions}]=await Promise.all([api('GET','/admin/users'),api('GET','/admin/activity/actions')]);
- actState={offset:0,limit:50,user:'',action:'',from:'',to:''};
+ const [{users},{actions},{docs},{projects}]=await Promise.all([api('GET','/admin/users'),api('GET','/admin/activity/actions'),
+  api('GET','/docs'),api('GET','/admin/activity/projects')]);
+ actState={offset:0,limit:50,user:'',action:'',from:'',to:''};actMode='daftar';
  $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Log Aktivitas</h3>
- <form id=actf style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+ <div class=tabs style="border-bottom:none;margin-bottom:8px"><button data-m=daftar class=cur>Daftar</button><button data-m=ringkasan>Ringkasan per Dokumen</button><button data-m=proyek>Rekap per Proyek</button></div>
+ <div id=actpane></div></div>`;
+ $('#ab').onclick=e=>{e.preventDefault();docsView()};
+ const paintMode=()=>{document.querySelectorAll('#app .tabs button').forEach(b=>b.classList.toggle('cur',b.dataset.m===actMode));
+  if(actMode==='daftar')paintDaftar(users,actions);else if(actMode==='ringkasan')paintRingkasan(users,docs);else paintProyek(users,projects)};
+ document.querySelectorAll('#app .tabs button').forEach(b=>b.onclick=()=>{actMode=b.dataset.m;paintMode()});
+ paintMode()}
+function paintDaftar(users,actions){
+ $('#actpane').innerHTML=`<form id=actf style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
  <select name=user><option value="">— semua pengguna —</option>${users.map(u=>`<option value="${esc(u.username)}">${esc(u.username)}</option>`).join('')}</select>
  <select name=action><option value="">— semua aksi —</option>${actions.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select>
  <label style="font-size:12px;color:var(--mut)">dari<br><input type=date name=from></label>
  <label style="font-size:12px;color:var(--mut)">s/d<br><input type=date name=to></label>
  <button class=p style="align-self:end">Filter</button></form>
  <div id=actbody></div>
- <p><button id=actprev>← Sebelumnya</button> <button id=actnext>Berikutnya →</button></p></div>`;
- $('#ab').onclick=e=>{e.preventDefault();docsView()};
+ <p><button id=actprev>← Sebelumnya</button> <button id=actnext>Berikutnya →</button></p>`;
  $('#actf').onsubmit=e=>{e.preventDefault();const f=e.target;Object.assign(actState,{offset:0,user:f.user.value,action:f.action.value,from:f.from.value,to:f.to.value});loadActivity()};
  $('#actprev').onclick=()=>{actState.offset=Math.max(0,actState.offset-actState.limit);loadActivity()};
  $('#actnext').onclick=()=>{actState.offset+=actState.limit;loadActivity()};
@@ -489,6 +498,49 @@ async function loadActivity(){
  items.map(it=>`<tr><td>${esc(it.created_at||'')}</td><td>${esc(it.username)}</td><td>${esc(it.action)}</td><td>${tgt(it)}</td><td>${esc(it.summary||'')}</td></tr>`).join('')
  ||'<tr><td colspan=5 style="color:var(--mut)">Tidak ada aktivitas.</td></tr>'}</table>
  <p style="color:var(--mut);font-size:12px">${total?`${actState.offset+1}-${actState.offset+items.length} dari ${total}`:'0 hasil'}</p>`}
+function paintRingkasan(users,docs){
+ const today=new Date().toISOString().slice(0,10);
+ $('#actpane').innerHTML=`<p style="color:var(--mut);font-size:12px">Ringkasan perubahan 1 hari per dokumen, dikelompokkan per pengguna &amp; heading (bab/sub-bab) -- gaya ringkas commit log: jumlah blok diedit/ditambah/dihapus/dipindah + contoh cuplikan + perbandingan teks sebelum/sesudah utk blok yang diedit.</p>
+ <form id=digf style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+ <select name=doc required><option value="">— pilih dokumen —</option>${docs.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
+ <input type=date name=date value="${today}" required>
+ <select name=user><option value="">— semua pengguna —</option>${users.map(u=>`<option value="${esc(u.username)}">${esc(u.username)}</option>`).join('')}</select>
+ <button class=p>Tampilkan</button></form>
+ <div id=digbody></div>`;
+ $('#digf').onsubmit=async e=>{e.preventDefault();const f=e.target;
+  if(!f.doc.value)return note('Pilih dokumen dulu',1);
+  $('#digbody').innerHTML='<p style="color:var(--mut)">Memuat…</p>';
+  const q=new URLSearchParams({doc_id:f.doc.value,date:f.date.value});if(f.user.value)q.set('user',f.user.value);
+  try{const {items}=await api('GET',`/admin/activity/digest?${q}`);renderDigest(items)}catch(x){note(x.message,1);$('#digbody').innerHTML=''}}}
+function renderDigest(items){
+ $('#digbody').innerHTML=items.length?items.map(it=>`<div class=rc>
+  <div class=rh><b>${esc(it.username)}</b><span style="color:var(--mut)">— ${esc(it.heading)}</span></div>
+  <div>${it.counts.map(c=>`<span class=badge style="margin-right:4px">${c.n} ${esc(c.label)}</span>`).join('')}</div>
+  ${it.examples.length?`<ul style="margin:6px 0 0;padding-left:18px">${it.examples.map(x=>`<li><small style="color:var(--mut)">${esc(x)}</small></li>`).join('')}</ul>`:''}
+  ${it.diffs.length?it.diffs.map(d=>`<div style="font-size:12px;margin-top:6px;padding:4px 8px;background:var(--bg);border-radius:4px">
+   <div style="text-decoration:line-through;color:var(--mut)">${esc(d.before||'(kosong)')}</div>
+   <div>→ ${esc(d.after||'(kosong)')}</div></div>`).join(''):''}
+ </div>`).join(''):'<p style="color:var(--mut)">Tidak ada perubahan blok pada tanggal ini.</p>'}
+function paintProyek(users,projects){
+ const today=new Date().toISOString().slice(0,10);
+ $('#actpane').innerHTML=`<p style="color:var(--mut);font-size:12px">Rekap "siapa mengerjakan apa" lintas proyek dalam 1 hari, dikelompokkan per pengguna &amp; proyek &amp; bab/bagian -- cuma hitungan ringkas (tanpa cuplikan teks). Dokumen yang tidak tertaut proyek manapun tidak ikut terhitung.</p>
+ <form id=pjf style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+ <select name=project><option value="">— Semua Proyek —</option>${projects.map(p=>`<option value=${p.id}>${esc(p.name)}</option>`).join('')}</select>
+ <input type=date name=date value="${today}" required>
+ <select name=user><option value="">— semua pengguna —</option>${users.map(u=>`<option value="${esc(u.username)}">${esc(u.username)}</option>`).join('')}</select>
+ <button class=p>Tampilkan</button></form>
+ <div id=pjbody></div>`;
+ $('#pjf').onsubmit=async e=>{e.preventDefault();const f=e.target;
+  $('#pjbody').innerHTML='<p style="color:var(--mut)">Memuat…</p>';
+  const q=new URLSearchParams({date:f.date.value});if(f.project.value)q.set('project_id',f.project.value);if(f.user.value)q.set('user',f.user.value);
+  try{const {items}=await api('GET',`/admin/activity/digest-project?${q}`);renderProyekDigest(items)}catch(x){note(x.message,1);$('#pjbody').innerHTML=''}}}
+function renderProyekDigest(items){
+ $('#pjbody').innerHTML=items.length?items.map(u=>`<div class=rc><div class=rh><b>👤 ${esc(u.username)}</b></div>
+  ${u.projects.map(p=>`<div style="margin:6px 0 0 8px">
+   <b style="font-size:13px">📁 ${esc(p.project_name)}</b>
+   <ul style="margin:3px 0 0;padding-left:20px">${p.headings.map(h=>`<li><small>${esc(h.heading)}: ${h.counts.map(c=>`${c.n} ${esc(c.label)}`).join(', ')}${h.example?` — <span style="color:var(--mut)">cth: ${esc(h.example)}</span>`:''}</small></li>`).join('')}</ul>
+  </div>`).join('')}
+ </div>`).join(''):'<p style="color:var(--mut)">Tidak ada perubahan pada tanggal ini.</p>'}
 // ===================== /Aktivitas =====================
 async function editUserDlg(u){const m=document.createElement('div');m.className='mask';document.body.append(m);
  let groups=[];try{groups=(await api('GET','/groups/names')).groups}catch(e){}
@@ -615,7 +667,7 @@ async function meFilesView(){closeDoc();const [{files},{projects},roleOpts]=awai
 async function privilegeView(){closeDoc();
  const [{permissions},{groups},users]=await Promise.all([api('GET','/permissions'),api('GET','/groups'),
   api('GET','/admin/users').then(r=>r.users).catch(()=>[])]);
- const stickyTh='position:sticky;top:45px;background:var(--card);z-index:2;box-shadow:0 1px 0 var(--line)';
+ const stickyTh='position:sticky;top:0;background:var(--card);z-index:2;box-shadow:0 1px 0 var(--line)';
  const groupCell=g=>`<th style="min-width:130px;text-align:center;${stickyTh}">
   <input type=text value="${esc(g.name)}" data-gname="${g.id}" style="width:100%;font-weight:600;text-align:center;border:none;background:transparent">
   <div style="font-size:11px;color:var(--mut);margin-top:2px">
@@ -628,8 +680,8 @@ async function privilegeView(){closeDoc();
   </td>`).join('')}</tr>`;
  $('#app').innerHTML=`<div id=docs><h3>🔐 Privilege</h3>
  <p style="color:var(--mut);font-size:13px">Atur fitur apa saja yang bisa dipakai tiap grup. Grup "Super" otomatis punya semua akses (checkbox dikunci). Nama grup bisa diubah bebas (klik kotak nama di atas).</p>
- <div style="overflow-x:auto;overflow-y:visible">
- <table><tr><th style="min-width:260px;${stickyTh}">Fitur</th>${groups.map(groupCell).join('')}</tr>
+ <div style="max-height:min(640px,65vh);overflow:auto;border:1px solid var(--line);border-radius:6px">
+ <table style="margin:0"><tr><th style="min-width:260px;${stickyTh}">Fitur</th>${groups.map(groupCell).join('')}</tr>
  ${permissions.map(permRow).join('')}</table></div>
  <form id=fgroup style="display:flex;gap:6px;margin-top:10px;align-items:center">
  <input name=name placeholder="nama grup baru" required><button class=p>+ Tambah grup</button></form>
