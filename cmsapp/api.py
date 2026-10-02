@@ -84,6 +84,25 @@ def guard(block_id: int) -> dict:
     return b
 
 
+def view_restricted() -> bool:
+    """True kalau pengguna hanya boleh melihat (bukan cuma mengedit) bagian yang ditugaskan ke dirinya
+    -- permission doc_view_assigned_only, diabaikan kalau dia juga punya block_edit_all (admin/author/
+    owner/reviewer-qc tetap lihat semua)."""
+    return auth.has_perm(g.user, "doc_view_assigned_only") and not auth.has_perm(g.user, "block_edit_all")
+
+
+def block_visible(doc_id: int, block_id: int, kind: str, visible_heads: set[int] | None = None) -> bool:
+    """Dipakai saat view_restricted(): apakah blok ini boleh terlihat sama sekali. Heading dicek lewat
+    visible_heads (ancestor-atau-assigned, lihat BlockStore.visible_headings_for_user); blok lain lewat
+    PIC efektifnya sendiri (sama spt can_edit utk block_edit_assigned, independen dari hak edit)."""
+    if kind == "heading":
+        if visible_heads is None:
+            visible_heads = S().visible_headings_for_user(doc_id, g.user["id"])
+        return block_id in visible_heads
+    pics, _ = S().effective_pic(doc_id, block_id)
+    return any(p["user_id"] == g.user["id"] for p in pics)
+
+
 def need(v, name):
     if v is None:
         raise ValueError(f"'{name}' wajib")
@@ -181,7 +200,11 @@ def me():
 @bp.get("/docs")
 @auth.require()
 def docs():
-    return jsonify(docs=S().list_documents())
+    items = S().list_documents()
+    if view_restricted():
+        visible = S().assigned_doc_ids(g.user["id"])
+        items = [d for d in items if d["id"] in visible]
+    return jsonify(docs=items)
 
 
 @bp.get("/docs/<int:doc_id>/meta")
@@ -191,7 +214,7 @@ def get_doc_meta(doc_id):
 
 
 @bp.patch("/docs/<int:doc_id>/meta")
-@auth.require("admin")
+@auth.require("outline_manage")
 def patch_doc_meta(doc_id):
     d = body()
     if "caption_numbering" in d and d["caption_numbering"] not in ("global", "per_chapter"):
@@ -210,7 +233,10 @@ def outline(doc_id):
         pics = node.get("pics") or []
         h["pic"] = [{"user_id": p["user_id"], "username": p["username"], "status": p["status"]} for p in pics]
         h["pic_direct"] = bool(node.get("direct"))
-        h["mine"] = g.user["role"] == "admin" or any(p["user_id"] == g.user["id"] for p in pics)
+        h["mine"] = g.user.get("is_super") or any(p["user_id"] == g.user["id"] for p in pics)
+    if view_restricted():
+        visible = S().visible_headings_for_user(doc_id, g.user["id"])
+        o = [h for h in o if h["id"] in visible]
     return jsonify(outline=o, rev=S().fingerprint(doc_id))
 
 
@@ -242,8 +268,8 @@ def set_block_pic_status(block_id):
     done = bool(d.get("done"))
     note = (d.get("note") or "").strip()
     if target != g.user["id"]:
-        if g.user["role"] not in ("admin", "reviewer"):
-            abort(403, description="hanya admin/reviewer boleh mengembalikan status PIC lain")
+        if not auth.has_perm(g.user, "outline_manage"):
+            abort(403, description="tidak punya izin mengembalikan status PIC lain")
         if done:
             raise ValueError("hanya bisa mengembalikan (done=false), bukan menandai selesai utk PIC lain")
     S().set_pic_status(b["doc_id"], block_id, target, done, note, by=g.user["username"])
@@ -273,7 +299,12 @@ def blocks(doc_id):
     bl = s.blocks_range(doc_id, fs, ts, limit=min(request.args.get("limit", 500, type=int), 500))
     locks = current_app.extensions["cms_locks"].holders([b["id"] for b in bl])
     pm = s.pic_map(doc_id)
+    edit_all = auth.has_perm(g.user, "block_edit_all")
+    edit_assigned = auth.has_perm(g.user, "block_edit_assigned")
+    restrict = view_restricted()
+    visible_heads = s.visible_headings_for_user(doc_id, g.user["id"]) if restrict else None
     res = []
+    stack: list[tuple[int, list]] = []  # (level, pics) heading yg sedang terbuka, paling spesifik terakhir
     for b in bl:
         o = out(b)
         if b["id"] in locks:
@@ -282,6 +313,30 @@ def blocks(doc_id):
         if node:
             o["pic"] = [{"user_id": p["user_id"], "username": p["username"], "status": p["status"]} for p in node["pics"]]
             o["pic_direct"] = node["direct"]
+        # can_edit: dihitung dari pic_map (sekali per dokumen, bukan query per blok) -- heading/caption/tabel/
+        # gambar pakai pics efektif miliknya sendiri (sudah mewarisi dari atasan); paragraf/list_item/note
+        # mewarisi dari heading terbuka terdekat di `bl` (urut seq, sama spt logika stack pic_map).
+        if b["kind"] == "heading":
+            while stack and stack[-1][0] >= b["level"]:
+                stack.pop()
+            scope_pics = node["pics"] if node else []
+            stack.append((b["level"], scope_pics))
+        elif node:
+            scope_pics = node["pics"]
+        else:
+            scope_pics = stack[-1][1] if stack else []
+        if edit_all:
+            o["can_edit"] = True
+        elif edit_assigned:
+            o["can_edit"] = any(p["user_id"] == g.user["id"] for p in scope_pics)
+        else:
+            o["can_edit"] = False
+        if restrict:
+            if b["kind"] == "heading":
+                if b["id"] not in visible_heads:
+                    continue
+            elif not any(p["user_id"] == g.user["id"] for p in scope_pics):
+                continue
         res.append(o)
     return jsonify(blocks=res, rev=s.fingerprint(doc_id))
 
@@ -290,6 +345,8 @@ def blocks(doc_id):
 @auth.require()
 def block(bid):
     b = S().get_block(bid)
+    if view_restricted() and not block_visible(b["doc_id"], bid, b["kind"]):
+        abort(404)
     o = out(b)
     h = current_app.extensions["cms_locks"].holder(bid)
     if h:
@@ -297,6 +354,7 @@ def block(bid):
     if b["kind"] in ("heading", "caption", "table", "image"):
         node = S().pic_of(b["doc_id"], bid)
         o["pic"] = [{"user_id": p["user_id"], "username": p["username"], "status": p["status"]} for p in node["pics"]]
+    o["can_edit"] = auth.can_edit(b["doc_id"], bid)
     return jsonify(block=o)
 
 
@@ -330,15 +388,15 @@ def asset(doc_id, sha1):
 
 # ---------------------------------------------------------------- edit
 @bp.patch("/blocks/<int:bid>")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def patch_block(bid):
     d = body()
     b = S().get_block(bid)
     if not auth.can_edit(b["doc_id"], bid):
         abort(403, description="tidak ditugaskan pada bab ini")
-    if ("level" in d or "kind" in d) and g.user["role"] != "admin" and (
+    if ("level" in d or "kind" in d) and not auth.has_perm(g.user, "chapter_create") and (
             b["level"] == 1 or int(d.get("level") or (2 if d.get("kind") == "heading" else 0)) == 1):
-        abort(403, description="hanya admin yang mengubah level bab")
+        abort(403, description="tidak punya izin mengubah level bab")
     v = S().update_block(bid, g.user["username"], text=d.get("text"), data=d.get("data"), level=d.get("level"),
                          status=d.get("status"), assignee=d.get("assignee"), expected_version=d.get("version"),
                          kind=d.get("kind"))
@@ -357,7 +415,7 @@ def patch_block(bid):
 
 
 @bp.post("/blocks/<int:bid>/generated")
-@auth.require("admin")
+@auth.require("outline_manage")
 def set_generated(bid):
     """Set/ganti/hapus marker Daftar Isi/Tabel/Gambar pada heading yang sudah ada (admin-only, sama spt
     menyisipkan daftar baru). generated: 'toc'|'tof_tabel'|'tof_gambar'|null (null = kembalikan jadi heading biasa)."""
@@ -370,9 +428,9 @@ def set_generated(bid):
 
 
 @bp.post("/docs/<int:doc_id>/outline")
-@auth.require("admin", "reviewer")
+@auth.require("outline_manage")
 def insert_outline(doc_id):
-    """Tambah heading (outline) langsung dari tab Proyek->PIC: admin/reviewer (QC) boleh menambah/mengurangi
+    """Tambah heading (outline) langsung dari tab Proyek->PIC: admin/author (owner) boleh menambah/mengurangi
     outline independen dari penugasan PIC per-bab -- beda dari POST /docs/<id>/blocks (general, butuh
     can_edit/author tertugas) yang dipakai editor dokumen biasa."""
     d = body()
@@ -386,9 +444,9 @@ def insert_outline(doc_id):
 
 
 @bp.delete("/outline/<int:bid>")
-@auth.require("admin", "reviewer")
+@auth.require("outline_manage")
 def delete_outline(bid):
-    """Hapus (soft-delete) satu heading outline -- admin/reviewer (QC), lihat insert_outline."""
+    """Hapus (soft-delete) satu heading outline -- admin/author (owner), lihat insert_outline."""
     b = S().get_block(bid)
     if b["kind"] != "heading":
         raise ValueError("bukan blok heading")
@@ -398,7 +456,7 @@ def delete_outline(bid):
 
 
 @bp.post("/blocks/<int:bid>/hidden")
-@auth.require("admin", "reviewer")
+@auth.require("outline_manage")
 def set_hidden(bid):
     """Sembunyikan/tampilkan blok (heading/tabel/gambar/caption) dari ekspor DOCX TANPA dihapus (beda dari
     DELETE /outline/<id> yang soft-delete) -- utk heading, seluruh subtree-nya (sub-heading, paragraf,
@@ -413,10 +471,10 @@ def set_hidden(bid):
 
 
 @bp.post("/blocks/<int:bid>/outline-move")
-@auth.require("admin", "reviewer")
+@auth.require("outline_manage")
 def move_outline(bid):
     """Pindahkan posisi heading (+seluruh subtree-nya)/tabel/gambar/caption dari tab Proyek->PIC --
-    admin/reviewer (QC), independen dari penugasan PIC per-bab (beda dari POST /blocks/<id>/move yang
+    admin/author (owner), independen dari penugasan PIC per-bab (beda dari POST /blocks/<id>/move yang
     general & butuh can_edit/penugasan). after_id=null -> pindah ke paling awal dokumen."""
     d = body()
     b = S().get_block(bid)
@@ -432,7 +490,7 @@ def move_outline(bid):
 
 
 @bp.post("/docs/<int:doc_id>/blocks")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def insert(doc_id):
     d = body()
     after = d.get("after_id")
@@ -442,10 +500,10 @@ def insert(doc_id):
     if after is not None:
         if not auth.can_edit(doc_id, after):
             abort(403, description="tidak ditugaskan pada bab ini")
-    elif g.user["role"] != "admin":
-        abort(403, description="hanya admin yang menyisipkan di awal dokumen")
-    if kind == "heading" and int(d.get("level", 0)) == 1 and g.user["role"] != "admin":
-        abort(403, description="hanya admin yang membuat bab baru")
+    elif not auth.has_perm(g.user, "chapter_create"):
+        abort(403, description="tidak punya izin menyisipkan di awal dokumen")
+    if kind == "heading" and int(d.get("level", 0)) == 1 and not auth.has_perm(g.user, "chapter_create"):
+        abort(403, description="tidak punya izin membuat bab baru")
     nid = S().insert_block(doc_id, after, kind, d.get("text", ""), int(d.get("level", 0)), d.get("data"),
                            d.get("part"), g.user["username"])
     lvl = f' L{d.get("level")}' if kind == "heading" else ""
@@ -454,7 +512,7 @@ def insert(doc_id):
 
 
 @bp.post("/docs/<int:doc_id>/tables")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def add_table(doc_id):
     d = body()
     after = need(d.get("after_id"), "after_id")
@@ -471,7 +529,7 @@ def add_table(doc_id):
 
 
 @bp.patch("/blocks/<int:bid>/cell")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def cell(bid):
     d = body()
     b = guard(bid)
@@ -482,7 +540,7 @@ def cell(bid):
 
 
 @bp.post("/blocks/<int:bid>/rows")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def rows(bid):
     d = body()
     b = guard(bid)
@@ -496,7 +554,7 @@ def rows(bid):
 
 
 @bp.post("/blocks/<int:bid>/long")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def table_long(bid):
     """Ubah mode tabel: {"on": true[, "force": true]} -> mode form (long-form; force = konversi longgar),
     {"on": false} -> kembali ke grid, {"preview": true} -> cek konversi tanpa menyimpan."""
@@ -513,7 +571,7 @@ def table_long(bid):
 
 
 @bp.patch("/blocks/<int:bid>/rec")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def table_rec(bid):
     """Ubah satu isian record tabel: {rec, key, text, group?}. Tanpa `version` = digabung ke versi terbaru."""
     d = body()
@@ -525,7 +583,7 @@ def table_rec(bid):
 
 
 @bp.post("/blocks/<int:bid>/records")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def table_records(bid):
     """Operasi record: {op:"add", after, rows:[[...]|{kolom:teks}]} | {op:"delete", rec} | {op:"move", rec, to} | {op:"span", rec, key, n}."""
     d = body()
@@ -541,7 +599,7 @@ def table_records(bid):
 
 
 @bp.post("/blocks/<int:bid>/columns")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def table_columns(bid):
     """Atur kolom/header: {columns:[{key?, path:"Grup > Sub", merge?, align?, size?}], dry?}. dry=true -> hanya pratinjau grid."""
     d = body()
@@ -558,7 +616,7 @@ def table_columns(bid):
 
 
 @bp.post("/docs/<int:doc_id>/pagebreak")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def pagebreak(doc_id):
     d = body()
     after = need(d.get("after_id"), "after_id")
@@ -571,7 +629,7 @@ def pagebreak(doc_id):
 
 
 @bp.post("/docs/<int:doc_id>/images")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def image(doc_id):
     f = request.files.get("file")
     after = request.form.get("after_id", type=int)
@@ -590,8 +648,28 @@ def image(doc_id):
     return jsonify(ids=ids), 201
 
 
+@bp.post("/docs/<int:doc_id>/inline-asset")
+@auth.require("block_edit_all", "block_edit_assigned")
+def inline_asset(doc_id):
+    """Daftarkan gambar/ikon/screenshot sbg asset dokumen utk disisipkan INLINE di tengah teks paragraf/
+    caption/sel tabel (beda dari /docs/<id>/images yang bikin blok gambar berdiri sendiri)."""
+    f = request.files.get("file")
+    block_id = request.form.get("block_id", type=int)
+    if not f or block_id is None:
+        raise ValueError("multipart: 'file' dan 'block_id' wajib")
+    if not auth.can_edit(doc_id, block_id):
+        abort(403, description="tidak ditugaskan pada bab ini")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".upload") as t:
+        f.save(t.name)
+    try:
+        asset = S().register_inline_asset(doc_id, t.name)
+    finally:
+        os.remove(t.name)
+    return jsonify(asset), 201
+
+
 @bp.delete("/blocks/<int:bid>")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def delete(bid):
     b = guard(bid)
     S().delete_block(bid, g.user["username"], request.args.get("version", type=int))
@@ -600,7 +678,7 @@ def delete(bid):
 
 
 @bp.post("/blocks/<int:bid>/restore")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def restore(bid):
     b = guard(bid)
     S().restore_block(bid, g.user["username"])
@@ -610,7 +688,7 @@ def restore(bid):
 
 
 @bp.post("/blocks/<int:bid>/move")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def move(bid):
     d = body()
     b = guard(bid)
@@ -625,7 +703,7 @@ def move(bid):
 
 
 @bp.post("/blocks/<int:bid>/revert")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def revert(bid):
     b = guard(bid)
     version = int(need(body().get("version"), "version"))
@@ -650,12 +728,21 @@ def comments(doc_id):
     di tab Proyek->PIC); tanpa parameter -> seluruh dokumen."""
     ch = request.args.get("chapter", type=int)
     fs, ts = _chapter_range(doc_id, ch) if ch else (None, None)
-    return jsonify(comments=S().list_comments(doc_id, fs, ts, block_id=request.args.get("block_id", type=int)))
+    items = S().list_comments(doc_id, fs, ts, block_id=request.args.get("block_id", type=int))
+    if view_restricted():
+        visible_heads = S().visible_headings_for_user(doc_id, g.user["id"])
+        kinds = {}
+        items = [c for c in items if block_visible(doc_id, c["block_id"],
+                 kinds.setdefault(c["block_id"], S().get_block(c["block_id"])["kind"]), visible_heads)]
+    return jsonify(comments=items)
 
 
 @bp.post("/blocks/<int:bid>/comments")
-@auth.require("admin", "author", "reviewer")
+@auth.require("comment_write")
 def add_comment(bid):
+    b = S().get_block(bid)
+    if view_restricted() and not block_visible(b["doc_id"], bid, b["kind"]):
+        abort(404)
     d = body()
     c = S().add_comment(bid, g.user["username"], d.get("text", ""), d.get("parent_id"))
     emit(c["doc_id"], "comment", id=bid, cid=c["id"], log_action="comment.add", log_summary=snip(d.get("text", ""), 120))
@@ -663,7 +750,7 @@ def add_comment(bid):
 
 
 @bp.post("/comments/<int:cid>/resolve")
-@auth.require("admin", "author", "reviewer")
+@auth.require("comment_write")
 def resolve_comment(cid):
     resolved = bool(body().get("resolved", True))
     cm = S().resolve_comment(cid, g.user["username"], resolved)
@@ -673,10 +760,10 @@ def resolve_comment(cid):
 
 
 @bp.delete("/comments/<int:cid>")
-@auth.require("admin", "author", "reviewer")
+@auth.require("comment_write")
 def del_comment(cid):
     cm = S().get_comment(cid)
-    if g.user["role"] != "admin" and cm["author"] != g.user["username"]:
+    if not g.user.get("is_super") and cm["author"] != g.user["username"]:
         abort(403, description="hanya penulis komentar / admin")
     S().delete_comment(cid)
     emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid, log_action="comment.delete")
@@ -685,7 +772,7 @@ def del_comment(cid):
 
 # ---------------------------------------------------------------- lock
 @bp.post("/blocks/<int:bid>/lock")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def lock(bid):
     b = guard(bid)
     until = S().lock_block(bid, g.user["username"])
@@ -694,7 +781,7 @@ def lock(bid):
 
 
 @bp.delete("/blocks/<int:bid>/lock")
-@auth.require("admin", "author", "reviewer")
+@auth.require("block_edit_all", "block_edit_assigned")
 def unlock(bid):
     b = S().get_block(bid)
     S().unlock_block(bid, g.user["username"])
@@ -759,7 +846,7 @@ def presence(doc_id):
 
 # ---------------------------------------------------------------- ekspor
 @bp.post("/docs/<int:doc_id>/export")
-@auth.require()
+@auth.require("doc_export")
 def export_start(doc_id):
     r = R()
     if not r.set(f"cms:rl:export:{g.user['id']}", 1, nx=True, ex=5):
@@ -769,7 +856,7 @@ def export_start(doc_id):
 
 
 @bp.get("/exports/<jid>")
-@auth.require()
+@auth.require("doc_export")
 def export_status(jid):
     st = export.status(R(), jid)
     if not st:
@@ -778,7 +865,7 @@ def export_status(jid):
 
 
 @bp.get("/exports/<jid>/download")
-@auth.require()
+@auth.require("doc_export")
 def export_download(jid):
     h = R().hgetall(export.JOB + jid)
     if not h or h.get("status") != "done" or not os.path.isfile(h.get("file", "")):
@@ -794,20 +881,20 @@ def _verify_link(token: str) -> str:
 
 
 @bp.post("/admin/users")
-@auth.require("admin")
+@auth.require("user_manage")
 def admin_user():
     d = body()
-    uid, verify_token = auth.create_user(d["username"], d["password"], d.get("name", ""), d.get("role", "author"),
+    uid, verify_token = auth.create_user(d["username"], d["password"], d.get("name", ""), d.get("role", "editor"),
                                          d.get("email", ""), d.get("phone_wa", ""), d.get("expertise", ""))
     S().log_activity(g.user["username"], "user.create", target_type="user", target_id=uid,
-                     summary=f'{d["username"]} ({d.get("role", "author")})')
+                     summary=f'{d["username"]} ({d.get("role", "editor")})')
     if verify_token and d.get("email"):
         mailer.notify_account_created(d["email"], d.get("name", ""), d["username"], _verify_link(verify_token))
     return jsonify(id=uid), 201
 
 
 @bp.patch("/admin/users/<int:uid>")
-@auth.require("admin")
+@auth.require("user_manage")
 def admin_user_update(uid):
     d = body()
     verify_token = auth.update_profile(uid, name=d.get("name"), role=d.get("role"), email=d.get("email"),
@@ -820,7 +907,7 @@ def admin_user_update(uid):
 
 
 @bp.post("/admin/users/<int:uid>/notify")
-@auth.require("admin")
+@auth.require("user_manage")
 def admin_user_notify(uid):
     u = auth.get_user(uid)
     if not u.get("email"):
@@ -835,7 +922,7 @@ def admin_user_notify(uid):
 
 
 @bp.post("/admin/assign")
-@auth.require("admin")
+@auth.require("pic_assign")
 def admin_assign():
     d = body()
     (auth.unassign if d.get("remove") else auth.assign)(int(d["doc_id"]), int(d["user_id"]), d["scope"])
@@ -846,17 +933,20 @@ def admin_assign():
 
 
 @bp.get("/admin/users")
-@auth.require("admin")
+@auth.require("user_manage")
 def admin_users():
     st = S()
     with st._tx() as c:
-        rows = st._all(c, "SELECT id, username, name, role, active, email, email_verified_at, phone_wa, "
-                         "expertise, last_login FROM cms_users ORDER BY id")
+        rows = st._all(c, "SELECT u.id, u.username, u.name, g.name AS role, g.is_super, u.active, u.email, "
+                         "u.email_verified_at, u.phone_wa, u.expertise, u.last_login FROM cms_users u "
+                         "JOIN cms_groups g ON g.id=u.group_id ORDER BY u.id")
+        for r in rows:
+            r["is_super"] = bool(r["is_super"])
     return jsonify(users=rows)
 
 
 @bp.post("/admin/users/<int:uid>/active")
-@auth.require("admin")
+@auth.require("user_manage")
 def admin_user_active(uid):
     if uid == g.user["id"]:
         raise ValueError("tidak bisa menonaktifkan diri sendiri")
@@ -869,8 +959,77 @@ def admin_user_active(uid):
     return jsonify(ok=True)
 
 
+# ---------------------------------------------------------------- privilege & grup (halaman Privilege)
+@bp.get("/permissions")
+@auth.require("privilege_manage")
+def permissions_catalog():
+    return jsonify(permissions=auth.PERMISSIONS)
+
+
+@bp.get("/groups")
+@auth.require("privilege_manage")
+def groups_list():
+    return jsonify(groups=auth.list_groups())
+
+
+@bp.get("/groups/names")
+@auth.require("user_manage")
+def groups_names():
+    """Daftar nama grup saja (tanpa matriks permission) -- utk dropdown 'Peran' di form tambah/edit
+    pengguna, dipakai siapapun yang boleh kelola pengguna meski tak punya izin privilege_manage."""
+    return jsonify(groups=[{"id": g["id"], "name": g["name"]} for g in auth.list_groups()])
+
+
+@bp.post("/groups")
+@auth.require("privilege_manage")
+def groups_create():
+    d = body()
+    gid = auth.create_group(d.get("name", ""))
+    S().log_activity(g.user["username"], "group.create", target_type="group", target_id=gid, summary=d.get("name", ""))
+    return jsonify(id=gid), 201
+
+
+@bp.patch("/groups/<int:gid>")
+@auth.require("privilege_manage")
+def groups_update(gid):
+    d = body()
+    if "name" in d:
+        auth.rename_group(gid, d["name"])
+    if "is_super" in d:
+        auth.set_group_super(gid, bool(d["is_super"]))
+    if "perms" in d:
+        auth.set_group_perms(gid, list(d["perms"]))
+    S().log_activity(g.user["username"], "group.update", target_type="group", target_id=gid,
+                     summary=", ".join(sorted(d)))
+    return jsonify(ok=True)
+
+
+@bp.delete("/groups/<int:gid>")
+@auth.require("privilege_manage")
+def groups_delete(gid):
+    auth.delete_group(gid)
+    S().log_activity(g.user["username"], "group.delete", target_type="group", target_id=gid)
+    return jsonify(ok=True)
+
+
+@bp.get("/admin/users/<int:uid>/perms")
+@auth.require("privilege_manage")
+def user_perms_get(uid):
+    return jsonify(overrides=auth.user_perm_overrides(uid))
+
+
+@bp.patch("/admin/users/<int:uid>/perms")
+@auth.require("privilege_manage")
+def user_perms_set(uid):
+    d = body()
+    auth.set_user_perm_overrides(uid, d.get("overrides", {}))
+    S().log_activity(g.user["username"], "user.perms_update", target_type="user", target_id=uid,
+                     summary=", ".join(sorted(d.get("overrides", {}))))
+    return jsonify(ok=True)
+
+
 @bp.get("/admin/docs/<int:doc_id>/assign")
-@auth.require("admin")
+@auth.require("pic_assign")
 def admin_assignments(doc_id):
     st = S()
     with st._tx() as c:
@@ -880,7 +1039,7 @@ def admin_assignments(doc_id):
 
 
 @bp.get("/admin/activity")
-@auth.require("admin")
+@auth.require("activity_view")
 def admin_activity():
     """Log aktivitas lintas-fitur (edit/sisip/hapus/pindah blok, komentar, proyek, berkas, task, dst) --
     admin-only, mirip "Activity" Google Drive. Filter opsional: user, action, doc_id, project_id, from, to
@@ -894,7 +1053,7 @@ def admin_activity():
 
 
 @bp.get("/admin/activity/actions")
-@auth.require("admin")
+@auth.require("activity_view")
 def admin_activity_actions():
     st = S()
     with st._tx() as c:
@@ -903,7 +1062,7 @@ def admin_activity_actions():
 
 
 @bp.post("/admin/docs")
-@auth.require("admin")
+@auth.require("doc_upload")
 def admin_upload_doc():
     """Unggah .docx -> ekstrak ke blok (sinkron; dokumen ratusan halaman beberapa detik)."""
     import uuid
@@ -953,6 +1112,12 @@ def my_profile_update():
     return jsonify(ok=True)
 
 
+@bp.get("/expertise-list")
+@auth.require()
+def expertise_list():
+    return jsonify(expertise=S().list_distinct_expertise())
+
+
 @bp.get("/me/experience")
 @auth.require()
 def my_experience():
@@ -991,7 +1156,7 @@ def my_files_upload():
 @auth.require()
 def my_files_set_expiry(fid):
     r = S().get_user_file(fid)
-    if r["user_id"] != g.user["id"] and g.user["role"] != "admin":
+    if r["user_id"] != g.user["id"] and not auth.has_perm(g.user, "user_manage"):
         abort(403)
     S().set_user_file_expiry(fid, body().get("expires_on") or None)
     return jsonify(ok=True)
@@ -1001,7 +1166,7 @@ def my_files_set_expiry(fid):
 @auth.require()
 def my_files_delete(fid):
     r = S().get_user_file(fid)
-    if r["user_id"] != g.user["id"] and g.user["role"] != "admin":
+    if r["user_id"] != g.user["id"] and not auth.has_perm(g.user, "user_manage"):
         abort(403)
     S().delete_user_file(fid)
     return jsonify(ok=True)
@@ -1011,7 +1176,7 @@ def my_files_delete(fid):
 @auth.require()
 def user_file_raw(fid):
     r = S().get_user_file(fid)
-    if r["user_id"] != g.user["id"] and g.user["role"] != "admin":
+    if r["user_id"] != g.user["id"] and not auth.has_perm(g.user, "user_manage"):
         abort(403)
     base = os.path.realpath(_user_file_root(r["user_id"]))
     p = os.path.realpath(r["path"])
@@ -1021,6 +1186,6 @@ def user_file_raw(fid):
 
 
 @bp.get("/admin/users/<int:uid>/files")
-@auth.require("admin")
+@auth.require("user_manage")
 def admin_user_files(uid):
     return jsonify(files=S().list_user_files(uid))

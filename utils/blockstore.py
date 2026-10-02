@@ -183,6 +183,14 @@ class BlockStore:
         with self._tx() as c:
             return self._all(c, "SELECT id, filename, status, updated_at FROM cms_documents ORDER BY id")
 
+    def assigned_doc_ids(self, user_id: int) -> set[int]:
+        """Dokumen di mana user ini jadi PIC di scope manapun -- dipakai menyaring daftar /docs utk
+        permission doc_view_assigned_only (penulis luar tak boleh lihat dokumen yg bukan tanggung jawabnya
+        sama sekali, termasuk sekadar nama berkasnya)."""
+        with self._tx() as c:
+            rows = self._all(c, "SELECT DISTINCT doc_id FROM cms_assign WHERE user_id=?", (user_id,))
+        return {r["doc_id"] for r in rows}
+
     # ------------------------------------------------------------ komentar
     def add_comment(self, block_id: int, author: str, text: str, parent_id: Optional[int] = None) -> dict:
         text = (text or "").strip()
@@ -823,9 +831,10 @@ class BlockStore:
             tm.apply_long(d, d["long"])
         return self._edit_long(block_id, user, fn, expected_version)
 
-    def add_image(self, doc_id: int, after_id: Optional[int], file_path: str, alt: str = "", caption: Optional[str] = None,
-                  role: Optional[str] = None, user: str = "") -> list[int]:
-        """Salin gambar ke media_dir dokumen, daftarkan ke cms_assets (dedup sha1), sisipkan blok image (+caption gambar)."""
+    def _ingest_image_asset(self, doc_id: int, file_path: str):
+        """Baca file gambar, dedup berdasar sha1, copy ke media_dir dokumen, daftarkan/increment cms_assets.
+        Return (sha1, DocxImage) -- dipakai add_image (blok gambar berdiri sendiri) & register_inline_asset
+        (gambar/ikon/screenshot INLINE di tengah teks paragraf/caption/sel tabel)."""
         from docx.image.image import Image as DocxImage
         with open(file_path, "rb") as f:
             blob = f.read()
@@ -848,6 +857,13 @@ class BlockStore:
                 self._x(c, "INSERT INTO cms_assets(doc_id,sha1,filename,path,mime,px_w,px_h,size,uses,orig_part) VALUES (?,?,?,?,?,?,?,?,?,?)",
                         (doc_id, sha1, fn, os.path.join(media_dir, fn), im.content_type, im.px_width, im.px_height, len(blob), 0, "upload"))
             self._x(c, "UPDATE cms_assets SET uses=uses+1 WHERE doc_id=? AND sha1=?", (doc_id, sha1))
+        return sha1, im
+
+    def add_image(self, doc_id: int, after_id: Optional[int], file_path: str, alt: str = "", caption: Optional[str] = None,
+                  role: Optional[str] = None, user: str = "") -> list[int]:
+        """Salin gambar ke media_dir dokumen, daftarkan ke cms_assets (dedup sha1), sisipkan blok image (+caption gambar)."""
+        sha1, im = self._ingest_image_asset(doc_id, file_path)
+        with self._tx() as c:
             seq, anchor = self._next_seq(c, doc_id, after_id)
             part = anchor["part"] if anchor else "body"
         cx = int(min(im.px_width / 96 * 914400, 5580000))       # <= lebar teks (~15.5 cm)
@@ -857,6 +873,13 @@ class BlockStore:
         if caption:
             ids.append(self.insert_block(doc_id, ids[0], "caption", caption, data={"subtype": "gambar"}, user=user))
         return ids
+
+    def register_inline_asset(self, doc_id: int, file_path: str) -> dict:
+        """Daftarkan gambar (ikon/screenshot rumus/dll) sbg asset dokumen TANPA membuat blok baru -- dipakai
+        utk gambar INLINE di tengah teks paragraf/caption/sel tabel (markup `![alt](sha1)`, lihat
+        cmsapp/ui/index.html insertInlineImage() & utils/docx_build.add_markup/_resolve_inline_img)."""
+        sha1, im = self._ingest_image_asset(doc_id, file_path)
+        return {"sha1": sha1, "px_w": im.px_width, "px_h": im.px_height}
 
     # ------------------------------------------------------------ manajemen proyek
     PROJECT_FILE_CATEGORIES = ("surat", "data_mentah", "dokumen_pendukung", "galeri", "tender", "pitching", "lab", "mom")
@@ -1218,13 +1241,45 @@ class BlockStore:
         out.sort(key=lambda p: (p.get("start_date") or "", p["id"]), reverse=True)
         return out
 
+    def list_distinct_expertise(self) -> list[str]:
+        """Nilai unik kolom cms_users.expertise yg sudah pernah diisi admin -- dipakai sbg saran role
+        tambahan (selain daftar default) di tab Tim/CV, jadi daftar saran bertambah otomatis."""
+        with self._tx() as c:
+            rows = self._all(c, "SELECT DISTINCT expertise FROM cms_users WHERE expertise IS NOT NULL "
+                                 "AND expertise<>'' ORDER BY expertise")
+        return [r["expertise"] for r in rows]
+
     def list_project_team(self, project_id: int) -> list[dict]:
         """Tim proyek (cms_user_project_roles): siapa saja + role apa. Ini jadi satu-satunya kolam orang
         yang bisa ditandai PIC di tab PIC proyek tsb (lihat cmsapp/projects_api.py)."""
         with self._tx() as c:
-            return self._all(c, "SELECT u.id, u.username, u.name, u.role, u.active, r.title, r.updated_at "
-                                 "FROM cms_user_project_roles r JOIN cms_users u ON u.id=r.user_id "
-                                 "WHERE r.project_id=? AND u.active=1 ORDER BY u.username", (project_id,))
+            rows = self._all(c, "SELECT u.id, u.username, u.name, g.name AS role, g.is_super, u.active, "
+                                 "r.title, r.updated_at FROM cms_user_project_roles r JOIN cms_users u ON u.id=r.user_id "
+                                 "JOIN cms_groups g ON g.id=u.group_id WHERE r.project_id=? AND u.active=1 "
+                                 "ORDER BY u.username", (project_id,))
+        for r in rows:
+            r["is_super"] = bool(r["is_super"])
+        return rows
+
+    def visible_project_ids(self, user_id: int) -> set[int]:
+        """Proyek yang 'terlihat' bagi user ini tanpa permission project_view_all: dia masuk Tim proyek
+        itu (cms_user_project_roles), ATAU jadi PIC (cms_assign) di salah satu dokumen yang ditautkan ke
+        proyek itu (cms_project_documents). Dipakai utk menyaring daftar proyek & menolak akses langsung
+        by ID (lihat cmsapp/projects_api.py _project_visible)."""
+        with self._tx() as c:
+            team = self._all(c, "SELECT DISTINCT project_id FROM cms_user_project_roles WHERE user_id=?", (user_id,))
+            via_pic = self._all(c, "SELECT DISTINCT pd.project_id FROM cms_assign a "
+                                    "JOIN cms_project_documents pd ON pd.doc_id=a.doc_id WHERE a.user_id=?", (user_id,))
+        return {r["project_id"] for r in team} | {r["project_id"] for r in via_pic}
+
+    def is_project_visible_to(self, user_id: int, project_id: int) -> bool:
+        with self._tx() as c:
+            if self._one(c, "SELECT 1 AS x FROM cms_user_project_roles WHERE user_id=? AND project_id=?",
+                        (user_id, project_id)):
+                return True
+            return bool(self._one(c, "SELECT 1 AS x FROM cms_assign a JOIN cms_project_documents pd "
+                                     "ON pd.doc_id=a.doc_id WHERE a.user_id=? AND pd.project_id=?",
+                                  (user_id, project_id)))
 
     def set_user_project_role(self, user_id: int, project_id: int, title: str) -> None:
         title = (title or "").strip()
@@ -1353,7 +1408,7 @@ class BlockStore:
         return {"scope": scope, "direct": scope in own, "own_scope": own[0] if own else None, "pics": out}
 
     def set_pic_status(self, doc_id: int, block_id: int, user_id: int, done: bool, note: str = "", by: str = "") -> None:
-        """PIC menandai bagiannya (scope efektif blok ini) selesai, atau admin/reviewer mengembalikan
+        """PIC menandai bagiannya (scope efektif blok ini) selesai, atau admin/author (owner) mengembalikan
         (done=False + note + by=siapa yg mengembalikan). `user_id` wajib PIC efektif blok ini -> ValueError."""
         pics, scope = self.effective_pic(doc_id, block_id)
         if not scope or user_id not in [p["user_id"] for p in pics]:
@@ -1463,6 +1518,30 @@ class BlockStore:
             out[it["id"]] = {"scope": winner, "kind": it["kind"], "level": it["level"], "label": it["label"],
                              "direct": bool(winner and winner in own), "pics": pics_of(winner) if winner else []}
         return out
+
+    def visible_headings_for_user(self, doc_id: int, user_id: int) -> set[int]:
+        """Dipakai saat permission doc_view_assigned_only aktif (grup 'eksternal' dst): heading mana saja
+        yang boleh TERLIHAT di outline -- heading yg efektif ditugaskan ke user ini (langsung/warisan
+        part/H1/dst, via pic_map), PLUS leluhurnya (supaya jalur navigasi outline ke bagian miliknya tetap
+        utuh, meski isi heading leluhur itu sendiri bukan tanggung jawabnya). Satu pass seiring urutan
+        blok, sama spt pic_map(). Heading yang TIDAK ada di set ini harus disembunyikan TOTAL dari outline
+        & daftar blok (beda dari can_edit yang cuma menonaktifkan tombol edit)."""
+        items = self.list_taggable_blocks(doc_id)
+        pm = self.pic_map(doc_id)
+        visible: set[int] = set()
+        stack: list[tuple[int, int]] = []   # (level, heading_id) leluhur yg masih terbuka
+        for it in items:
+            if it["kind"] == "heading":
+                while stack and stack[-1][0] >= it["level"]:
+                    stack.pop()
+            node = pm.get(it["id"]) or {}
+            if any(p["user_id"] == user_id for p in (node.get("pics") or ())):
+                visible.update(h_id for _, h_id in stack)
+                if it["kind"] == "heading":
+                    visible.add(it["id"])
+            if it["kind"] == "heading":
+                stack.append((it["level"], it["id"]))
+        return visible
 
     def chapter_pic_summary(self, doc_id: int) -> dict[int, list[dict]]:
         """id heading H1 -> daftar PIC unik yang ter-tag di MANA SAJA dalam subtree bab itu (heading

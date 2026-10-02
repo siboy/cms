@@ -47,7 +47,7 @@ def main():
         chapters = [h for h in store.outline(doc, 1) if h["part"] == "body"]
         ch1, ch2 = chapters[0]["id"], chapters[1]["id"]
         uids = {}
-        for u, role in (("adm", "admin"), ("ann", "author"), ("bob", "author"), ("rev", "reviewer")):
+        for u, role in (("adm", "admin"), ("ann", "editor"), ("bob", "editor"), ("rev", "author")):
             uids[u] = auth.create_user(f"{u}{tag}", pw, u.upper(), role)
         auth.assign(doc, uids["ann"], f"h1:{ch1}")
         auth.assign(doc, uids["bob"], f"h1:{ch2}")
@@ -101,10 +101,10 @@ def main():
         chk("ann edit blok bab bob -> 403", r.status_code == 403)
         r = ann.patch(BASE + f"/api/blocks/{p1['id']}", json={"text": "basi", "version": p1["version"]})
         chk("versi basi -> 409 + blok terbaru", r.status_code == 409 and r.json()["current"]["text"] == "Teks diedit ann", r.text[:100])
-        chk("reviewer edit teks -> 403", rev.patch(BASE + f"/api/blocks/{p1['id']}", json={"text": "x"}).status_code == 403)
+        chk("author(owner) edit teks -> 403", rev.patch(BASE + f"/api/blocks/{p1['id']}", json={"text": "x"}).status_code == 403)
         r = rev.patch(BASE + f"/api/blocks/{p1['id']}", json={"status": "review"})
-        chk("reviewer ubah status", r.status_code == 200, r.text[:100])
-        chk("author bikin bab baru -> 403", ann.post(BASE + f"/api/docs/{doc}/blocks", json={"after_id": p1["id"], "kind": "heading", "level": 1, "text": "X"}).status_code == 403)
+        chk("author(owner) ubah status", r.status_code == 200, r.text[:100])
+        chk("editor bikin bab baru -> 403", ann.post(BASE + f"/api/docs/{doc}/blocks", json={"after_id": p1["id"], "kind": "heading", "level": 1, "text": "X"}).status_code == 403)
         chk("ann lock", ann.post(BASE + f"/api/blocks/{p1['id']}/lock").status_code == 200)
         cur = ann.get(BASE + f"/api/blocks/{p1['id']}").json()["block"]
         r = adm.patch(BASE + f"/api/blocks/{p1['id']}", json={"text": "admin menyerobot", "version": cur["version"]})

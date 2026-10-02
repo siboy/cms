@@ -59,11 +59,12 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 </style></head><body>
 <header><b>CMS Kolaborasi</b><span id="who"></span><span id="pres" title="online"></span>
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
-<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bact" hidden>Aktivitas</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
+<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
 let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,section=null,es=null,outline=[],locks={},hb=null;
+const hasPerm=k=>!!(me&&(me.is_super||(me.perms||[]).includes(k)));
 function cellText(c){let n=0;return (c.blocks||[]).map(x=>{const d=x.data||{};if(x.kind==='list_item'){if(d.ordered){n=(d.restart||!n)?1:n+1;return n+') '+x.text}n=0;return '• '+x.text}n=0;return x.text}).join('\n')}
 /* daftar dlm sel tabel: awali tiap baris terpilih dgn `1) ` / `• ` (server menjadikannya list_item; klik lagi = lepas) */
 function listMark(ordered){const sel=getSelection();if(!sel.rangeCount)throw new Error('Klik/sorot baris di dalam sel dulu');
@@ -89,13 +90,20 @@ function parseInline(t){const out=[];let buf='',flags=new Set(),i=0;const flush=
  while(i<t.length){const c=t[i];
   if(c==='\\'&&i+1<t.length){buf+=t[i+1];i+=2;continue}
   if(MARKS[t.substr(i,2)]){flush();const f=MARKS[t.substr(i,2)];flags.has(f)?flags.delete(f):flags.add(f);i+=2;continue}
+  if(c==='!'&&t[i+1]==='['){const m=/^!\[((?:\\.|[^\]\\])*)\]\(([^)]*)\)/.exec(t.slice(i));if(m){flush();out.push(['',new Set(flags),{img:true,alt:m[1],sha1:m[2]}]);i+=m[0].length;continue}}
   if(c==='['){const m=/^\[((?:\\.|[^\]\\])*)\]\(([^)]*)\)/.exec(t.slice(i));if(m){flush();for(const [tx,f] of parseInline(m[1]))out.push([tx,new Set([...f,...flags]),m[2].replace(/%29/g,')')]);i+=m[0].length;continue}}
   buf+=c;i++}
  flush();return out}
 const safeUrl=u=>/^(https?:|mailto:)/i.test(u)?u:'#';
 function mk2dom(t){const frag=document.createDocumentFragment();const runs=[];
  for(const r of parseInline(t||'')){const l=runs[runs.length-1];const k=[...r[1]].sort().join();if(l&&l.k===k&&l.url===r[2])l.t+=r[0];else runs.push({t:r[0],f:r[1],k,url:r[2]})}
- for(const r of runs){let node=null;const parts=r.t.split('\n');const inner=document.createDocumentFragment();
+ for(const r of runs){let node=null;
+  if(r.url&&typeof r.url==='object'&&r.url.img){
+   const img=document.createElement('img');img.src=`/api/docs/${doc}/asset/${r.url.sha1}`;img.alt=r.url.alt||'';
+   img.dataset.sha1=r.url.sha1;img.dataset.alt=r.url.alt||'';img.style.cssText='max-width:220px;max-height:220px;vertical-align:middle';
+   node=img;for(const f of ['sub','sup','u','i','b']){if(r.f.has(f)){const e=document.createElement(f);e.append(node);node=e}}
+   frag.append(node);continue}
+  const parts=r.t.split('\n');const inner=document.createDocumentFragment();
   parts.forEach((p,ix)=>{if(ix)inner.append(document.createElement('br'));if(p)inner.append(p)});node=inner;
   for(const f of ['sub','sup','u','i','b']){if(r.f.has(f)){const e=document.createElement(f);e.append(node);node=e}}
   if(r.url){const a=document.createElement('a');a.href=safeUrl(r.url);a.target='_blank';a.rel='noopener';a.append(node);node=a}
@@ -105,6 +113,7 @@ const escMk=t=>t.replace(/[\\*_+^~\[\]]/g,'\\$&');
 function dom2mk(root){let out='';const walk=(n,first)=>{for(const c of n.childNodes){
   if(c.nodeType===3){out+=escMk(c.nodeValue.replace(/ /g,' ').replace(/[\r\n]+/g,' '));continue}
   if(c.nodeType!==1)continue;const tg=c.tagName.toLowerCase(),st=c.style||{};
+  if(tg==='img'){out+='!['+escMk(c.dataset.alt||c.alt||'')+']('+(c.dataset.sha1||'')+')';continue}
   if(tg==='br'){out+='\n';continue}
   if(['div','p'].includes(tg)){if(out&&!out.endsWith('\n'))out+='\n';walk(c);continue}
   const w=[];if(tg==='b'||tg==='strong'||/^(bold|[6-9]00)$/.test(st.fontWeight))w.push('**');
@@ -118,7 +127,7 @@ function note(t,err){const b=$('#bar');b.hidden=!t;b.className=err?'err':'';b.te
 async function boot(){const qp=new URLSearchParams(location.search);const rtok=qp.get('reset');
  if(rtok)return resetPasswordView(rtok);
  try{me=(await api('GET','/me')).user}catch(e){return loginView()}
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#badm').hidden=me.role!=='admin';$('#bact').hidden=me.role!=='admin';$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;
  setNotif(me.unread_tags||0);projectsView()}
 function resetPasswordView(token){$('#app').innerHTML=`<form id=rp><h3>Atur password baru</h3>
  <input name=p1 type=password placeholder="password baru (min 8)" required minlength=8>
@@ -151,6 +160,7 @@ function forgotPasswordDlg(){const m=document.createElement('div');m.className='
  f.onsubmit=async e=>{e.preventDefault();try{await api('POST','/auth/forgot-password',{email:f.email.value});
   m.remove();note('Kalau email terdaftar, link reset sudah dikirim. Cek inbox/spam.')}catch(x){note(x.message,1)}}}
 $('#badm').onclick=()=>adminView();
+$('#bpriv').onclick=()=>privilegeView();
 $('#bact').onclick=()=>activityView();
 $('#bdocs').onclick=()=>docsView();
 $('#bproj').onclick=()=>projectsView();
@@ -158,7 +168,7 @@ $('#bfiles').onclick=()=>meFilesView();
 $('#bnotif').onclick=notifPanel;
 $('#bout').onclick=async()=>{await api('POST','/logout');location.reload()};
 async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
- $('#app').innerHTML='<div id=docs><h3>Dokumen</h3>'+(me.role==='admin'?'<p><button id=up>+ Unggah DOCX</button></p>':'')+(docs.map(d=>`<p><a href="#" data-id="${d.id}">${esc(d.filename)}</a> <small>${esc(d.status)}</small></p>`).join('')||'<p>Belum ada dokumen.</p>')+'</div>';
+ $('#app').innerHTML='<div id=docs><h3>Dokumen</h3>'+(hasPerm('doc_upload')?'<p><button id=up>+ Unggah DOCX</button></p>':'')+(docs.map(d=>`<p><a href="#" data-id="${d.id}">${esc(d.filename)}</a> <small>${esc(d.status)}</small></p>`).join('')||'<p>Belum ada dokumen.</p>')+'</div>';
  document.querySelectorAll('#docs a').forEach(a=>a.onclick=e=>{e.preventDefault();openDoc(+a.dataset.id)});
  if($('#up'))$('#up').onclick=uploadDoc}
 function uploadDoc(){const f=document.createElement('input');f.type='file';f.accept='.docx';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);
@@ -173,9 +183,9 @@ const ID_BULAN=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustu
 function idDate(s){if(!s)return '?';const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);if(!m)return s;return `${+m[3]} ${ID_BULAN[+m[2]-1]} ${m[1]}`}
 
 async function projectsView(){closeDoc();const {projects}=await api('GET','/projects');
- $('#app').innerHTML='<div id=docs><h3>Manajemen Proyek</h3>'+(me.role==='admin'?'<p><button id=npr>+ Proyek baru</button></p>':'')
+ $('#app').innerHTML='<div id=docs><h3>Manajemen Proyek</h3>'+(hasPerm('project_manage')?'<p><button id=npr>+ Proyek baru</button></p>':'')
  +'<div class=rg>'+(projects.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
-  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${me.role==='admin'?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
+  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${hasPerm('project_manage')?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
   <div style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
   <div style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
   <div style="font-size:11px;color:var(--mut)">${idDate(p.start_date)} → ${idDate(p.end_date)}</div>
@@ -276,23 +286,25 @@ async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&op
 async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,berkas:tabBerkas};
  try{await fns[curTab]()}catch(e){note(e.message,1)}}
 async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`);
- let avail=[];if(me.role==='admin'){try{const inTeam=new Set(team.map(t=>t.id));
-  avail=(await api('GET','/admin/users')).users.filter(u=>u.active&&u.role!=='admin'&&!inTeam.has(u.id))}catch(e){}}
+ const canManage=hasPerm('project_team_manage');
+ let avail=[],opts=ROLE_SUGGEST;if(canManage){try{const inTeam=new Set(team.map(t=>t.id));
+  avail=(await api('GET','/admin/users')).users.filter(u=>u.active&&!u.is_super&&!inTeam.has(u.id))}catch(e){}
+  opts=await roleOptions()}
  $('#ptab').innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b></div>
- <p style="color:var(--mut);font-size:12px">Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC. Role yang diisi dipakai juga di rekap pengalaman proyek (CV) orang tersebut.</p>
- <table><tr><th>Nama</th><th>Role</th>${me.role==='admin'?'<th></th>':''}</tr>
- ${team.map(t=>`<tr><td>${esc(t.name||t.username)}</td><td>${me.role==='admin'?`<span data-title="${t.id}"></span>`:esc(t.title||'')}</td>
- ${me.role==='admin'?`<td><button type=button data-rm="${t.id}">Keluarkan</button></td>`:''}</tr>`).join('')
- ||`<tr><td colspan=${me.role==='admin'?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table>
- ${me.role==='admin'?`<h4 style="margin-top:14px">Tambah anggota</h4>
+ <p style="color:var(--mut);font-size:12px">Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC. Role yang diisi dipakai juga di rekap pengalaman proyek (CV) orang tersebut. Default role: "${ROLE_DEFAULT}" kalau belum ada yang lebih spesifik.</p>
+ <table><tr><th>Nama</th><th>Role</th>${canManage?'<th></th>':''}</tr>
+ ${team.map(t=>`<tr><td>${esc(t.name||t.username)}</td><td>${canManage?`<span data-title="${t.id}"></span>`:esc(t.title||ROLE_DEFAULT)}</td>
+ ${canManage?`<td><button type=button data-rm="${t.id}">Keluarkan</button></td>`:''}</tr>`).join('')
+ ||`<tr><td colspan=${canManage?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table>
+ ${canManage?`<h4 style="margin-top:14px">Tambah anggota</h4>
  <form id=fteam style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
  <select name=user_id required><option value="">— pilih orang —</option>${avail.map(u=>`<option value=${u.id}>${esc(u.name||u.username)}</option>`).join('')}</select>
- <input name=title list=roleSuggest placeholder="Role di proyek ini (mis. Data Analyst, Lead Proyek, QC…)" required>
+ <input name=title list=roleSuggest value="${esc(ROLE_DEFAULT)}" required>
  <button class=p>Tambah</button></form>
- <datalist id=roleSuggest>${ROLE_SUGGEST.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>`:''}</div>`;
- if(me.role==='admin'){
+ <datalist id=roleSuggest>${opts.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>`:''}</div>`;
+ if(canManage){
   team.forEach(t=>{const el=$(`[data-title="${t.id}"]`);if(!el)return;const i=document.createElement('input');
-   i.type='text';i.value=t.title||'';i.setAttribute('list','roleSuggest');i.style.cssText='font-size:13px;width:220px';
+   i.type='text';i.value=t.title||ROLE_DEFAULT;i.setAttribute('list','roleSuggest');i.style.cssText='font-size:13px;width:220px';
    i.onchange=async()=>{try{await api('POST',`/projects/${curProj}/team`,{user_id:t.id,title:i.value});tabTim()}catch(e){note(e.message,1)}};
    el.append(i)});
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(!confirm('Keluarkan dari tim?'))return;
@@ -300,7 +312,7 @@ async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`
   if($('#fteam'))$('#fteam').onsubmit=async e=>{e.preventDefault();const f=e.target;
    try{await api('POST',`/projects/${curProj}/team`,{user_id:+f.user_id.value,title:f.title.value});tabTim()}catch(x){note(x.message,1)}}}}
 
-async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${curProj}`);const adm=me.role==='admin';
+async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${curProj}`);const adm=hasPerm('project_manage');
  $('#ptab').innerHTML=`<div class=rc>
  <div style="display:flex;align-items:center;gap:8px"><div class=pbar style="max-width:300px;flex:1"><i style="width:${p.progress_effective}%"></i></div>
  <b>${p.progress_effective}%</b><small style="color:var(--mut)">(otomatis: ${p.progress_auto}%)</small></div>
@@ -326,13 +338,14 @@ async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${cur
  $('#pstatus').onchange=e=>api('PATCH',`/projects/${curProj}`,{status:e.target.value}).catch(x=>note(x.message,1));
  $('#pov').onchange=e=>api('PATCH',`/projects/${curProj}`,{progress_override:e.target.value===''?null:+e.target.value}).catch(x=>note(x.message,1))}
 
-async function tabLaporan(){const [{documents},u]=await Promise.all([api('GET',`/projects/${curProj}/documents`),
- me.role==='admin'?api('GET',`/projects/${curProj}/unlinked-docs`):Promise.resolve({docs:[]})]);
+async function tabLaporan(){const canManage=hasPerm('project_manage');
+ const [{documents},u]=await Promise.all([api('GET',`/projects/${curProj}/documents`),
+ canManage?api('GET',`/projects/${curProj}/unlinked-docs`):Promise.resolve({docs:[]})]);
  const docsFree=u.docs;const grp=t=>documents.filter(d=>d.report_type===t);
  const row=d=>`<p><a href="#" data-open="${d.doc_id}">${esc(d.label||d.filename)}</a> <small>${esc(d.doc_status)}</small> ${d.is_printed?'<span class=badge>Dicetak</span>':''}
- ${me.role==='admin'?`<button data-pr="${d.id}" data-v="${d.is_printed?0:1}">${d.is_printed?'Batal cetak':'Tandai dicetak'}</button>`:''}</p>`;
+ ${canManage?`<button data-pr="${d.id}" data-v="${d.is_printed?0:1}">${d.is_printed?'Batal cetak':'Tandai dicetak'}</button>`:''}</p>`;
  $('#ptab').innerHTML=['draft','interim','final'].map(t=>`<div class=rc><div class=rh><b>${t[0].toUpperCase()+t.slice(1)}</b></div>${grp(t).map(row).join('')||'<p style="color:var(--mut)">Belum ada.</p>'}</div>`).join('')
- +(me.role==='admin'?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
+ +(canManage?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
  <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
  <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
@@ -340,7 +353,7 @@ async function tabLaporan(){const [{documents},u]=await Promise.all([api('GET',`
  <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div></div>`:'');
  $('#ptab').querySelectorAll('[data-open]').forEach(a=>a.onclick=e=>{e.preventDefault();openDoc(+a.dataset.open)});
  $('#ptab').querySelectorAll('[data-pr]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/projects/${curProj}/documents/${b.dataset.pr}/print`,{printed:!!+b.dataset.v});tabLaporan()}catch(e){note(e.message,1)}});
- if(me.role!=='admin')return;
+ if(!canManage)return;
  $('#lq').oninput=()=>{const q=$('#lq').value.trim().toLowerCase();
   const m=q?docsFree.filter(d=>d.filename.toLowerCase().includes(q)):docsFree;
   $('#lex').innerHTML=`<option value="">— ${m.length} dokumen cocok —</option>`+m.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')};
@@ -353,7 +366,7 @@ async function tabPic(){const {documents}=await api('GET',`/projects/${curProj}/
  if(!documents.length){$('#ptab').innerHTML='<p style="color:var(--mut)">Tautkan laporan dulu di tab Laporan.</p>';return}
  let users=[];try{users=(await api('GET',`/projects/${curProj}/team`)).team}catch(e){}
  $('#ptab').innerHTML=`<p><select id=ad>${documents.map(d=>`<option value=${d.doc_id}>${esc(d.label||d.filename)} (#${d.doc_id})</option>`).join('')}</select>
- ${me.role==='admin'?' <button type=button id=goadm>Kelola tim…</button>':''}</p>
+ ${hasPerm('project_team_manage')?' <button type=button id=goadm>Kelola tim…</button>':''}</p>
  ${!users.length?'<p style="color:var(--warn);font-size:13px">Belum ada anggota tim di proyek ini — tambahkan dulu di tab Tim sebelum menandai PIC.</p>':''}
  <div id=asg></div>`;
  if($('#goadm'))$('#goadm').onclick=()=>projectDetailView(curProj,{tab:'tim'});
@@ -369,7 +382,7 @@ async function tabGantt(){const [{project:p},{tasks},scurve]=await Promise.all([
    ?`<div class=gtrack><div class=gbar data-idx="${i}" style="left:${pos(t.start_date)}%;width:${Math.max(pos(t.end_date)-pos(t.start_date),2)}%"><i style="width:${t.progress_percent||0}%"></i></div></div>`
    :`<div class=gtrack><div class="gbar unsched" data-idx="${i}">+ jadwalkan</div></div>`;
   return `<div class=grow><div class=glabel title="${esc(t.title||'')}">${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,34))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
- $('#ptab').innerHTML=(me.role==='admin'?'<p><button id=ntask>+ Task manual</button></p>':'')
+ $('#ptab').innerHTML=(hasPerm('project_tasks_admin')?'<p><button id=ntask>+ Task manual</button></p>':'')
   +'<div class=gantt><div class=ghead><span></span><span>'+new Date(lo).toLocaleDateString()+' → '+new Date(hi).toLocaleDateString()+'</span></div>'
   +tasks.map(row).join('')+'</div>'
   +'<div class=rc style="margin-top:14px"><div class=rh><b>Kurva S — rencana vs realisasi</b></div><div id=scurve></div></div>';
@@ -399,7 +412,7 @@ function renderSCurve(el,{points,today}){
   </svg>`}
 
 async function taskDlg(t){const m=document.createElement('div');m.className='mask';const isChapter=!!t.chapter_block_id;
- let users=[];if(me.role==='admin'&&t.id&&!isChapter){try{users=(await api('GET','/admin/users')).users.filter(u=>u.active)}catch(e){}}
+ let users=[];if(hasPerm('project_tasks_admin')&&t.id&&!isChapter){try{users=(await api('GET','/admin/users')).users.filter(u=>u.active)}catch(e){}}
  const tagged=new Set((t.tags||[]).map(u=>u.user_id));
  m.innerHTML=`<form class=dlg><b>${isChapter?(t.id?'Ubah jadwal bab':'Jadwalkan bab'):(t.id?'Ubah task':'Task baru')}</b>
  ${isChapter?`<div><small>${esc(t.title||'')}</small></div>`:`<label>Judul<input name=title value="${esc(t.title||'')}" required></label>`}
@@ -410,7 +423,7 @@ async function taskDlg(t){const m=document.createElement('div');m.className='mas
  <div style="display:flex;gap:8px;justify-content:flex-end">
  ${isChapter?'<button type=button id=pic>👤 Kelola PIC…</button>':''}
  ${isChapter&&t.id?'<button type=button id=resync>Tag ulang notifikasi</button>':''}
- ${t.id&&me.role==='admin'?'<button type=button id=del style="color:#d1242f">Hapus</button>':''}
+ ${t.id&&hasPerm('project_tasks_admin')?'<button type=button id=del style="color:#d1242f">Hapus</button>':''}
  <button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
  if(f.pic)f.pic.onclick=()=>picDlg(+t.doc_id,+t.chapter_block_id,t.title||'',()=>tabGantt());
@@ -427,11 +440,11 @@ async function taskDlg(t){const m=document.createElement('div');m.className='mas
 
 async function tabBerkas(){const {files}=await api('GET',`/projects/${curProj}/files?category=${curCat}`);
  $('#ptab').innerHTML='<div class=tabs style="border-bottom:none">'+FILE_CATS.map(([k,l])=>`<button data-c="${k}" class="${k===curCat?'cur':''}">${l}</button>`).join('')+'</div>'
- +(me.role!=='reviewer'?'<p><button id=fup>+ Unggah</button></p>':'')
+ +(hasPerm('project_files_manage')?'<p><button id=fup>+ Unggah</button></p>':'')
  +'<div class=rg>'+(files.map(f=>`<div class=rc>${curCat==='galeri'?`<a href="/api/project-files/${f.id}/raw" target=_blank><img src="/api/project-files/${f.id}/raw" style="max-width:100%;border-radius:6px"></a>`:''}
   <b>${esc(f.title||f.filename)}</b><br><small style="color:var(--mut)">${esc(f.doc_date||'')} ${f.status?'· '+esc(f.status):''} · ${esc(f.uploaded_by||'')}</small>
   ${f.description?`<div style="font-size:12px;margin-top:4px">${esc(f.description)}</div>`:''}
-  <div style="margin-top:6px"><a href="/api/project-files/${f.id}/raw" download>Unduh</a> ${me.role!=='reviewer'?`<button data-del="${f.id}">Hapus</button>`:''}</div></div>`).join('')
+  <div style="margin-top:6px"><a href="/api/project-files/${f.id}/raw" download>Unduh</a> ${hasPerm('project_files_manage')?`<button data-del="${f.id}">Hapus</button>`:''}</div></div>`).join('')
   ||'<p style="color:var(--mut)">Belum ada berkas.</p>')+'</div>';
  $('#ptab').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{curCat=b.dataset.c;tabBerkas()});
  $('#ptab').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus berkas ini?')){try{await api('DELETE',`/project-files/${b.dataset.del}`);tabBerkas()}catch(e){note(e.message,1)}}});
@@ -477,15 +490,16 @@ async function loadActivity(){
  ||'<tr><td colspan=5 style="color:var(--mut)">Tidak ada aktivitas.</td></tr>'}</table>
  <p style="color:var(--mut);font-size:12px">${total?`${actState.offset+1}-${actState.offset+items.length} dari ${total}`:'0 hasil'}</p>`}
 // ===================== /Aktivitas =====================
-function editUserDlg(u){const m=document.createElement('div');m.className='mask';
+async function editUserDlg(u){const m=document.createElement('div');m.className='mask';document.body.append(m);
+ let groups=[];try{groups=(await api('GET','/groups/names')).groups}catch(e){}
  m.innerHTML=`<form class=dlg><b>Edit ${esc(u.username)}</b>
  <label>Nama<input name=name value="${esc(u.name||'')}"></label>
  <label>Email (verifikasi &amp; notifikasi)<input name=email type=email value="${esc(u.email||'')}" placeholder="email@contoh.com"></label>
  <label>No. WA<input name=phone_wa value="${esc(u.phone_wa||'')}" placeholder="08xxxxxxxxxx"></label>
  <label>Tenaga ahli apa<input name=expertise value="${esc(u.expertise||'')}" placeholder="misal: ahli lingkungan, sipil, dst"></label>
- <label>Peran<select name=role>${['author','reviewer','admin'].map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></label>
+ <label>Peran<select name=role>${groups.map(g=>`<option ${g.name===u.role?'selected':''}>${esc(g.name)}</option>`).join('')}</select></label>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
- document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
  f.onsubmit=async e=>{e.preventDefault();try{await api('PATCH',`/admin/users/${u.id}`,{name:f.name.value,email:f.email.value,
    phone_wa:f.phone_wa.value,expertise:f.expertise.value,role:f.role.value});
   m.remove();note('Profil diperbarui, email verifikasi dikirim ulang bila email diubah');adminView()}catch(x){note(x.message,1)}}}
@@ -495,9 +509,14 @@ function expLabel(d){if(!d)return'';const days=Math.floor((new Date(d)-new Date(
  return `<small style="color:${col}">${days<0?'lewat ':days<=30?'segera ':''}${esc(d)}</small>`}
 function expInput(f,onSet){const i=document.createElement('input');i.type='date';i.value=f.expires_on||'';i.style.width='120px';
  i.onchange=async()=>{try{await api('PATCH',`/me/files/${f.id}`,{expires_on:i.value||null});onSet()}catch(e){note(e.message,1)}};return i}
-const ROLE_SUGGEST=['QC','Data Analyst','Tenaga Ahli Kimia','Tenaga Ahli Fisika','Tenaga Ahli GIS','Lead Proyek','Admin','Penulis','Surveyor'];
-function titleInput(p,onSet){const i=document.createElement('input');i.type='text';i.value=p.title||'';i.setAttribute('list','roleSuggest');
- i.placeholder='Role di proyek ini (mis. Data Analyst, Lead Proyek, QC…)';i.style.cssText='font-size:12px;margin-top:4px;width:100%;max-width:300px';
+const ROLE_DEFAULT='Tenaga Ahli';
+const ROLE_SUGGEST=['Tenaga Ahli','Tenaga Ahli Fisika','Tenaga Ahli Udara','Tenaga Ahli Laut','Tenaga Ahli Sungai',
+ 'Tenaga Ahli Kehutanan','Tenaga Ahli Kimia','Tenaga Ahli GIS','QC','Data Analyst','Lead Proyek','Admin','Penulis','Surveyor']
+ .sort((a,b)=>a.localeCompare(b,'id'));
+async function roleOptions(){let ex=[];try{ex=(await api('GET','/expertise-list')).expertise}catch(e){}
+ return [...new Set([...ROLE_SUGGEST,...ex])].sort((a,b)=>a.localeCompare(b,'id'))}
+function titleInput(p,onSet){const i=document.createElement('input');i.type='text';i.value=p.title||ROLE_DEFAULT;i.setAttribute('list','roleSuggest');
+ i.placeholder='Role di proyek ini (mis. Tenaga Ahli, Data Analyst, Lead Proyek, QC…)';i.style.cssText='font-size:12px;margin-top:4px;width:100%;max-width:300px';
  i.onchange=async()=>{try{await api('PATCH',`/me/experience/${p.id}`,{title:i.value});onSet()}catch(e){note(e.message,1)}};return i}
 async function userFilesDlg(u){let files=[];try{files=(await api('GET',`/admin/users/${u.id}/files`)).files}catch(e){note(e.message,1);return}
  const m=document.createElement('div');m.className='mask';
@@ -533,7 +552,7 @@ function period(p){if(!p.start_date&&!p.end_date)return '?';
  const sy=p.start_date.slice(0,4),ey=p.end_date.slice(0,4);
  if(sy===ey)return sy;
  return `${monYear(p.start_date)} – ${monYear(p.end_date)}`}
-async function meFilesView(){closeDoc();const [{files},{projects}]=await Promise.all([api('GET','/me/files'),api('GET','/me/experience')]);
+async function meFilesView(){closeDoc();const [{files},{projects},roleOpts]=await Promise.all([api('GET','/me/files'),api('GET','/me/experience'),roleOptions()]);
  const photo=files.filter(f=>f.category==='foto').sort((a,b)=>b.id-a.id)[0];
  const cvs=files.filter(f=>f.category==='cv'),certs=files.filter(f=>f.category==='sertifikat'),others=files.filter(f=>f.category==='lainnya');
  const fileRow=f=>`<p><a href="/api/user-files/${f.id}/raw" target=_blank>${esc(f.title||f.filename)}</a> <span data-exp="${f.id}"></span> <button data-del="${f.id}">Hapus</button></p>`;
@@ -557,7 +576,7 @@ async function meFilesView(){closeDoc();const [{files},{projects}]=await Promise
  <div style="display:flex;justify-content:flex-end;margin-top:6px"><button class=p>Simpan</button></div></form></div>
 
  ${projects.length?`<div class=rc><div class=rh><b>Pengalaman Proyek</b></div>
- ${projects.map(p=>{const line=[p.title,p.name,p.client].filter(Boolean).join(' ');return `<div style="padding:6px 0;border-bottom:1px dashed var(--line)">
+ ${projects.map(p=>{const line=[p.title||ROLE_DEFAULT,p.name,p.client].filter(Boolean).join(' ');return `<div style="padding:6px 0;border-bottom:1px dashed var(--line)">
   <b>${esc(line)}</b>, ${period(p)} <a href="#" data-proj="${p.id}" title="Buka proyek &amp; laporannya" style="font-size:11px;text-decoration:none">[Ref #${p.id}]</a>
   ${p.location?`<br><small style="color:var(--mut)">${esc(p.location)}</small>`:''}
   <div data-title="${p.id}"></div>
@@ -579,7 +598,7 @@ async function meFilesView(){closeDoc();const [{files},{projects}]=await Promise
  <input name=file type=file required><button class=p>Unggah</button></form></div>
  </div>
  </div>
- <datalist id=roleSuggest>${ROLE_SUGGEST.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>
+ <datalist id=roleSuggest>${roleOpts.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>
  </div>`;
  [...cvs,...certs,...others].forEach(f=>{const el=$(`[data-exp="${f.id}"]`);if(!el)return;el.innerHTML=expLabel(f.expires_on)+' ';if(f.category==='sertifikat')el.append(expInput(f,meFilesView))});
  projects.forEach(p=>{const el=$(`[data-title="${p.id}"]`);if(el)el.append(titleInput(p,meFilesView))});
@@ -593,8 +612,61 @@ async function meFilesView(){closeDoc();const [{files},{projects}]=await Promise
   fd.append('file',f.file.files[0]);fd.append('category',f.category.value);fd.append('title',f.title.value);
   fd.append('expires_on',f.expires_on.value);
   try{await api('POST','/me/files',fd,true);note('Berkas diunggah');meFilesView()}catch(x){note(x.message,1)}}}
-async function adminView(){closeDoc();const [{users},{docs}]=await Promise.all([api('GET','/admin/users'),api('GET','/docs')]);
- $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Pengguna</h3>
+async function privilegeView(){closeDoc();
+ const [{permissions},{groups},users]=await Promise.all([api('GET','/permissions'),api('GET','/groups'),
+  api('GET','/admin/users').then(r=>r.users).catch(()=>[])]);
+ const stickyTh='position:sticky;top:45px;background:var(--card);z-index:2;box-shadow:0 1px 0 var(--line)';
+ const groupCell=g=>`<th style="min-width:130px;text-align:center;${stickyTh}">
+  <input type=text value="${esc(g.name)}" data-gname="${g.id}" style="width:100%;font-weight:600;text-align:center;border:none;background:transparent">
+  <div style="font-size:11px;color:var(--mut);margin-top:2px">
+   <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer"><input type=checkbox data-gsuper="${g.id}" ${g.is_super?'checked':''}> Super</label>
+   ${g.user_count?` · ${g.user_count} org`:` <button type=button data-gdel="${g.id}" title="Hapus grup (kosong)" style="padding:0 4px;color:#d1242f">✕</button>`}
+  </div></th>`;
+ const permRow=p=>`<tr><td style="max-width:260px"><b>${esc(p.label)}</b><br><small style="color:var(--mut)">${esc(p.desc)}</small></td>
+  ${groups.map(g=>`<td style="text-align:center">
+   <input type=checkbox data-perm-g="${g.id}" data-perm-k="${p.key}" ${g.is_super?'checked disabled':(g.perms.includes(p.key)?'checked':'')}>
+  </td>`).join('')}</tr>`;
+ $('#app').innerHTML=`<div id=docs><h3>🔐 Privilege</h3>
+ <p style="color:var(--mut);font-size:13px">Atur fitur apa saja yang bisa dipakai tiap grup. Grup "Super" otomatis punya semua akses (checkbox dikunci). Nama grup bisa diubah bebas (klik kotak nama di atas).</p>
+ <div style="overflow-x:auto;overflow-y:visible">
+ <table><tr><th style="min-width:260px;${stickyTh}">Fitur</th>${groups.map(groupCell).join('')}</tr>
+ ${permissions.map(permRow).join('')}</table></div>
+ <form id=fgroup style="display:flex;gap:6px;margin-top:10px;align-items:center">
+ <input name=name placeholder="nama grup baru" required><button class=p>+ Tambah grup</button></form>
+
+ <div class=rc style="margin-top:20px"><div class=rh><b>Override per pengguna</b></div>
+ <p style="color:var(--mut);font-size:12px">Memberi/mencabut izin fitur tertentu utk SATU pengguna tanpa mengubah grupnya. Override menang atas aturan grup.</p>
+ <select id=puser><option value="">— pilih pengguna —</option>${users.map(u=>`<option value=${u.id}>${esc(u.username)} (${esc(u.role)})</option>`).join('')}</select>
+ <div id=puserm style="margin-top:10px"></div></div></div>`;
+
+ document.querySelectorAll('[data-perm-g]').forEach(cb=>cb.onchange=async()=>{
+  const gid=cb.dataset.permG;
+  const checked=[...document.querySelectorAll(`[data-perm-g="${gid}"]:checked`)].map(x=>x.dataset.permK);
+  try{await api('PATCH',`/groups/${gid}`,{perms:checked})}catch(e){note(e.message,1);cb.checked=!cb.checked}});
+ document.querySelectorAll('[data-gsuper]').forEach(cb=>cb.onchange=async()=>{
+  try{await api('PATCH',`/groups/${cb.dataset.gsuper}`,{is_super:cb.checked});privilegeView()}catch(e){note(e.message,1);cb.checked=!cb.checked}});
+ document.querySelectorAll('[data-gname]').forEach(inp=>{const orig=inp.value;
+  inp.onblur=async()=>{if(inp.value.trim()===orig||!inp.value.trim())return;
+   try{await api('PATCH',`/groups/${inp.dataset.gname}`,{name:inp.value.trim()});privilegeView()}catch(e){note(e.message,1);inp.value=orig}}});
+ document.querySelectorAll('[data-gdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Hapus grup ini?'))return;
+  try{await api('DELETE',`/groups/${b.dataset.gdel}`);privilegeView()}catch(e){note(e.message,1)}});
+ $('#fgroup').onsubmit=async e=>{e.preventDefault();const f=e.target;
+  try{await api('POST','/groups',{name:f.name.value});privilegeView()}catch(x){note(x.message,1)}};
+
+ $('#puser').onchange=async()=>{const uid=$('#puser').value;if(!uid){$('#puserm').innerHTML='';return}
+  const {overrides}=await api('GET',`/admin/users/${uid}/perms`);
+  $('#puserm').innerHTML=`<table><tr><th>Fitur</th><th>Aturan</th></tr>${permissions.map(p=>{
+   const v=overrides[p.key];
+   return `<tr><td>${esc(p.label)}</td><td><select data-ov="${p.key}">
+    <option value="" ${v===undefined?'selected':''}>Ikuti grup</option>
+    <option value="1" ${v===true?'selected':''}>Paksa izinkan</option>
+    <option value="0" ${v===false?'selected':''}>Paksa tolak</option></select></td></tr>`}).join('')}</table>`;
+  $('#puserm').querySelectorAll('[data-ov]').forEach(sel=>sel.onchange=async()=>{
+   const v=sel.value===''?null:sel.value==='1';
+   try{await api('PATCH',`/admin/users/${uid}/perms`,{overrides:{[sel.dataset.ov]:v}})}catch(e){note(e.message,1)}})}}
+async function adminView(){closeDoc();const [{users},{docs},groups]=await Promise.all([api('GET','/admin/users'),api('GET','/docs'),
+ api('GET','/groups/names').then(r=>r.groups).catch(()=>[])]);
+ $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Pengguna</h3>${hasPerm('privilege_manage')?'<p><a href="#" id=gopriv>Atur grup &amp; privilege…</a></p>':''}
  <table><tr><th>Username</th><th>Nama</th><th>Email</th><th>WA</th><th>Tenaga ahli</th><th>Peran</th><th>Aktif</th><th></th></tr>${users.map(u=>`<tr><td>${esc(u.username)}</td><td>${esc(u.name)}</td>
  <td>${esc(u.email||'—')}${u.email?(u.email_verified_at?' <small style="color:green">✓terverifikasi</small>':' <small style="color:var(--warn)">belum verifikasi</small>'):''}</td>
  <td>${esc(u.phone_wa||'—')}</td><td>${esc(u.expertise||'—')}</td><td>${u.role}</td><td>${u.active?'ya':'tidak'}</td>
@@ -606,9 +678,10 @@ async function adminView(){closeDoc();const [{users},{docs}]=await Promise.all([
  <input name=password type=password placeholder="sandi (min 8)" required minlength=8>
  <input name=email type=email placeholder="email (verifikasi & notifikasi)">
  <input name=phone_wa placeholder="no. WA"><input name=expertise placeholder="tenaga ahli apa">
- <select name=role><option>author</option><option>reviewer</option><option>admin</option></select><button class=p>Tambah</button></form>
+ <select name=role>${groups.map(g=>`<option ${g.name==='editor'?'selected':''}>${esc(g.name)}</option>`).join('')}</select><button class=p>Tambah</button></form>
  <h3 style="margin-top:24px">Penugasan bab</h3><p><select id=ad>${docs.map(d=>`<option value=${d.id}>${esc(d.filename)} (#${d.id})</option>`).join('')}</select></p><div id=asg></div></div>`;
  $('#ab').onclick=e=>{e.preventDefault();docsView()};
+ if($('#gopriv'))$('#gopriv').onclick=e=>{e.preventDefault();privilegeView()};
  document.querySelectorAll('[data-u]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/admin/users/${b.dataset.u}/active`,{active:!!+b.dataset.a});adminView()}catch(e){note(e.message,1)}});
  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editUserDlg(users.find(u=>u.id==b.dataset.edit)));
  document.querySelectorAll('[data-files]').forEach(b=>b.onclick=()=>userFilesDlg(users.find(u=>u.id==b.dataset.files)));
@@ -616,11 +689,11 @@ async function adminView(){closeDoc();const [{users},{docs}]=await Promise.all([
  $('#nu').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await api('POST','/admin/users',{username:f.username.value,name:f.name.value,password:f.password.value,
    email:f.email.value,phone_wa:f.phone_wa.value,expertise:f.expertise.value,role:f.role.value});note('Pengguna dibuat');adminView()}catch(x){note(x.message,1)}};
  $('#ad').onchange=()=>assignView(users);if(docs.length)assignView(users)}
-async function assignView(users){const d=+$('#ad').value;const isAdmin=me.role==='admin';const canOutline=isAdmin||me.role==='reviewer';
+async function assignView(users){const d=+$('#ad').value;const isAdmin=hasPerm('pic_assign');const canOutline=hasPerm('outline_manage');
  const [{items},{map}]=await Promise.all([api('GET',`/docs/${d}/taggable`),api('GET',`/docs/${d}/pic-map`)]);
  const {assignments}=await api('GET',`/admin/docs/${d}/assign`).catch(()=>({assignments:[]}));
  const parts=['cover','front','body','lampiran'].map(p=>({scope:'part:'+p,label:'Bagian: '+p}));
- const who=sc=>assignments.filter(a=>a.scope===sc);const nonAdmin=users.filter(u=>u.role!=='admin'&&u.active);
+ const who=sc=>assignments.filter(a=>a.scope===sc);const nonAdmin=users.filter(u=>!u.is_super&&u.active);
  const partRows=parts.map(x=>`<tr><td>${esc(x.label)}</td><td>${who(x.scope).map(a=>`<span class=badge style="background:var(--mut)">${esc(a.username)}${isAdmin?` <a href="#" data-rm="${a.user_id}|${x.scope}" style="color:#fff">×</a>`:''}</span>`).join(' ')||'<small style="color:var(--mut)">—</small>'}</td>
  ${isAdmin?`<td><select data-add="${x.scope}"><option value="">+ tugaskan…</option>${nonAdmin.map(u=>`<option value=${u.id}>${esc(u.username)}</option>`).join('')}</select></td>`:''}</tr>`).join('');
  let curHLevel=1;
@@ -638,7 +711,7 @@ async function assignView(users){const d=+$('#ad').value;const isAdmin=me.role==
   +'<h4 style="margin-top:14px">Heading, caption, tabel & gambar</h4>'
   +(canOutline?'<p><button type=button id=addh>+ Tambah heading…</button></p>':'')
   +'<div class=otable><table><tr><th>Item</th><th>PIC</th><th></th></tr>'+(itemRows||'<tr><td colspan=3 style="color:var(--mut)">Belum ada isi.</td></tr>')+'</table></div>'
-  +`<p><small>Admin otomatis boleh mengedit semua bab. PIC di heading/caption/tabel/gambar tertentu meng-override warisan dari atasannya (H1/bagian) hanya utk bagian itu ke bawah — klik ⋮ utk kelola PIC/catatan${canOutline?'/pindahkan posisi (heading memindahkan seluruh isi di bawahnya juga)/sembunyikan dari ekspor (tanpa dihapus)/hapus heading (isi di bawahnya tak ikut terhapus)':''}.${isAdmin?'':' Hanya admin yang bisa menambah/melepas penugasan; PIC yang bersangkutan boleh menandai selesai, admin/reviewer boleh mengembalikan.'}</small></p>`;
+  +`<p><small>Yang punya izin "Edit Semua Blok" otomatis boleh mengedit semua bab. PIC di heading/caption/tabel/gambar tertentu meng-override warisan dari atasannya (H1/bagian) hanya utk bagian itu ke bawah — klik ⋮ utk kelola PIC/catatan${canOutline?'/pindahkan posisi (heading memindahkan seluruh isi di bawahnya juga)/sembunyikan dari ekspor (tanpa dihapus)/hapus heading (isi di bawahnya tak ikut terhapus)':''}.${isAdmin?'':' Hanya yang punya izin "Tandai/Lepas PIC" yang bisa menambah/melepas penugasan; PIC yang bersangkutan boleh menandai selesai, yang punya izin "Kelola Outline" boleh mengembalikan.'}</small></p>`;
  if(isAdmin){
   document.querySelectorAll('[data-add]').forEach(sel=>sel.onchange=async()=>{if(!sel.value)return;try{await api('POST','/admin/assign',{doc_id:d,user_id:+sel.value,scope:sel.dataset.add});assignView(users)}catch(e){note(e.message,1)}});
   document.querySelectorAll('[data-rm]').forEach(a=>a.onclick=async e=>{e.preventDefault();const [u,sc]=a.dataset.rm.split('|');try{await api('POST','/admin/assign',{doc_id:d,user_id:+u,scope:sc,remove:true});assignView(users)}catch(x){note(x.message,1)}})}
@@ -691,7 +764,7 @@ async function blockNotesDlg(docId,blockId,label){const m=document.createElement
    <small>${esc(c.author)} · ${esc(c.created_at||'')}${c.resolved_at?' · ✔ selesai oleh '+esc(c.resolved_by):''}</small>
    <div style="white-space:pre-wrap">${esc(c.text)}</div>
    <button type=button data-done="${c.id}" data-cur="${c.resolved_at?1:0}">${c.resolved_at?'Buka lagi':'Selesai'}</button>
-   ${c.author===me.username||me.role==='admin'?`<button type=button data-delc="${c.id}">Hapus</button>`:''}
+   ${c.author===me.username||me.is_super?`<button type=button data-delc="${c.id}">Hapus</button>`:''}
   </div>`;
   m.innerHTML=`<form class=dlg><b>Catatan — ${esc((label||'').slice(0,70)||'(tanpa judul)')}</b>
   <div>${list.length?list.map(line).join(''):'<p style="color:var(--mut)">Belum ada catatan.</p>'}</div>
@@ -704,7 +777,7 @@ async function blockNotesDlg(docId,blockId,label){const m=document.createElement
   f.querySelectorAll('[data-delc]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus catatan?')){try{await api('DELETE',`/comments/${b.dataset.delc}`);paint()}catch(x){note(x.message,1)}}})};
  await paint()}
 function closeDoc(){if(es)es.close();es=null;doc=null;chapter=null;section=null;clearInterval(hb);$('#bexp').hidden=true;$('#bopt').hidden=true;$('#pres').textContent=''}
-async function openDoc(id){doc=id;$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div>';$('#bexp').hidden=false;$('#bopt').hidden=me.role!=='admin';
+async function openDoc(id){doc=id;$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div>';$('#bexp').hidden=!hasPerm('doc_export');$('#bopt').hidden=!hasPerm('outline_manage');
  await loadOutline();subscribe();hb=setInterval(async()=>{for(const b of Object.keys(locks)){try{await api('POST',`/blocks/${b}/lock`)}catch(e){}}
   try{const p=await api('GET',`/docs/${doc}/presence`);$('#pres').textContent='● '+p.count+' online'}catch(e){}},60000)}
 async function loadOutline(){const r=await api('GET',`/docs/${doc}/outline?max_level=4`);outline=r.outline;
@@ -744,7 +817,7 @@ function cmPanel(b){const box=document.createElement('div');box.className='cm';c
   const bt=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.style.fontSize='11px';x.onclick=()=>f().catch(e=>note(e.message,1));d.append(' ',x)};
   if(!re)bt('Balas',async()=>{const t=prompt('Balasan:');if(t)await api('POST',`/blocks/${b.id}/comments`,{text:t,parent_id:c.id})});
   if(!re)bt(c.resolved_at?'Buka lagi':'Selesai',()=>api('POST',`/comments/${c.id}/resolve`,{resolved:!c.resolved_at}));
-  if(c.author===me.username||me.role==='admin')bt('Hapus',async()=>{if(confirm('Hapus komentar?'))await api('DELETE',`/comments/${c.id}`)});
+  if(c.author===me.username||me.is_super)bt('Hapus',async()=>{if(confirm('Hapus komentar?'))await api('DELETE',`/comments/${c.id}`)});
   return d};
  list.filter(c=>!c.parent_id).forEach(c=>{box.append(line(c,0));list.filter(r=>r.parent_id===c.id).forEach(r=>box.append(line(r,1)))});
  const f=document.createElement('form');f.innerHTML='<input placeholder="Tulis komentar…" maxlength=4000><button class=p>Kirim</button>';
@@ -752,11 +825,17 @@ function cmPanel(b){const box=document.createElement('div');box.className='cm';c
  box.append(f);return box}
 function bodyOf(b){
  if(b.kind==='table'&&b.data.long)return tblPreview(b.data,360);
- if(b.kind==='table'){const t=document.createElement('table');(b.data.rows||[]).forEach((r,ri)=>{const tr=t.insertRow();r.cells.forEach(c=>{const td=document.createElement(r.header?'th':'td');
-  const orig=cellText(c);td.append(mk2dom(orig));td.onfocus=()=>{t.dataset.row=ri};td.contentEditable=!b.locked_by;
+ if(b.kind==='table'){let activeCell=null;const editableCell=!!b.can_edit&&!b.locked_by;const t=document.createElement('table');(b.data.rows||[]).forEach((r,ri)=>{const tr=t.insertRow();r.cells.forEach(c=>{const td=document.createElement(r.header?'th':'td');
+  const orig=cellText(c);td.append(mk2dom(orig));td.onfocus=()=>{t.dataset.row=ri;activeCell=td};td.contentEditable=editableCell;
   td.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();document.execCommand('insertLineBreak')}};td.onpaste=plainPaste;
   td.onblur=async()=>{const v0=dom2mk(td);if(v0===cellText(c))return;
-  try{const v=await api('PATCH',`/blocks/${b.id}/cell`,{row:ri,col:c.col,text:v0,version:b.version});b.version=v.version;c.blocks=[{text:v0}]}catch(e){note(e.message,1)}};tr.append(td)});});const w=document.createElement('div');w.className='tw';w.append(t);return w}
+  try{const v=await api('PATCH',`/blocks/${b.id}/cell`,{row:ri,col:c.col,text:v0,version:b.version});b.version=v.version;c.blocks=[{text:v0}]}catch(e){note(e.message,1)}};tr.append(td)});});const w=document.createElement('div');w.className='tw';
+  if(editableCell){const ib=document.createElement('button');ib.type='button';ib.textContent='🖼 Gambar di sel';
+   ib.title='Klik salah satu sel tabel dulu, lalu klik ini utk menyisipkan gambar/ikon/screenshot di sel itu';
+   ib.style.cssText='font-size:11px;margin-bottom:4px';ib.onmousedown=e=>e.preventDefault();
+   ib.onclick=()=>{if(!activeCell)return note('Klik salah satu sel tabel dulu',1);insertInlineImage(activeCell,b.id)};
+   w.append(ib)}
+  w.append(t);return w}
  if(b.kind==='image'){const i=document.createElement('img');i.src=`/api/docs/${doc}/asset/${b.data.asset}`;i.alt=b.data.alt||'';return i}
  if(b.kind==='page_break'){const d=document.createElement('div'),L=b.data.layout;
   d.textContent=L?`— ganti halaman: ${L.orientation==='landscape'?'Landscape':'Potrait'} ${typeof L.size==='object'?L.size.w_cm+'×'+L.size.h_cm+'cm':L.size} —`:'— pindah halaman —';
@@ -765,8 +844,8 @@ function bodyOf(b){
 const GENLIST_LABELS={toc:'Daftar Isi',tof_tabel:'Daftar Tabel',tof_gambar:'Daftar Gambar'};
 const HIDEABLE_KINDS=['heading','table','image','caption'];
 function view(b){const el=document.createElement('div');el.className='blk'+(b.kind==='heading'?' h':'')+(b.locked_by?' locked':'');el.dataset.id=b.id;
- const canEdit=true,gen=b.kind==='heading'&&(b.data||{}).generated,hidden=HIDEABLE_KINDS.includes(b.kind)&&(b.data||{}).hidden;
- const canOutline=me.role==='admin'||me.role==='reviewer';
+ const canEdit=!!b.can_edit,gen=b.kind==='heading'&&(b.data||{}).generated,hidden=HIDEABLE_KINDS.includes(b.kind)&&(b.data||{}).hidden;
+ const canOutline=hasPerm('outline_manage');
  el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
  el.append(bodyOf(b));const a=document.createElement('div');a.className='acts';
  const btn=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
@@ -774,19 +853,18 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
  if(canOutline&&HIDEABLE_KINDS.includes(b.kind))btn(hidden?'👁 Tampilkan lagi':'🙈 Sembunyikan dari ekspor',()=>api('POST',`/blocks/${b.id}/hidden`,{hidden:!hidden,version:b.version}));
  if(['paragraph','heading','list_item','caption','note'].includes(b.kind)&&canEdit)btn('Edit',()=>edit(el,b));
- if(true){btn('+ Blok',()=>blockDlg(b));
+ if(canEdit){btn('+ Blok',()=>blockDlg(b));
   btn('+ Gambar',async()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('after_id',b.id);
    try{await api('POST',`/docs/${doc}/images`,fd,true)}catch(e){note(e.message,1)}};f.click()});
   btn('+ Tabel',()=>tableDlg(b));
   btn('+ Page break',async()=>{layoutDlg(null,async layout=>{await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id,layout})})});
-  if(me.role==='admin')btn('+ Daftar…',()=>genListDlg(b));
-  if(me.role==='admin'&&b.kind==='heading')btn(gen?'📑 Jenis daftar…':'📑 Jadikan daftar…',()=>genTypeDlg(b));
+  if(canOutline)btn('+ Daftar…',()=>genListDlg(b));
+  if(canOutline&&b.kind==='heading')btn(gen?'📑 Jenis daftar…':'📑 Jadikan daftar…',()=>genTypeDlg(b));
   if(b.kind==='page_break')btn('⛶ Tata letak',async()=>{layoutDlg(b.data.layout||null,async layout=>{await api('PATCH',`/blocks/${b.id}`,{data:{layout},version:b.version})})});
   btn('Hapus',async()=>{if(confirm('Hapus blok ini?'))await api('DELETE',`/blocks/${b.id}?version=${b.version}`)});
-  btn('Riwayat',()=>hist(el,b));
-  if(['heading','paragraph','list_item'].includes(b.kind)&&canEdit){const ls=document.createElement('select');ls.title='Ubah jenis blok (paragraf / heading / daftar)';
+  if(['heading','paragraph','list_item'].includes(b.kind)){const ls=document.createElement('select');ls.title='Ubah jenis blok (paragraf / heading / daftar)';
    const opts=[['p','Paragraf'],['h1','H1 (bab)'],['h2','H2'],['h3','H3'],['h4','H4'],['ul','Bullet'],['ol','Numbering']];
-   opts.forEach(([v,l])=>{const o=new Option(l,v);if(v==='h1'&&me.role!=='admin')o.disabled=true;ls.add(o)});
+   opts.forEach(([v,l])=>{const o=new Option(l,v);if(v==='h1'&&!hasPerm('chapter_create'))o.disabled=true;ls.add(o)});
    const cur=b.kind==='heading'?'h'+b.level:b.kind==='list_item'?((b.data||{}).ordered?'ol':'ul'):'p';ls.value=cur;
    ls.onchange=()=>{const v=ls.value,body={version:b.version};
     if(v[0]==='h'){body.kind='heading';body.level=+v[1]}else if(v==='p')body.kind='paragraph';else{body.kind='list_item';body.data={ordered:v==='ol',ilvl:0}}
@@ -809,10 +887,12 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
     if(!pv.ok)throw new Error('Tak bisa diubah ke mode form: '+pv.why);
     if(!pv.strict&&!confirm('Struktur tabel ini tidak bisa dibentuk ulang persis:\n'+pv.why+'\n\nKonversi longgar akan mengubah tabel:\n- '+pv.notes.join('\n- ')+'\n\nVersi lama tetap ada di Riwayat (bisa di-revert). Lanjutkan?'))return;
     await api('POST',`/blocks/${b.id}/long`,{on:true,force:!pv.strict})})}}
+ btn('Riwayat',()=>hist(el,b));
  {const n=(cmts[b.id]||[]).filter(c=>!c.resolved_at).length,x=document.createElement('button');x.innerHTML='💬'+(n?` <span class=badge>${n}</span>`:'');
  x.onclick=()=>{openCm.has(b.id)?openCm.delete(b.id):openCm.add(b.id);refreshBlock(b.id)};a.append(x)}
- const sel=document.createElement('select');['draft','review','approved'].forEach(s=>sel.add(new Option(s,s,0,s===b.status)));
- sel.onchange=()=>api('PATCH',`/blocks/${b.id}`,{status:sel.value,version:b.version}).catch(e=>note(e.message,1));a.append(sel);el.append(a);if(openCm.has(b.id))el.append(cmPanel(b));return el}
+ if(canEdit){const sel=document.createElement('select');['draft','review','approved'].forEach(s=>sel.add(new Option(s,s,0,s===b.status)));
+ sel.onchange=()=>api('PATCH',`/blocks/${b.id}`,{status:sel.value,version:b.version}).catch(e=>note(e.message,1));a.append(sel)}
+ el.append(a);if(openCm.has(b.id))el.append(cmPanel(b));return el}
 async function wrapLandscape(el,b){const prevEl=el.previousElementSibling;
  if(!prevEl){note('Tambahkan blok (mis. judul) sebelum ini dulu, baru bisa ditandai landscape.',1);return}
  layoutDlg({orientation:'landscape',size:'A4'},async layout=>{
@@ -820,21 +900,22 @@ async function wrapLandscape(el,b){const prevEl=el.previousElementSibling;
   await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id,layout:{orientation:'portrait',size:'A4'}})})}
 async function picDlg(docId,blockId,label,onClose){
  const m=document.createElement('div');m.className='mask';document.body.append(m);
- let users=[];if(me.role==='admin'){try{users=(await api('GET',`/projects/${curProj}/team`)).team}catch(e){}}
+ const canAssign=hasPerm('pic_assign'),canReturnOthers=hasPerm('outline_manage');
+ let users=[];if(canAssign){try{users=(await api('GET',`/projects/${curProj}/team`)).team}catch(e){}}
  const paint=async()=>{
   let info;try{info=await api('GET',`/blocks/${blockId}/pic`)}catch(e){m.remove();note(e.message,1);return}
   const tagged=new Set(info.pics.map(p=>p.user_id));
-  const rows=info.pics.length?info.pics.map(p=>{const mine=p.user_id===me.id,canReturn=(me.role==='admin'||me.role==='reviewer')&&p.status==='done';
+  const rows=info.pics.length?info.pics.map(p=>{const mine=p.user_id===me.id,canReturn=canReturnOthers&&p.status==='done';
    return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid var(--line)">
     <b>${esc(p.username)}</b><span class=badge style="background:${p.status==='done'?'#2da44e':'var(--mut)'}">${p.status==='done'?'✓ selesai':'⏳ berjalan'}</span>
     ${p.note?`<small style="color:var(--mut)" title="dikembalikan oleh ${esc(p.returned_by||'')}">📝 ${esc(p.note)}</small>`:''}
     <span style="flex:1"></span>
     ${mine?`<button type=button data-toggle="${p.user_id}" data-cur="${p.status}">${p.status==='done'?'Buka lagi':'Tandai selesai'}</button>`:''}
     ${canReturn&&!mine?`<button type=button data-return="${p.user_id}">Kembalikan</button>`:''}
-    ${me.role==='admin'&&info.direct?`<button type=button data-rm="${p.user_id}" style="color:#d1242f">Lepas</button>`:''}
+    ${canAssign&&info.direct?`<button type=button data-rm="${p.user_id}" style="color:#d1242f">Lepas</button>`:''}
    </div>`}).join(''):'<p style="color:var(--mut)">Belum ada PIC.</p>';
   const inherit=info.scope&&!info.direct?`<p><small style="color:var(--mut)">Mewarisi penugasan dari atasan (<code>${esc(info.scope)}</code>). Menambah PIC di sini akan meng-override khusus utk bagian ini ke bawah.</small></p>`:'';
-  const addSel=me.role==='admin'?`<label>+ tugaskan di sini<select id=picadd><option value="">— pilih user —</option>${users.filter(u=>!(info.direct&&tagged.has(u.id))).map(u=>`<option value=${u.id}>${esc(u.username)}</option>`).join('')}</select></label>`:'';
+  const addSel=canAssign?`<label>+ tugaskan di sini<select id=picadd><option value="">— pilih user —</option>${users.filter(u=>!(info.direct&&tagged.has(u.id))).map(u=>`<option value=${u.id}>${esc(u.username)}</option>`).join('')}</select></label>`:'';
   m.innerHTML=`<form class=dlg><b>PIC — ${esc((label||'').slice(0,70))}</b>${inherit}<div>${rows}</div>${addSel}
    <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Tutup</button></div></form>`;
   const f=m.querySelector('form');f.onsubmit=e=>e.preventDefault();
@@ -865,7 +946,7 @@ async function mv(el,b,dir){let after;
  if(dir<0){const p=el.previousElementSibling,pp=p&&p.previousElementSibling;if(!pp)throw new Error('sudah paling atas dalam bab');after=+pp.dataset.id}
  else{const n=el.nextElementSibling;if(!n)throw new Error('sudah paling bawah dalam bab');after=+n.dataset.id}
  await api('POST',`/blocks/${b.id}/move`,{after_id:after,version:b.version})}
-function blockDlg(b){const m=document.createElement('div');m.className='mask';const adm=me.role==='admin';
+function blockDlg(b){const m=document.createElement('div');m.className='mask';const adm=hasPerm('chapter_create');
  m.innerHTML=`<form class=dlg><b>Sisipkan blok setelah blok ini</b>
  <label>Jenis<select name=t><option value=p>Paragraf</option><option value=h1 ${adm?'':'disabled'}>Heading 1 (bab baru${adm?'':' — hanya admin'})</option>
  <option value=h2>Heading 2 (sub-bab)</option><option value=h3>Heading 3</option><option value=h4>Heading 4</option>
@@ -944,7 +1025,7 @@ async function formEd(id,open){const m=document.createElement('div');m.className
   tb(st.prev?'Kembali ke form':'Pratinjau tabel',()=>{st.prev=!st.prev;render()});
   if(!ro()){tb('Kolom & header…',()=>colsDlg());tb('Tempel baris (Excel)…',()=>pasteDlg());tb('＋ Record',()=>op({op:'add',after:n-1,rows:[{}]},n))}
   tb('Tutup',()=>st.close(),1);
-  if(!ro()&&!st.prev){const bar=toolbar({focus(){}},()=>{},true);bar.lastChild.remove();hd.append(bar)}
+  if(!ro()&&!st.prev){const bar=toolbar({focus(){}},()=>{},true,id);bar.lastChild.remove();hd.append(bar)}
   if(ro()){const w=document.createElement('small');w.textContent='🔒 dikunci '+st.b.locked_by;hd.querySelector('b').after(w)}
   hd.querySelector('.q').oninput=e=>{st.q=e.target.value;const pos=e.target.selectionStart;render();const q=m.querySelector('.q');q.focus();q.setSelectionRange(pos,pos)};
   const body=document.createElement('div');body.className='fbody';m.append(hd,body);
@@ -976,19 +1057,30 @@ async function formEd(id,open){const m=document.createElement('div');m.className
  try{await st.load(true)}catch(e){m.remove();fe=null;return note(e.message,1)}
  if(open==='cols')colsDlg()}
 function plainPaste(e){e.preventDefault();const t=(e.clipboardData||window.clipboardData).getData('text/plain');document.execCommand('insertText',false,t)}
-function toolbar(ed,rawToggle,lists){const d=document.createElement('div');d.className='tb';
+function insertInlineImage(ed,blockId){if(ed&&ed.focus)ed.focus();
+ const sel=window.getSelection();const range=sel.rangeCount?sel.getRangeAt(0).cloneRange():null;
+ const f=document.createElement('input');f.type='file';f.accept='image/*';
+ f.onchange=async()=>{if(!f.files[0])return;const fd=new FormData();fd.append('file',f.files[0]);fd.append('block_id',blockId);
+  try{const a=await api('POST',`/docs/${doc}/inline-asset`,fd,true);
+   if(ed&&ed.focus)ed.focus();
+   if(range){try{sel.removeAllRanges();sel.addRange(range)}catch(e){}}
+   const html=`<img data-sha1="${a.sha1}" data-alt="" src="/api/docs/${doc}/asset/${a.sha1}" style="max-width:220px;max-height:220px;vertical-align:middle">`;
+   document.execCommand('insertHTML',false,html)}catch(e){note(e.message,1)}};
+ f.click()}
+function toolbar(ed,rawToggle,lists,blockId){const d=document.createElement('div');d.className='tb';
  const mk=(l,title,fn)=>{const x=document.createElement('button');x.type='button';x.innerHTML=l;x.title=title;x.onmousedown=e=>e.preventDefault();x.onclick=fn;d.append(x);return x};
  const cmd=c=>()=>{ed.focus();document.execCommand(c)};
  mk('<b>B</b>','Tebal (Ctrl+B)',cmd('bold'));mk('<i>I</i>','Miring (Ctrl+I)',cmd('italic'));mk('<u>U</u>','Garis bawah (Ctrl+U)',cmd('underline'));
  mk('x²','Superscript',cmd('superscript'));mk('x₂','Subscript',cmd('subscript'));
  mk('Tautan','Sisipkan tautan',()=>{ed.focus();const u=prompt('URL (https://…):');if(u)document.execCommand('createLink',false,u)});
  mk('Lepas','Hapus tautan',cmd('unlink'));mk('Bersih','Hapus format',cmd('removeFormat'));
+ mk('🖼','Sisipkan gambar/ikon/screenshot rumus di sini',()=>insertInlineImage(ed,blockId));
  if(lists){mk('1)','Daftar bernomor (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(true)}catch(e){note(e.message,1)}});mk('•','Daftar bullet (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(false)}catch(e){note(e.message,1)}})}
  const r=mk('&lt;/&gt;','Lihat/ubah kode markup',rawToggle);r.style.marginLeft='auto';return d}
 async function edit(el,b){try{await api('POST',`/blocks/${b.id}/lock`);locks[b.id]=1}catch(e){return note(e.message,1)}
  el.classList.add('edit');const old=el.querySelector('.txt');let ed=document.createElement('div');ed.className='wys';ed.contentEditable=true;ed.append(mk2dom(b.text));
  let raw=null;old.replaceWith(ed);document.execCommand('styleWithCSS',false,false);
- const bar=()=>toolbar(ed,toggle);let tb=bar();ed.before(tb);ed.focus();
+ const bar=()=>toolbar(ed,toggle,false,b.id);let tb=bar();ed.before(tb);ed.focus();
  const setup=e=>{e.onkeydown=k=>{if(k.key==='Enter'&&!k.ctrlKey){k.preventDefault();document.execCommand('insertLineBreak')}else if(k.key==='Enter'&&k.ctrlKey){k.preventDefault();save()}};e.onpaste=plainPaste};setup(ed);
  function toggle(){if(!raw){raw=document.createElement('textarea');raw.value=dom2mk(ed);ed.replaceWith(raw);raw.focus()}
   else{const n=document.createElement('div');n.className='wys';n.contentEditable=true;n.append(mk2dom(raw.value));raw.replaceWith(n);ed=n;raw=null;setup(ed);ed.focus()}
@@ -1002,7 +1094,7 @@ async function edit(el,b){try{await api('POST',`/blocks/${b.id}/lock`);locks[b.i
 async function hist(el,b){const {history}=await api('GET',`/blocks/${b.id}/history`);let p=el.querySelector('.hist');if(p){p.remove();return}
  p=document.createElement('div');p.className='hist meta';p.style.flexDirection='column';p.style.alignItems='flex-start';
  history.slice().reverse().slice(0,15).forEach(h=>{const r=document.createElement('div');r.innerHTML=`v${h.version} · ${esc(h.changed_by||'')} · ${esc((h.text||'').slice(0,80))} `;
-  {const x=document.createElement('button');x.textContent='Kembalikan';x.onclick=()=>api('POST',`/blocks/${b.id}/revert`,{version:h.version}).catch(e=>note(e.message,1));r.append(x)}p.append(r)});el.append(p)}
+  if(b.can_edit){const x=document.createElement('button');x.textContent='Kembalikan';x.onclick=()=>api('POST',`/blocks/${b.id}/revert`,{version:h.version}).catch(e=>note(e.message,1));r.append(x)}p.append(r)});el.append(p)}
 async function refreshBlock(id){if(fe&&fe.id===id&&fe.sync)fe.sync();const el=$(`.blk[data-id="${id}"]`);if(!el)return;if(el.classList.contains('edit')&&locks[id])return;
  await loadCmts();try{const {block}=await api('GET',`/blocks/${id}`);if(block.deleted)return el.remove();el.replaceWith(view(block))}catch(e){el.remove()}}
 let rl=null;function reloadSoon(){clearTimeout(rl);rl=setTimeout(()=>{if(!$('.blk.edit'))(section?loadSection(section):loadChapter());loadOutline()},400)}

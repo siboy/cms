@@ -1,6 +1,6 @@
 """
 Admin CLI (jalankan di container app):
-  python scripts/cms_admin.py user  <username> <password> [--name N] [--role admin|author|reviewer]
+  python scripts/cms_admin.py user  <username> <password> [--name N] [--role admin|author|editor|viewer]
   python scripts/cms_admin.py users-csv <file.csv>            # kolom: username,name,role,password
   python scripts/cms_admin.py assign <doc_id> <username> <scope>  # scope: h1:<id blok bab> | part:<cover|front|body|lampiran>
   python scripts/cms_admin.py chapters <doc_id>               # daftar bab (id blok H1) untuk penugasan
@@ -27,7 +27,7 @@ def uid_of(username):
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("user"); p.add_argument("username"); p.add_argument("password"); p.add_argument("--name", default=""); p.add_argument("--role", default="author")
+    p = sub.add_parser("user"); p.add_argument("username"); p.add_argument("password"); p.add_argument("--name", default=""); p.add_argument("--role", default="editor")
     p = sub.add_parser("users-csv"); p.add_argument("file")
     p = sub.add_parser("assign"); p.add_argument("doc_id", type=int); p.add_argument("username"); p.add_argument("scope")
     p = sub.add_parser("chapters"); p.add_argument("doc_id", type=int)
@@ -41,7 +41,7 @@ def main():
             n = 0
             with open(a.file, newline="", encoding="utf-8-sig") as f:
                 for row in csv.DictReader(f):
-                    auth.create_user(row["username"], row["password"], row.get("name", ""), row.get("role", "author")); n += 1
+                    auth.create_user(row["username"], row["password"], row.get("name", ""), row.get("role", "editor")); n += 1
             print(n, "pengguna dibuat")
         elif a.cmd == "assign":
             auth.assign(a.doc_id, uid_of(a.username), a.scope); print("OK")

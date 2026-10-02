@@ -54,8 +54,18 @@ def _task_row(tid: int) -> dict:
     return t
 
 
+def _project_visible(pid: int):
+    """Gerbang visibility proyek: tanpa permission project_view_all, proyek hanya 'ada' bagi user yang
+    masuk Tim-nya atau jadi PIC di salah satu dokumennya -- selain itu KeyError (-> 404, bukan 403, supaya
+    tidak membocorkan keberadaan proyek ke yang tak berhak lihat sama sekali)."""
+    if auth.has_perm(g.user, "project_view_all"):
+        return
+    if not S().is_project_visible_to(g.user["id"], pid):
+        raise KeyError(f"proyek {pid} tidak ada")
+
+
 def _can_edit_task(t: dict) -> bool:
-    if g.user["role"] == "admin":
+    if auth.has_perm(g.user, "project_tasks_admin"):
         return True
     if t.get("doc_id") and t.get("chapter_block_id"):
         return auth.can_edit(t["doc_id"], t["chapter_block_id"])
@@ -83,11 +93,15 @@ def _save_upload(project_id: int, f) -> tuple[str, str, str, int]:
 @bp.get("/projects")
 @auth.require()
 def list_projects():
-    return jsonify(projects=S().list_projects())
+    projects = S().list_projects()
+    if not auth.has_perm(g.user, "project_view_all"):
+        visible = S().visible_project_ids(g.user["id"])
+        projects = [p for p in projects if p["id"] in visible]
+    return jsonify(projects=projects)
 
 
 @bp.post("/projects")
-@auth.require("admin")
+@auth.require("project_manage")
 def create_project():
     d = body()
     pid = S().create_project(d.get("name", ""), user=g.user["username"],
@@ -105,12 +119,14 @@ def create_project():
 @bp.get("/projects/<int:pid>")
 @auth.require()
 def get_project(pid):
+    _project_visible(pid)
     return jsonify(project=S().get_project(pid))
 
 
 @bp.patch("/projects/<int:pid>")
-@auth.require("admin")
+@auth.require("project_manage")
 def update_project(pid):
+    _project_visible(pid)
     d = body()
     S().update_project(pid, **d)
     S().log_activity(g.user["username"], "project.update", target_type="project", target_id=pid, project_id=pid,
@@ -119,8 +135,9 @@ def update_project(pid):
 
 
 @bp.delete("/projects/<int:pid>")
-@auth.require("admin")
+@auth.require("project_manage")
 def delete_project(pid):
+    _project_visible(pid)
     p = S().get_project(pid)
     S().delete_project(pid)
     S().log_activity(g.user["username"], "project.delete", target_type="project", target_id=pid, project_id=pid,
@@ -129,7 +146,7 @@ def delete_project(pid):
 
 
 @bp.get("/docs-index")
-@auth.require("admin")
+@auth.require("project_manage")
 def docs_index():
     """Semua dokumen di sistem + (kalau tertaut) nama proyek & report_type -- utk dialog pilih dokumen
     sumber salin outline/tim, bisa difilter per proyek atau langsung dicari lintas proyek by nama."""
@@ -137,11 +154,12 @@ def docs_index():
 
 
 @bp.post("/projects/<int:pid>/clone-document")
-@auth.require("admin")
+@auth.require("project_manage")
 def clone_document(pid):
     """Proyek yang SUDAH ada: salin HANYA outline SATU dokumen (dipilih langsung by nama, tak peduli dia
     tertaut ke proyek mana/tak tertaut sama sekali) jadi dokumen laporan BARU KOSONG di proyek ini.
     Tim/PIC TIDAK ikut -- pakai /projects/<pid>/copy-team terpisah kalau perlu (bisa dari dokumen lain)."""
+    _project_visible(pid)
     d = body()
     src_doc_id = d.get("doc_id")
     if not src_doc_id:
@@ -154,11 +172,12 @@ def clone_document(pid):
 
 
 @bp.post("/projects/<int:pid>/copy-team")
-@auth.require("admin")
+@auth.require("project_team_manage")
 def copy_team(pid):
     """Salin tim (penugasan tingkat bagian: cover/depan/isi/lampiran) dari dokumen manapun (`src_doc_id`,
     tak peduli proyeknya) ke dokumen `target_doc_id` yang SUDAH tertaut di proyek ini -- independen dari
     salin outline, krn tim yang mengerjakan bisa beda dari dokumen yang dipakai acuan outline."""
+    _project_visible(pid)
     d = body()
     target_doc_id, src_doc_id = d.get("target_doc_id"), d.get("src_doc_id")
     if not target_doc_id or not src_doc_id:
@@ -176,19 +195,22 @@ def copy_team(pid):
 @bp.get("/projects/<int:pid>/documents")
 @auth.require()
 def list_documents(pid):
+    _project_visible(pid)
     return jsonify(documents=S().list_project_documents(pid))
 
 
 @bp.get("/projects/<int:pid>/unlinked-docs")
-@auth.require("admin")
+@auth.require("project_manage")
 def unlinked_docs(pid):
+    _project_visible(pid)
     return jsonify(docs=S().unlinked_documents())
 
 
 @bp.post("/projects/<int:pid>/documents")
-@auth.require("admin")
+@auth.require("project_manage")
 def link_document(pid):
     """JSON {doc_id, report_type, label} utk dokumen yang sudah ada, ATAU multipart {file, report_type, label} utk unggah baru."""
+    _project_visible(pid)
     st = S()
     if request.files.get("file"):
         import uuid as _uuid
@@ -223,8 +245,9 @@ def link_document(pid):
 
 
 @bp.post("/projects/<int:pid>/documents/<int:link_id>/print")
-@auth.require("admin")
+@auth.require("project_manage")
 def set_printed(pid, link_id):
+    _project_visible(pid)
     printed = bool(body().get("printed", True))
     S().set_printed(link_id, printed, user=g.user["username"])
     S().log_activity(g.user["username"], "doc.print", target_type="document", target_id=link_id, project_id=pid,
@@ -236,12 +259,14 @@ def set_printed(pid, link_id):
 @bp.get("/projects/<int:pid>/team")
 @auth.require()
 def project_team(pid):
+    _project_visible(pid)
     return jsonify(team=S().list_project_team(pid))
 
 
 @bp.post("/projects/<int:pid>/team")
-@auth.require("admin")
+@auth.require("project_team_manage")
 def project_team_add(pid):
+    _project_visible(pid)
     d = body()
     uid = int(d["user_id"])
     title = d.get("title", "")
@@ -254,8 +279,9 @@ def project_team_add(pid):
 
 
 @bp.delete("/projects/<int:pid>/team/<int:uid>")
-@auth.require("admin")
+@auth.require("project_team_manage")
 def project_team_remove(pid, uid):
+    _project_visible(pid)
     S().set_user_project_role(uid, pid, "")
     S().log_activity(g.user["username"], "project.team_remove", target_type="user", target_id=uid, project_id=pid)
     return jsonify(ok=True)
@@ -265,12 +291,14 @@ def project_team_remove(pid, uid):
 @bp.get("/projects/<int:pid>/files")
 @auth.require()
 def list_files(pid):
+    _project_visible(pid)
     return jsonify(files=S().list_project_files(pid, request.args.get("category")))
 
 
 @bp.post("/projects/<int:pid>/files")
-@auth.require("admin", "author")
+@auth.require("project_files_manage")
 def upload_file(pid):
+    _project_visible(pid)
     f = request.files.get("file")
     category = request.form.get("category", "")
     if not f or not category:
@@ -289,6 +317,7 @@ def upload_file(pid):
 @auth.require()
 def raw_file(fid):
     r = S().get_project_file(fid)
+    _project_visible(r["project_id"])
     base = os.path.realpath(_project_file_root(r["project_id"]))
     p = os.path.realpath(r["path"])
     if not p.startswith(base + os.sep) or not os.path.isfile(p):
@@ -297,9 +326,10 @@ def raw_file(fid):
 
 
 @bp.delete("/project-files/<int:fid>")
-@auth.require("admin", "author")
+@auth.require("project_files_manage")
 def delete_file(fid):
     r = S().get_project_file(fid)
+    _project_visible(r["project_id"])
     S().delete_project_file(fid)
     S().log_activity(g.user["username"], "project.file_delete", target_type="file", target_id=fid,
                      project_id=r["project_id"], summary=r["filename"])
@@ -310,24 +340,27 @@ def delete_file(fid):
 @bp.get("/projects/<int:pid>/tasks")
 @auth.require()
 def list_tasks(pid):
+    _project_visible(pid)
     return jsonify(tasks=S().list_project_tasks(pid))
 
 
 @bp.get("/projects/<int:pid>/scurve")
 @auth.require()
 def scurve(pid):
+    _project_visible(pid)
     return jsonify(**S().project_scurve(pid))
 
 
 @bp.post("/projects/<int:pid>/tasks")
-@auth.require("admin", "author")
+@auth.require("project_tasks_manage")
 def create_task(pid):
+    _project_visible(pid)
     d = body()
     doc_id, chapter_block_id = d.get("doc_id"), d.get("chapter_block_id")
-    if doc_id and chapter_block_id and not (g.user["role"] == "admin" or auth.can_edit(doc_id, chapter_block_id)):
+    if doc_id and chapter_block_id and not (auth.has_perm(g.user, "project_tasks_admin") or auth.can_edit(doc_id, chapter_block_id)):
         abort(403, description="tidak ditugaskan pada bab ini")
-    if not doc_id and g.user["role"] != "admin":
-        abort(403, description="hanya admin yang bisa menambah task manual")
+    if not doc_id and not auth.has_perm(g.user, "project_tasks_admin"):
+        abort(403, description="tidak punya izin menambah task manual")
     tid = S().upsert_project_task(pid, title=d.get("title", ""), doc_id=doc_id, chapter_block_id=chapter_block_id,
                                   start_date=d.get("start_date"), end_date=d.get("end_date"),
                                   progress_percent=d.get("progress_percent"), status=d.get("status"),
@@ -338,9 +371,10 @@ def create_task(pid):
 
 
 @bp.patch("/tasks/<int:tid>")
-@auth.require("admin", "author")
+@auth.require("project_tasks_manage")
 def update_task(tid):
     t = _task_row(tid)
+    _project_visible(t["project_id"])
     if not _can_edit_task(t):
         abort(403, description="tidak ditugaskan pada bab ini")
     d = body()
@@ -351,9 +385,10 @@ def update_task(tid):
 
 
 @bp.delete("/tasks/<int:tid>")
-@auth.require("admin")
+@auth.require("project_tasks_admin")
 def delete_task(tid):
     t = _task_row(tid)
+    _project_visible(t["project_id"])
     S().delete_project_task(tid)
     S().log_activity(g.user["username"], "task.delete", target_type="task", target_id=tid, project_id=t["project_id"],
                      doc_id=t.get("doc_id"), summary=t.get("title", ""))
@@ -361,9 +396,10 @@ def delete_task(tid):
 
 
 @bp.post("/tasks/<int:tid>/tag")
-@auth.require("admin")
+@auth.require("project_tasks_admin")
 def tag_task(tid):
     t = _task_row(tid)
+    _project_visible(t["project_id"])
     d = body()
     uids = [int(u) for u in d.get("user_ids", [])]
     S().tag_task(tid, uids, tagged_by=g.user["username"])
@@ -373,8 +409,10 @@ def tag_task(tid):
 
 
 @bp.post("/tasks/<int:tid>/resync-pic")
-@auth.require("admin")
+@auth.require("project_tasks_admin")
 def resync_pic(tid):
+    t = _task_row(tid)
+    _project_visible(t["project_id"])
     S().sync_task_pic_from_assign(tid)
     return jsonify(ok=True)
 

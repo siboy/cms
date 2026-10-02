@@ -84,17 +84,115 @@ CREATE TABLE IF NOT EXISTS cms_assets (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---- Tahap 2: pengguna, peran, penugasan bab (idempoten; jalankan scripts/collab_migrate.sh untuk DB yang sudah ada) ----
+-- Peran (final, 2026-10-02): admin (global, tanpa batasan) | author (dulu "reviewer/QC": edit semua blok
+-- spt admin, kecuali bikin bab H1 & kelola pengguna/tim) | editor (dulu "author": hanya bab/bagian yang
+-- ditugaskan PIC) | viewer (baru: baca + komentar saja, tak bisa edit apapun).
 CREATE TABLE IF NOT EXISTS cms_users (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     username    VARCHAR(64) NOT NULL,
     name        VARCHAR(120) NOT NULL DEFAULT '',
-    role        ENUM('admin','author','reviewer') NOT NULL DEFAULT 'author',
+    role        ENUM('admin','author','editor','viewer') NOT NULL DEFAULT 'editor',
     pw_hash     VARCHAR(255) NOT NULL,
     active      TINYINT NOT NULL DEFAULT 1,
     created_at  VARCHAR(19) DEFAULT NULL,
     last_login  VARCHAR(19) DEFAULT NULL,
     UNIQUE KEY uq_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- migrasi rename peran utk DB yang sudah terlanjur pakai enum lama ('admin','author','reviewer'):
+-- author lama (PIC-restricted) -> editor; reviewer/QC lama -> author (makna baru). Idempoten: hanya
+-- jalan sekali selama enum kolom masih memuat 'reviewer' (cek information_schema), lalu enum dipersempit
+-- ke set final sehingga run berikutnya otomatis dilewati.
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_roles;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_roles()
+BEGIN
+  DECLARE cur_type TEXT;
+  SELECT COLUMN_TYPE INTO cur_type FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='role';
+  IF cur_type LIKE '%reviewer%' THEN
+    ALTER TABLE cms_users MODIFY COLUMN role ENUM('admin','author','reviewer','editor','viewer') NOT NULL DEFAULT 'editor';
+    UPDATE cms_users SET role='editor' WHERE role='author';
+    UPDATE cms_users SET role='author' WHERE role='reviewer';
+    ALTER TABLE cms_users MODIFY COLUMN role ENUM('admin','author','editor','viewer') NOT NULL DEFAULT 'editor';
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_roles();
+DROP PROCEDURE cms_tmp_migrate_roles;
+
+-- ---- Grup & privilege (2026-10-02): "role" ENUM yang kaku diganti sistem grup bebas-nama + matriks
+-- privilege per fitur, bisa diatur admin lewat halaman Privilege (lihat cmsapp/auth.py PERMISSIONS,
+-- cmsapp/api.py /groups*). cms_group_perms/cms_user_perms cuma menyimpan baris yang DIIZINKAN (allowed=1);
+-- tak ada baris = tak diizinkan. User override (cms_user_perms) menang atas grup, dicek lebih dulu.
+CREATE TABLE IF NOT EXISTS cms_groups (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    name       VARCHAR(64) NOT NULL,
+    is_super   TINYINT NOT NULL DEFAULT 0,          -- grup super (mis. admin): bypass matriks, akses penuh
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at VARCHAR(19) DEFAULT NULL,
+    UNIQUE KEY uq_group_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_group_perms (
+    group_id INT NOT NULL,
+    perm_key VARCHAR(64) NOT NULL,
+    allowed  TINYINT NOT NULL DEFAULT 1,
+    PRIMARY KEY (group_id, perm_key),
+    CONSTRAINT fk_gp_group FOREIGN KEY (group_id) REFERENCES cms_groups(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_user_perms (
+    user_id  INT NOT NULL,
+    perm_key VARCHAR(64) NOT NULL,
+    allowed  TINYINT NOT NULL DEFAULT 1,            -- override eksplisit: 1=paksa izinkan, 0=paksa tolak
+    PRIMARY KEY (user_id, perm_key),
+    CONSTRAINT fk_up_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- grup default (idempoten -- INSERT IGNORE, aman dijalankan ulang tanpa menimpa kustomisasi admin)
+INSERT IGNORE INTO cms_groups (name, is_super, sort_order, created_at) VALUES
+  ('admin', 1, 0, NOW()), ('author', 0, 1, NOW()), ('owner', 0, 2, NOW()), ('reviewer/qc', 0, 3, NOW()),
+  ('editor', 0, 4, NOW()), ('viewer', 0, 5, NOW()), ('eksternal', 0, 6, NOW());
+
+-- matriks privilege default per grup (admin tak perlu baris -- is_super bypass di kode). Selaras dgn
+-- perilaku lama: author/owner/reviewer-qc = tier "edit semua blok" (dulu reviewer/QC) + lihat semua
+-- proyek; editor = tier "hanya blok yang ditugaskan PIC" (dulu author), tapi TETAP lihat semua heading
+-- dokumen (beda dari eksternal); viewer = baca+komentar; eksternal = penulis dari luar -- outline/isi
+-- dokumen dipangkas total ke bagian yang ditugaskan (doc_view_assigned_only) + proyek yg tak diikuti
+-- sama sekali (bukan tim & bukan PIC di dokumennya) tersembunyi total (default: tanpa project_view_all).
+INSERT IGNORE INTO cms_group_perms (group_id, perm_key, allowed)
+SELECT g.id, x.pk, 1 FROM cms_groups g JOIN (
+  SELECT 'author' gn,'block_edit_all' pk UNION ALL SELECT 'author','outline_manage' UNION ALL SELECT 'author','comment_write' UNION ALL SELECT 'author','doc_export' UNION ALL SELECT 'author','project_view_all' UNION ALL
+  SELECT 'owner','block_edit_all' UNION ALL SELECT 'owner','outline_manage' UNION ALL SELECT 'owner','comment_write' UNION ALL SELECT 'owner','doc_export' UNION ALL SELECT 'owner','project_view_all' UNION ALL
+  SELECT 'reviewer/qc','block_edit_all' UNION ALL SELECT 'reviewer/qc','outline_manage' UNION ALL SELECT 'reviewer/qc','comment_write' UNION ALL SELECT 'reviewer/qc','doc_export' UNION ALL SELECT 'reviewer/qc','project_view_all' UNION ALL
+  SELECT 'editor','block_edit_assigned' UNION ALL SELECT 'editor','comment_write' UNION ALL SELECT 'editor','doc_export' UNION ALL SELECT 'editor','project_files_manage' UNION ALL SELECT 'editor','project_tasks_manage' UNION ALL
+  SELECT 'viewer','comment_write' UNION ALL SELECT 'viewer','doc_export' UNION ALL
+  SELECT 'eksternal','block_edit_assigned' UNION ALL SELECT 'eksternal','doc_view_assigned_only' UNION ALL SELECT 'eksternal','comment_write'
+) x ON x.gn = g.name;
+
+-- migrasi cms_users.role (ENUM lama) -> group_id (FK ke cms_groups). Idempoten: hanya jalan selama kolom
+-- 'role' masih ada; sesudah di-drop, run berikutnya otomatis dilewati.
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_to_groups;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_to_groups()
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='role') THEN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='group_id') THEN
+      ALTER TABLE cms_users ADD COLUMN group_id INT DEFAULT NULL AFTER role;
+    END IF;
+    UPDATE cms_users u JOIN cms_groups g ON g.name = u.role SET u.group_id = g.id WHERE u.group_id IS NULL;
+    UPDATE cms_users SET group_id = (SELECT id FROM cms_groups WHERE name='editor') WHERE group_id IS NULL;
+    ALTER TABLE cms_users MODIFY COLUMN group_id INT NOT NULL;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND CONSTRAINT_NAME='fk_u_group') THEN
+      ALTER TABLE cms_users ADD CONSTRAINT fk_u_group FOREIGN KEY (group_id) REFERENCES cms_groups(id);
+    END IF;
+    ALTER TABLE cms_users DROP COLUMN role;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_to_groups();
+DROP PROCEDURE cms_tmp_migrate_to_groups;
 
 -- kolom ditambah belakangan (2026-10-02): email (verifikasi & notifikasi), WA, bidang keahlian (tenaga
 -- ahli), token verifikasi email & reset password. Dibungkus stored procedure spt cms_projects di atas
@@ -193,7 +291,7 @@ CREATE TABLE IF NOT EXISTS cms_assign (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- status penyelesaian PIC per (doc,user,scope) dari cms_assign di atas: PIC menandai 'done' sendiri;
--- admin/reviewer bisa mengembalikan ke 'in_progress' + catatan (kolom note/returned_by/returned_at).
+-- admin/author (owner) bisa mengembalikan ke 'in_progress' + catatan (kolom note/returned_by/returned_at).
 CREATE TABLE IF NOT EXISTS cms_assign_status (
     doc_id      INT NOT NULL,
     user_id     INT NOT NULL,

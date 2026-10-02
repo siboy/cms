@@ -78,6 +78,13 @@ def parse_inline(s: str):
             flags.symmetric_difference_update({f})
             i += 2
             continue
+        if c == "!" and s[i + 1:i + 2] == "[":
+            m = re.match(r"!\[((?:\\.|[^\]\\])*)\]\(([^)]*)\)", s[i:])
+            if m:
+                flush()
+                out.append((None, set(flags), ("img", m.group(1), m.group(2))))
+                i += m.end()
+                continue
         if c == "[":
             m = re.match(r"\[((?:\\.|[^\]\\])*)\]\(([^)]*)\)", s[i:])
             if m:
@@ -109,8 +116,23 @@ def add_field(par, instr: str, cached: str = "", run_fmt=None):
     e = OxmlElement("w:fldChar"); e.set(qn("w:fldCharType"), "end"); f._r.append(e)
 
 
-def add_markup(par, markup: str, size: Optional[Pt] = None, bold: Optional[bool] = None):
+def add_markup(par, markup: str, size: Optional[Pt] = None, bold: Optional[bool] = None, img_resolver=None):
     for txt, flags, url in parse_inline(markup):
+        if txt is None and isinstance(url, tuple) and url and url[0] == "img":
+            _, alt, sha1 = url
+            info = img_resolver(sha1) if img_resolver else None
+            if info and info.get("path"):
+                w = Cm(info["px_w"] / 96 * 2.54) if info.get("px_w") else Cm(3)
+                w = min(w, Cm(7.5))
+                run = par.add_run()
+                if size:
+                    run.font.size = size
+                run.add_picture(info["path"], width=w)
+            else:
+                run = par.add_run(f"[gambar: {alt}]" if alt else "[gambar]")
+                if size:
+                    run.font.size = size
+            continue
         parts = re.split(r"(\n|\t)", txt)
         holder = par
         if url:
@@ -343,6 +365,16 @@ class Builder:
             p = os.path.join(self.media_root, a["filename"])
         return p if os.path.isfile(p) else None
 
+    def _resolve_inline_img(self, sha1):
+        """img_resolver utk add_markup() -- gambar/ikon/screenshot yg disisipkan INLINE di tengah teks."""
+        a = self.assets.get(sha1)
+        path = self._asset_path(sha1)
+        if not a or not path:
+            self.stats["missing_images"] += 1
+            return None
+        self.stats["images"] += 1
+        return {"path": path, "px_w": a.get("px_w"), "px_h": a.get("px_h")}
+
     # ---- render satu daftar blok ke container (Document atau _Cell)
     def render(self, container, blocks, in_cell=False):
         size = Pt(10) if in_cell else None
@@ -365,7 +397,7 @@ class Builder:
                     p.paragraph_format.line_spacing = 1.0
                     if d.get("align") != "center":
                         p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                add_markup(p, b["text"], size)
+                add_markup(p, b["text"], size, img_resolver=self._resolve_inline_img)
             elif k == "list_item":
                 self._list_item(container, b, size, in_cell)
             elif k == "caption":
@@ -374,7 +406,7 @@ class Builder:
                 p = self._para(container)
                 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 p.paragraph_format.space_after = Pt(4)
-                add_markup(p, b["text"], Pt(9))
+                add_markup(p, b["text"], Pt(9), img_resolver=self._resolve_inline_img)
                 for r in p.runs:
                     r.italic = True
             elif k == "image":
@@ -393,7 +425,7 @@ class Builder:
         text = b["text"]
         if lab:
             p.add_run(lab + " ")
-        add_markup(p, text)
+        add_markup(p, text, img_resolver=self._resolve_inline_img)
         if b["data"].get("generated") and container is self.doc:
             self._generated_list(b["data"]["generated"])
 
@@ -408,7 +440,7 @@ class Builder:
         add_field(p, instr, local or "1")
         if b["text"]:
             p.add_run(". ")
-            add_markup(p, b["text"])
+            add_markup(p, b["text"], img_resolver=self._resolve_inline_img)
         p.paragraph_format.keep_with_next = bool(nxt and nxt["kind"] in ("table", "image")) or st == "tabel"
 
     def _list_item(self, container, b, size, in_cell):
@@ -430,7 +462,7 @@ class Builder:
             self._num_ctx = None
         if d.get("ilvl"):
             p.paragraph_format.left_indent = Cm(0.63 * (d["ilvl"] + 1))
-        add_markup(p, b["text"], size)
+        add_markup(p, b["text"], size, img_resolver=self._resolve_inline_img)
 
     def _image(self, container, b, nxt, in_cell):
         d = b["data"]
@@ -600,7 +632,8 @@ class Builder:
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.paragraph_format.space_before = Pt(min(d.get("gap", 0) * 12, 96))
         p.paragraph_format.space_after = Pt(4)
-        add_markup(p, b["text"], Pt(d.get("size") or 14), bold=True if b["seq"] <= 8 else None)
+        add_markup(p, b["text"], Pt(d.get("size") or 14), bold=True if b["seq"] <= 8 else None,
+                  img_resolver=self._resolve_inline_img)
 
     def build(self, out_path: str):
         doc = self.doc
