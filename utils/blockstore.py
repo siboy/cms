@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 from contextlib import contextmanager
@@ -31,6 +32,7 @@ KINDS = {"heading", "paragraph", "list_item", "caption", "table", "image", "note
 PARTS = ("cover", "front", "body", "lampiran")
 GENLIST_KINDS = {"toc", "tof_tabel", "tof_gambar"}
 GAP = 1024.0
+IMG_MARKUP_RE = re.compile(r"!\[[^\]]*\]\(([0-9a-f]{40})\)")      # markup gambar inline, lihat add_markup
 
 
 class ConflictError(RuntimeError):
@@ -244,11 +246,6 @@ class BlockStore:
         with self._tx() as c:
             self._x(c, "UPDATE cms_comments SET deleted_at=? WHERE id=? OR parent_id=?", (_now(), cid, cid))
         return cm
-
-    def asset_filename(self, doc_id: int, sha1: str) -> Optional[str]:
-        with self._tx() as c:
-            a = self._one(c, "SELECT filename FROM cms_assets WHERE doc_id=? AND sha1=?", (doc_id, sha1))
-        return a["filename"] if a else None
 
     def load_document(self, doc_id: int) -> dict:
         """Format yang dipakai docx_build.build_docx (blok tak terhapus, terurut seq)."""
@@ -957,10 +954,89 @@ class BlockStore:
             tm.apply_long(d, d["long"])
         return self._edit_long(block_id, user, fn, expected_version)
 
+    WEB_IMG_MAX_W = 1280
+    WEB_IMG_QUALITY = 75
+
+    @staticmethod
+    def _web_variant_filename(sha1: str) -> str:
+        return f"web_{sha1}.jpg"
+
+    def _ensure_web_variant(self, media_dir: str, orig_path: str, sha1: str) -> Optional[str]:
+        """Pastikan versi web (JPEG dikompres, lebar maks WEB_IMG_MAX_W) ada di media_dir -- dipakai
+        tampilan editor/gallery (ringan, cepat dibuka di HP) TANPA menyentuh file asli (ekspor DOCX &
+        tombol 'lihat/unduh asli' tetap pakai file asli, kualitas penuh). Best-effort: kalau Pillow gagal
+        (format aneh/korup), return None -> caller fallback ke file asli. Lazy: dipanggil juga saat
+        serving utk gambar lama yg diunggah sebelum fitur ini ada (self-healing, tanpa migrasi massal)."""
+        fn = self._web_variant_filename(sha1)
+        dst = os.path.join(media_dir, fn)
+        if os.path.isfile(dst):
+            return fn
+        try:
+            from PIL import Image as PILImage
+            img = PILImage.open(orig_path)
+            img = img.convert("RGB")
+            if img.width > self.WEB_IMG_MAX_W:
+                h = int(img.height * self.WEB_IMG_MAX_W / img.width)
+                img = img.resize((self.WEB_IMG_MAX_W, h), PILImage.LANCZOS)
+            img.save(dst, "JPEG", quality=self.WEB_IMG_QUALITY, optimize=True)
+            return fn
+        except Exception:                                      # noqa: BLE001
+            return None
+
+    def get_asset_path(self, doc_id: int, sha1: str, original: bool = False) -> Optional[str]:
+        """Path file yg disajikan ke browser utk satu asset: versi web (ringan) default, atau file asli
+        kalau `original=True` / versi web gagal dibuat. Dipakai endpoint GET /docs/<id>/asset/<sha1>."""
+        with self._tx() as c:
+            doc = self._one(c, "SELECT media_dir FROM cms_documents WHERE id=?", (doc_id,))
+            a = self._one(c, "SELECT path FROM cms_assets WHERE doc_id=? AND sha1=?", (doc_id, sha1))
+        if not doc or not a or not os.path.isfile(a["path"]):
+            return None
+        if original:
+            return a["path"]
+        fn = self._ensure_web_variant(doc["media_dir"], a["path"], sha1)
+        return os.path.join(doc["media_dir"], fn) if fn else a["path"]
+
+    def list_doc_assets(self, doc_id: int) -> list[dict]:
+        """Semua gambar (asset) milik satu dokumen + lokasi pemakaiannya (blok mana, di bab/bagian apa),
+        utk tab Galeri. `usages[].can_edit` TIDAK diisi di sini (tergantung user yg sedang request) --
+        itu dilengkapi API layer (cmsapp/api.py) via auth.can_edit per baris."""
+        with self._tx() as c:
+            assets = self._all(c, "SELECT sha1, filename, mime, px_w, px_h, size, uses FROM cms_assets "
+                                   "WHERE doc_id=? ORDER BY uses DESC, filename", (doc_id,))
+            if not assets:
+                return assets
+            blocks = self._all(c, "SELECT id, kind, text, data FROM cms_blocks WHERE doc_id=? AND deleted_at IS NULL",
+                               (doc_id,))
+        by_sha1: dict[str, list[int]] = {}
+        for b in blocks:
+            found: set[str] = set()
+            if b["kind"] == "image":
+                try:
+                    sha1 = _jload(b["data"]).get("asset")
+                except Exception:                                 # noqa: BLE001
+                    sha1 = None
+                if sha1:
+                    found.add(sha1)
+            for field in (b["text"], b["data"] if isinstance(b["data"], str) else None):
+                if field:
+                    found.update(IMG_MARKUP_RE.findall(field))
+            for sha1 in found:
+                by_sha1.setdefault(sha1, []).append(b["id"])
+        for a in assets:
+            a["usages"] = []
+            for bid in by_sha1.get(a["sha1"], []):
+                chain = self.heading_chain(bid)
+                heading_label = (chain[0].get("text") or "").strip() if chain else None
+                a["usages"].append({"block_id": bid, "heading": heading_label or "(tanpa bab)",
+                                    "chapter_id": chain[-1]["id"] if chain else None,
+                                    "section_id": chain[0]["id"] if chain else None})
+        return assets
+
     def _ingest_image_asset(self, doc_id: int, file_path: str):
-        """Baca file gambar, dedup berdasar sha1, copy ke media_dir dokumen, daftarkan/increment cms_assets.
-        Return (sha1, DocxImage) -- dipakai add_image (blok gambar berdiri sendiri) & register_inline_asset
-        (gambar/ikon/screenshot INLINE di tengah teks paragraf/caption/sel tabel)."""
+        """Baca file gambar, dedup berdasar sha1, copy ke media_dir dokumen, daftarkan/increment cms_assets,
+        + generate versi web (ringan). Return (sha1, DocxImage) -- dipakai add_image (blok gambar berdiri
+        sendiri) & register_inline_asset (gambar/ikon/screenshot INLINE di tengah teks paragraf/caption/
+        sel tabel)."""
         from docx.image.image import Image as DocxImage
         with open(file_path, "rb") as f:
             blob = f.read()
@@ -977,12 +1053,13 @@ class BlockStore:
             media_dir = doc["media_dir"]
             os.makedirs(media_dir, exist_ok=True)
             a = self._one(c, "SELECT * FROM cms_assets WHERE doc_id=? AND sha1=?", (doc_id, sha1))
+            orig_path = os.path.join(media_dir, f"new_{sha1[:8]}{ext}")
             if not a:
-                fn = f"new_{sha1[:8]}{ext}"
-                shutil.copyfile(file_path, os.path.join(media_dir, fn))
+                shutil.copyfile(file_path, orig_path)
                 self._x(c, "INSERT INTO cms_assets(doc_id,sha1,filename,path,mime,px_w,px_h,size,uses,orig_part) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                        (doc_id, sha1, fn, os.path.join(media_dir, fn), im.content_type, im.px_width, im.px_height, len(blob), 0, "upload"))
+                        (doc_id, sha1, os.path.basename(orig_path), orig_path, im.content_type, im.px_width, im.px_height, len(blob), 0, "upload"))
             self._x(c, "UPDATE cms_assets SET uses=uses+1 WHERE doc_id=? AND sha1=?", (doc_id, sha1))
+        self._ensure_web_variant(media_dir, orig_path if not a else a["path"], sha1)
         return sha1, im
 
     def add_image(self, doc_id: int, after_id: Optional[int], file_path: str, alt: str = "", caption: Optional[str] = None,

@@ -380,10 +380,33 @@ def media(doc_id, filename):
 @bp.get("/docs/<int:doc_id>/asset/<sha1>")
 @auth.require()
 def asset(doc_id, sha1):
-    fn = S().asset_filename(doc_id, sha1)
-    if not fn:
+    """Default: versi web (JPEG ringan, lebar maks ~1280px) biar halaman ringan dibuka -- ?original=1
+    utk file asli kualitas penuh (dipakai tombol 'Lihat/Unduh asli' di galeri). Ekspor DOCX TIDAK lewat
+    sini, selalu pakai cms_assets.path (asli) langsung -- lihat utils/docx_build.Builder._asset_path."""
+    p = S().get_asset_path(doc_id, sha1, original=bool(request.args.get("original", type=int)))
+    if not p:
         abort(404)
-    return media(doc_id, fn)
+    resp = send_file(p)
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
+
+
+@bp.get("/docs/<int:doc_id>/gallery")
+@auth.require()
+def doc_gallery(doc_id):
+    """Semua gambar di dokumen ini + lokasi pemakaiannya (blok/bab) utk tab Galeri -- disembunyikan total
+    utk pengguna doc_view_assigned_only (penulis luar) krn masih ada celah: asset yg sama (sha1) bisa
+    dipakai di blok yg boleh DAN tak boleh dia lihat sekaligus, jadi tak bisa difilter per-bagian spt
+    outline/blocks biasa; default aman = sembunyikan semua drpd bocor gambar di luar bagiannya. Tiap
+    `usages[].can_edit` dihitung utk user yg sedang login -> frontend hanya boleh jadikan link navigasi
+    kalau can_edit True (\"terkait dgn tulisan itu\"), selain itu teks biasa (tak bisa diklik)."""
+    if view_restricted():
+        abort(403, description="galeri tak tersedia utk akses terbatas")
+    assets = S().list_doc_assets(doc_id)
+    for a in assets:
+        for u in a["usages"]:
+            u["can_edit"] = auth.can_edit(doc_id, u["block_id"])
+    return jsonify(assets=assets)
 
 
 # ---------------------------------------------------------------- edit
