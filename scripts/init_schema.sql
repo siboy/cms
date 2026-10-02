@@ -439,3 +439,22 @@ CREATE TABLE IF NOT EXISTS cms_activity_log (
     INDEX idx_act_doc (doc_id),
     INDEX idx_act_project (project_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- notifikasi in-app (bel 🔔) + email per pengguna -- saat ditandai PIC (pic_assign), ada komentar baru di
+-- bagian yg dia PIC (comment), atau dibalas komentarnya (comment_reply). doc_id/block_id sengaja TANPA FK
+-- (dokumen/blok bisa dihapus, histori notifikasi tetap harus tersisa; lihat BlockStore.list_my_notifications
+-- yg resolve heading/link navigasi best-effort dari block_id saat ini). Beda dari cms_project_task_tags
+-- (tag PIC di tab Gantt, sudah ada lebih dulu) -- keduanya digabung jadi satu badge+panel di UI.
+CREATE TABLE IF NOT EXISTS cms_notifications (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    user_id     INT NOT NULL,
+    type        VARCHAR(30) NOT NULL,            -- pic_assign | comment | comment_reply
+    doc_id      INT DEFAULT NULL,
+    block_id    INT DEFAULT NULL,
+    actor       VARCHAR(100) DEFAULT NULL,
+    summary     VARCHAR(255) DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    read_at     VARCHAR(19) DEFAULT NULL,
+    INDEX idx_notif_user (user_id, read_at),
+    CONSTRAINT fk_notif_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

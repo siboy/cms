@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS cms_activity_log (
 CREATE INDEX IF NOT EXISTS idx_act_created ON cms_activity_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_act_user ON cms_activity_log(username);
 CREATE INDEX IF NOT EXISTS idx_act_doc ON cms_activity_log(doc_id);
+CREATE TABLE IF NOT EXISTS cms_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, type TEXT NOT NULL,
+    doc_id INTEGER, block_id INTEGER, actor TEXT, summary TEXT, created_at TEXT, read_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_notif_user ON cms_notifications(user_id, read_at);
 CREATE TABLE IF NOT EXISTS cms_user_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, category TEXT NOT NULL DEFAULT 'lainnya',
     title TEXT, filename TEXT NOT NULL, path TEXT NOT NULL, mime TEXT, size INTEGER, expires_on TEXT,
@@ -543,7 +547,7 @@ class BlockStore:
         "comment.resolve": "komentar ditandai selesai/dibuka lagi", "comment.delete": "komentar dihapus",
     }
 
-    def _heading_label_of(self, block_id: int) -> str:
+    def heading_label_of(self, block_id: int) -> str:
         """Heading terdekat yg membungkus blok ini, utk pengelompokan daily_digest; blok di luar heading
         manapun (cover/depan/lampiran) dikelompokkan per nama bagian dokumen."""
         chain = self.heading_chain(block_id)
@@ -576,7 +580,7 @@ class BlockStore:
         for r in rows:
             if r["target_type"] != "block" or not r["target_id"]:
                 continue
-            heading = self._heading_label_of(r["target_id"])
+            heading = self.heading_label_of(r["target_id"])
             key = (r["username"], heading)
             grp = groups.setdefault(key, {"counts": {}, "examples": [], "edited_ids": []})
             grp["counts"][r["action"]] = grp["counts"].get(r["action"], 0) + 1
@@ -646,7 +650,7 @@ class BlockStore:
             pid = doc_to_proj.get(r["doc_id"])
             if pid is None:
                 continue
-            heading = self._heading_label_of(r["target_id"])
+            heading = self.heading_label_of(r["target_id"])
             node = by_user.setdefault(r["username"], {}).setdefault(pid, {}).setdefault(heading, {"counts": {}, "example": None})
             node["counts"][r["action"]] = node["counts"].get(r["action"], 0) + 1
             if r["summary"] and not node["example"]:
@@ -1914,6 +1918,66 @@ class BlockStore:
     def count_unread_tags(self, user_id: int) -> int:
         with self._tx() as c:
             r = self._one(c, "SELECT COUNT(*) AS n FROM cms_project_task_tags WHERE user_id=? AND read_at IS NULL", (user_id,))
+        return r["n"] if r else 0
+
+    # -------- notifikasi in-app + email (PIC assign, komentar, balasan komentar)
+    def user_id_by_username(self, username: str) -> Optional[int]:
+        with self._tx() as c:
+            r = self._one(c, "SELECT id FROM cms_users WHERE username=?", (username,))
+        return r["id"] if r else None
+
+    def scope_target(self, scope: str) -> tuple[Optional[int], str]:
+        """Scope cms_assign ('heading:<id>'/'h1:<id>'/'block:<id>'/'part:<x>') -> (block_id|None, label
+        fallback kalau block_id None). Dipakai notifikasi PIC-assign utk resolve target blok & label."""
+        kind, _, rest = scope.partition(":")
+        if kind in ("heading", "h1", "block") and rest.isdigit():
+            return int(rest), ""
+        if kind == "part":
+            return None, {"cover": "Cover", "front": "Bagian Depan", "body": "Bagian Isi",
+                          "lampiran": "Lampiran"}.get(rest, rest)
+        return None, scope
+
+    def add_notification(self, user_id: int, type_: str, doc_id: Optional[int] = None, block_id: Optional[int] = None,
+                         actor: str = "", summary: str = "") -> None:
+        """Gagal mencatat tidak boleh menggagalkan aksi utamanya (sama spt log_activity)."""
+        try:
+            with self._tx() as c:
+                self._x(c, "INSERT INTO cms_notifications(user_id,type,doc_id,block_id,actor,summary,created_at) "
+                           "VALUES (?,?,?,?,?,?,?)", (user_id, type_, doc_id, block_id, actor, (summary or "")[:255], _now()))
+        except Exception:                                        # noqa: BLE001
+            pass
+
+    def list_my_notifications(self, user_id: int, unread_only: bool = False, limit: int = 50) -> list[dict]:
+        sql = "SELECT * FROM cms_notifications WHERE user_id=?"
+        args: list = [user_id]
+        if unread_only:
+            sql += " AND read_at IS NULL"
+        with self._tx() as c:
+            rows = self._all(c, sql + " ORDER BY id DESC LIMIT ?", [*args, limit])
+        for r in rows:
+            r["heading"] = r["chapter_id"] = r["section_id"] = None
+            if r["block_id"]:
+                try:
+                    chain = self.heading_chain(r["block_id"])
+                    if chain:
+                        r["heading"] = (chain[0].get("text") or "").strip() or None
+                        r["chapter_id"] = chain[-1]["id"]
+                        r["section_id"] = chain[0]["id"]
+                except Exception:                                 # noqa: BLE001
+                    pass
+        return rows
+
+    def mark_notification_read(self, nid: int, user_id: int) -> None:
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_notifications SET read_at=? WHERE id=? AND user_id=?", (_now(), nid, user_id))
+
+    def mark_all_notifications_read(self, user_id: int) -> None:
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_notifications SET read_at=? WHERE user_id=? AND read_at IS NULL", (_now(), user_id))
+
+    def count_unread_notifications(self, user_id: int) -> int:
+        with self._tx() as c:
+            r = self._one(c, "SELECT COUNT(*) AS n FROM cms_notifications WHERE user_id=? AND read_at IS NULL", (user_id,))
         return r["n"] if r else 0
 
 

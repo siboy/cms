@@ -141,7 +141,12 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  if(rtok)return resetPasswordView(rtok);
  try{me=(await api('GET','/me')).user}catch(e){return loginView()}
  $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;
- setNotif(me.unread_tags||0);projectsView()}
+ setNotif((me.unread_tags||0)+(me.unread_notifications||0));
+ const dq=qp.get('doc');
+ if(dq){await openDoc(+dq);const bq=qp.get('block');
+  if(bq){try{const loc=await api('GET',`/blocks/${bq}/location`);jumpToBlock(+bq,loc.chapter_id,loc.section_id)}catch(e){}}
+  history.replaceState(null,'',location.pathname)}
+ else projectsView()}
 function resetPasswordView(token){$('#app').innerHTML=`<form id=rp><h3>Atur password baru</h3>
  <input name=p1 type=password placeholder="password baru (min 8)" required minlength=8>
  <input name=p2 type=password placeholder="ulangi password" required minlength=8>
@@ -152,14 +157,26 @@ function resetPasswordView(token){$('#app').innerHTML=`<form id=rp><h3>Atur pass
    note('Password berhasil diubah, silakan login');history.replaceState(null,'',location.pathname);boot()}
   catch(x){$('#rpe').textContent=x.message}}}
 function setNotif(n){const b=$('#bnotif');b.hidden=!n;b.textContent='🔔 '+n}
+const NOTIF_LABELS={pic_assign:'📌 PIC',comment:'💬 Komentar',comment_reply:'💬 Balasan'};
 async function notifPanel(){document.querySelector('.notifd')?.remove();
- let tags=[];try{tags=(await api('GET','/me/tags?unread=1')).tags}catch(e){}
+ let tags=[],notifs=[];
+ try{tags=(await api('GET','/me/tags?unread=1')).tags}catch(e){}
+ try{notifs=(await api('GET','/me/notifications?unread=1')).items}catch(e){}
+ const items=[...tags.map(t=>({kind:'tag',ts:t.tagged_at,...t})),...notifs.map(n=>({kind:'notif',ts:n.created_at,...n}))]
+  .sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
  const d=document.createElement('div');d.className='notifd';
- d.innerHTML=tags.length?tags.map((t,i)=>`<div class=ni data-i="${i}"><b>${esc(t.project_name)}</b>${esc(t.title||'')}<br><small>${esc(t.tagged_at||'')}</small></div>`).join('')
-  :'<p style="padding:8px;color:var(--mut)">Tidak ada tugas baru.</p>';
+ d.innerHTML=items.length?items.map((it,i)=>it.kind==='tag'
+   ?`<div class=ni data-i="${i}"><b>${esc(it.project_name)}</b>${esc(it.title||'')}<br><small>${esc(it.tagged_at||'')}</small></div>`
+   :`<div class=ni data-i="${i}"><b>${esc(NOTIF_LABELS[it.type]||it.type)}</b>${esc(it.summary||'')}<br><small>${esc(it.created_at||'')}</small></div>`).join('')
+  :'<p style="padding:8px;color:var(--mut)">Tidak ada notifikasi baru.</p>';
  document.body.append(d);
- d.querySelectorAll('.ni').forEach(x=>x.onclick=async()=>{const t=tags[+x.dataset.i];try{await api('POST',`/tasks/${t.task_id}/read`)}catch(e){}
-  d.remove();me.unread_tags=Math.max(0,(me.unread_tags||1)-1);setNotif(me.unread_tags);projectDetailView(t.project_id,{tab:'gantt'})});
+ d.querySelectorAll('.ni').forEach(x=>x.onclick=async()=>{const it=items[+x.dataset.i];d.remove();
+  if(it.kind==='tag'){try{await api('POST',`/tasks/${it.task_id}/read`)}catch(e){}
+   me.unread_tags=Math.max(0,(me.unread_tags||1)-1);setNotif((me.unread_tags||0)+(me.unread_notifications||0));
+   projectDetailView(it.project_id,{tab:'gantt'})}
+  else{try{await api('POST',`/me/notifications/${it.id}/read`)}catch(e){}
+   me.unread_notifications=Math.max(0,(me.unread_notifications||1)-1);setNotif((me.unread_tags||0)+(me.unread_notifications||0));
+   if(it.doc_id){await openDoc(it.doc_id);if(it.block_id)jumpToBlock(it.block_id,it.chapter_id,it.section_id)}}});
  setTimeout(()=>document.addEventListener('click',function h(e){if(!d.contains(e.target)&&e.target!==$('#bnotif')){d.remove();document.removeEventListener('click',h)}}),0)}
 function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder=username autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span>
  <p style="text-align:center;margin:0"><a href="#" id=lfp style="font-size:12px">Lupa password?</a></p></form>`;

@@ -193,7 +193,32 @@ def me():
         u["unread_tags"] = S().count_unread_tags(u["id"])
     except Exception:                                     # noqa: BLE001
         u["unread_tags"] = 0
+    try:
+        u["unread_notifications"] = S().count_unread_notifications(u["id"])
+    except Exception:                                     # noqa: BLE001
+        u["unread_notifications"] = 0
     return jsonify(user=u)
+
+
+@bp.get("/me/notifications")
+@auth.require()
+def my_notifications():
+    unread = request.args.get("unread", type=int)
+    return jsonify(items=S().list_my_notifications(g.user["id"], unread_only=bool(unread)))
+
+
+@bp.post("/me/notifications/<int:nid>/read")
+@auth.require()
+def my_notification_read(nid):
+    S().mark_notification_read(nid, g.user["id"])
+    return jsonify(ok=True)
+
+
+@bp.post("/me/notifications/read-all")
+@auth.require()
+def my_notifications_read_all():
+    S().mark_all_notifications_read(g.user["id"])
+    return jsonify(ok=True)
 
 
 # ---------------------------------------------------------------- dokumen & baca
@@ -362,6 +387,18 @@ def block(bid):
 @auth.require()
 def history(bid):
     return jsonify(history=S().history(bid))
+
+
+@bp.get("/blocks/<int:bid>/location")
+@auth.require()
+def block_location(bid):
+    """Resolve chapter/section (heading) yg membungkus blok ini -- dipakai deep-link ?doc=&block= (dari
+    link notifikasi email) utk tahu kemana harus loadChapter/loadSection sebelum scroll ke bloknya."""
+    chain = S().heading_chain(bid)
+    if not chain:
+        return jsonify(chapter_id=None, section_id=None, heading=None)
+    return jsonify(chapter_id=chain[-1]["id"], section_id=chain[0]["id"],
+                   heading=(chain[0].get("text") or "").strip() or None)
 
 
 @bp.get("/media/<int:doc_id>/<path:filename>")
@@ -767,9 +804,45 @@ def add_comment(bid):
     if view_restricted() and not block_visible(b["doc_id"], bid, b["kind"]):
         abort(404)
     d = body()
-    c = S().add_comment(bid, g.user["username"], d.get("text", ""), d.get("parent_id"))
-    emit(c["doc_id"], "comment", id=bid, cid=c["id"], log_action="comment.add", log_summary=snip(d.get("text", ""), 120))
+    text = d.get("text", "")
+    c = S().add_comment(bid, g.user["username"], text, d.get("parent_id"))
+    emit(c["doc_id"], "comment", id=bid, cid=c["id"], log_action="comment.add", log_summary=snip(text, 120))
+    _notify_comment(b["doc_id"], bid, d.get("parent_id"), text)
     return jsonify(id=c["id"]), 201
+
+
+def _notify_comment(doc_id: int, bid: int, parent_id, text: str):
+    """In-app + email ke: PIC efektif blok ini (ada komentar baru di bagiannya), dan/atau penulis komentar
+    induk kalau ini balasan -- kecuali diri sendiri. 1 notifikasi per penerima (reply diprioritaskan kalau
+    dia juga kebetulan PIC)."""
+    st = S()
+    recipients: dict[int, str] = {}                              # user_id -> 'reply'|'pic'
+    if parent_id:
+        try:
+            parent = st.get_comment(int(parent_id))
+            pid = st.user_id_by_username(parent["author"])
+            if pid and pid != g.user["id"]:
+                recipients[pid] = "reply"
+        except KeyError:
+            pass
+    pics, _ = st.effective_pic(doc_id, bid)
+    for p in pics:
+        if p["user_id"] != g.user["id"] and p["user_id"] not in recipients:
+            recipients[p["user_id"]] = "pic"
+    if not recipients:
+        return
+    label = st.heading_label_of(bid)
+    link = _doc_block_link(doc_id, bid)
+    snippet = snip(text, 160)
+    for uid, reason in recipients.items():
+        ntype = "comment_reply" if reason == "reply" else "comment"
+        verb = "membalas komentarmu" if reason == "reply" else "menulis komentar baru"
+        st.add_notification(uid, ntype, doc_id=doc_id, block_id=bid, actor=g.user["username"],
+                            summary=f'{g.user["username"]} {verb} di "{label}": {snippet}')
+        u = auth.get_user(uid)
+        if u.get("email"):
+            mailer.notify_comment(u["email"], u.get("name") or u["username"], g.user["username"], label,
+                                  snippet, reason == "reply", link)
 
 
 @bp.post("/comments/<int:cid>/resolve")
@@ -903,6 +976,13 @@ def _verify_link(token: str) -> str:
     return f'{current_app.config["BASE_URL"]}/api/auth/verify-email?token={token}'
 
 
+def _doc_block_link(doc_id: int, block_id: int = None) -> str:
+    """Deep-link ke app SPA: ?doc=&block= dibaca boot() utk auto-buka dokumen & lompat ke blok (lihat
+    cmsapp/ui/index.html) -- dipakai link di notifikasi email (PIC assign, komentar)."""
+    link = f'{current_app.config["BASE_URL"]}/?doc={doc_id}'
+    return f'{link}&block={block_id}' if block_id else link
+
+
 @bp.post("/admin/users")
 @auth.require("user_manage")
 def admin_user():
@@ -948,10 +1028,20 @@ def admin_user_notify(uid):
 @auth.require("pic_assign")
 def admin_assign():
     d = body()
-    (auth.unassign if d.get("remove") else auth.assign)(int(d["doc_id"]), int(d["user_id"]), d["scope"])
-    S().log_activity(g.user["username"], "pic.unassign" if d.get("remove") else "pic.assign",
-                     target_type="user", target_id=int(d["user_id"]), doc_id=int(d["doc_id"]),
-                     summary=f'user #{d["user_id"]}: {d["scope"]}')
+    doc_id, uid, scope, removing = int(d["doc_id"]), int(d["user_id"]), d["scope"], bool(d.get("remove"))
+    (auth.unassign if removing else auth.assign)(doc_id, uid, scope)
+    S().log_activity(g.user["username"], "pic.unassign" if removing else "pic.assign",
+                     target_type="user", target_id=uid, doc_id=doc_id, summary=f'user #{uid}: {scope}')
+    if not removing and uid != g.user["id"]:
+        st = S()
+        block_id, fallback_label = st.scope_target(scope)
+        label = st.heading_label_of(block_id) if block_id else fallback_label
+        st.add_notification(uid, "pic_assign", doc_id=doc_id, block_id=block_id, actor=g.user["username"],
+                            summary=f'Ditandai PIC di "{label}" oleh {g.user["username"]}')
+        u = auth.get_user(uid)
+        if u.get("email"):
+            mailer.notify_pic_assigned(u["email"], u.get("name") or u["username"], g.user["username"], label,
+                                       _doc_block_link(doc_id, block_id))
     return jsonify(ok=True)
 
 
