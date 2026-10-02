@@ -22,7 +22,7 @@ header b{flex:1}#login{max-width:320px;margin:15vh auto;display:grid;gap:8px}
 textarea{width:100%;min-height:90px}table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:3px 6px}
 td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 #bar{position:fixed;right:12px;bottom:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;max-width:320px}
-.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.dlg>*{min-width:0}.dlg select,.dlg input,.dlg textarea{width:100%;max-width:100%;box-sizing:border-box}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:30vh}}
+.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px;max-height:90vh;overflow-y:auto}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.dlg>*{min-width:0}.dlg select,.dlg input,.dlg textarea{width:100%;max-width:100%;box-sizing:border-box}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:30vh}}
 .tw{overflow:auto;max-width:100%}.tw table{width:auto;min-width:100%}.tw td,.tw th{min-width:120px;vertical-align:top;padding:6px 8px;white-space:pre-wrap;word-break:break-word}.tw th{background:var(--bg)}
 .tw td[contenteditable]{min-height:2.4em;font-size:13px}
 .fmask{position:fixed;inset:0;background:var(--bg);z-index:19;display:flex;flex-direction:column}.fhead{padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -59,7 +59,7 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 </style></head><body>
 <header><b>CMS Kolaborasi</b><span id="who"></span><span id="pres" title="online"></span>
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
-<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="badm" hidden>Admin</button><button id="bact" hidden>Aktivitas</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
+<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bact" hidden>Aktivitas</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
@@ -115,9 +115,20 @@ function dom2mk(root){let out='';const walk=(n,first)=>{for(const c of n.childNo
   w.forEach(x=>out+=x);walk(c);[...w].reverse().forEach(x=>out+=x)}};
  walk(root);out=out.replace(/(\\*)(\*\*|__|\+\+|\^\^|~~)\2/g,(m,bs,mk)=>bs.length%2?m:bs);return out.replace(/\n+$/,'') }
 function note(t,err){const b=$('#bar');b.hidden=!t;b.className=err?'err':'';b.textContent=t||'';if(t)setTimeout(()=>{b.hidden=true},4000)}
-async function boot(){try{me=(await api('GET','/me')).user}catch(e){return loginView()}
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#badm').hidden=me.role!=='admin';$('#bact').hidden=me.role!=='admin';$('#bdocs').hidden=false;$('#bproj').hidden=false;
+async function boot(){const qp=new URLSearchParams(location.search);const rtok=qp.get('reset');
+ if(rtok)return resetPasswordView(rtok);
+ try{me=(await api('GET','/me')).user}catch(e){return loginView()}
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#badm').hidden=me.role!=='admin';$('#bact').hidden=me.role!=='admin';$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;
  setNotif(me.unread_tags||0);projectsView()}
+function resetPasswordView(token){$('#app').innerHTML=`<form id=rp><h3>Atur password baru</h3>
+ <input name=p1 type=password placeholder="password baru (min 8)" required minlength=8>
+ <input name=p2 type=password placeholder="ulangi password" required minlength=8>
+ <button class=p>Simpan</button><span class=err id=rpe></span></form>`;
+ $('#rp').onsubmit=async e=>{e.preventDefault();const f=e.target;
+  if(f.p1.value!==f.p2.value)return $('#rpe').textContent='Password tidak sama';
+  try{await api('POST','/auth/reset-password',{token,password:f.p1.value});
+   note('Password berhasil diubah, silakan login');history.replaceState(null,'',location.pathname);boot()}
+  catch(x){$('#rpe').textContent=x.message}}}
 function setNotif(n){const b=$('#bnotif');b.hidden=!n;b.textContent='🔔 '+n}
 async function notifPanel(){document.querySelector('.notifd')?.remove();
  let tags=[];try{tags=(await api('GET','/me/tags?unread=1')).tags}catch(e){}
@@ -128,12 +139,22 @@ async function notifPanel(){document.querySelector('.notifd')?.remove();
  d.querySelectorAll('.ni').forEach(x=>x.onclick=async()=>{const t=tags[+x.dataset.i];try{await api('POST',`/tasks/${t.task_id}/read`)}catch(e){}
   d.remove();me.unread_tags=Math.max(0,(me.unread_tags||1)-1);setNotif(me.unread_tags);projectDetailView(t.project_id,{tab:'gantt'})});
  setTimeout(()=>document.addEventListener('click',function h(e){if(!d.contains(e.target)&&e.target!==$('#bnotif')){d.remove();document.removeEventListener('click',h)}}),0)}
-function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder=username autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span></form>`;
- $('#login').onsubmit=async e=>{e.preventDefault();try{await api('POST','/login',{username:e.target.u.value,password:e.target.p.value});boot()}catch(x){$('#le').textContent=x.message}}}
+function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder=username autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span>
+ <p style="text-align:center;margin:0"><a href="#" id=lfp style="font-size:12px">Lupa password?</a></p></form>`;
+ $('#login').onsubmit=async e=>{e.preventDefault();try{await api('POST','/login',{username:e.target.u.value,password:e.target.p.value});boot()}catch(x){$('#le').textContent=x.message}}
+ $('#lfp').onclick=e=>{e.preventDefault();forgotPasswordDlg()}}
+function forgotPasswordDlg(){const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>Lupa password</b><p style="color:var(--mut);font-size:12px">Masukkan email yang terdaftar di akunmu, link reset password akan dikirim ke email tersebut.</p>
+ <label>Email<input name=email type=email required></label>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Kirim</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();try{await api('POST','/auth/forgot-password',{email:f.email.value});
+  m.remove();note('Kalau email terdaftar, link reset sudah dikirim. Cek inbox/spam.')}catch(x){note(x.message,1)}}}
 $('#badm').onclick=()=>adminView();
 $('#bact').onclick=()=>activityView();
 $('#bdocs').onclick=()=>docsView();
 $('#bproj').onclick=()=>projectsView();
+$('#bfiles').onclick=()=>meFilesView();
 $('#bnotif').onclick=notifPanel;
 $('#bout').onclick=async()=>{await api('POST','/logout');location.reload()};
 async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
@@ -289,13 +310,17 @@ async function tabLaporan(){const [{documents},u]=await Promise.all([api('GET',`
  $('#ptab').innerHTML=['draft','interim','final'].map(t=>`<div class=rc><div class=rh><b>${t[0].toUpperCase()+t.slice(1)}</b></div>${grp(t).map(row).join('')||'<p style="color:var(--mut)">Belum ada.</p>'}</div>`).join('')
  +(me.role==='admin'?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+ <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
+ <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
  <select id=lrt><option value=draft>Draft</option><option value=interim>Interim</option><option value=final>Final</option></select>
- <select id=lex><option value="">— pilih dokumen ada —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
  <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div></div>`:'');
  $('#ptab').querySelectorAll('[data-open]').forEach(a=>a.onclick=e=>{e.preventDefault();openDoc(+a.dataset.open)});
  $('#ptab').querySelectorAll('[data-pr]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/projects/${curProj}/documents/${b.dataset.pr}/print`,{printed:!!+b.dataset.v});tabLaporan()}catch(e){note(e.message,1)}});
  if(me.role!=='admin')return;
- $('#ltaut').onclick=async()=>{if(!$('#lex').value)return note('Pilih dokumen dulu',1);
+ $('#lq').oninput=()=>{const q=$('#lq').value.trim().toLowerCase();
+  const m=q?docsFree.filter(d=>d.filename.toLowerCase().includes(q)):docsFree;
+  $('#lex').innerHTML=`<option value="">— ${m.length} dokumen cocok —</option>`+m.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')};
+ $('#ltaut').onclick=async()=>{if(!$('#lex').value)return note('Cari & pilih dokumen dulu',1);
   try{await api('POST',`/projects/${curProj}/documents`,{doc_id:+$('#lex').value,report_type:$('#lrt').value});tabLaporan()}catch(e){note(e.message,1)}};
  $('#lup').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='.docx';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('report_type',$('#lrt').value);
   note('Mengunggah & mengekstrak…');try{await api('POST',`/projects/${curProj}/documents`,fd,true);note('Selesai');tabLaporan()}catch(e){note(e.message,1)}};f.click()}}
@@ -426,16 +451,132 @@ async function loadActivity(){
  ||'<tr><td colspan=5 style="color:var(--mut)">Tidak ada aktivitas.</td></tr>'}</table>
  <p style="color:var(--mut);font-size:12px">${total?`${actState.offset+1}-${actState.offset+items.length} dari ${total}`:'0 hasil'}</p>`}
 // ===================== /Aktivitas =====================
+function editUserDlg(u){const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>Edit ${esc(u.username)}</b>
+ <label>Nama<input name=name value="${esc(u.name||'')}"></label>
+ <label>Email (verifikasi &amp; notifikasi)<input name=email type=email value="${esc(u.email||'')}" placeholder="email@contoh.com"></label>
+ <label>No. WA<input name=phone_wa value="${esc(u.phone_wa||'')}" placeholder="08xxxxxxxxxx"></label>
+ <label>Tenaga ahli apa<input name=expertise value="${esc(u.expertise||'')}" placeholder="misal: ahli lingkungan, sipil, dst"></label>
+ <label>Peran<select name=role>${['author','reviewer','admin'].map(r=>`<option ${r===u.role?'selected':''}>${r}</option>`).join('')}</select></label>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();try{await api('PATCH',`/admin/users/${u.id}`,{name:f.name.value,email:f.email.value,
+   phone_wa:f.phone_wa.value,expertise:f.expertise.value,role:f.role.value});
+  m.remove();note('Profil diperbarui, email verifikasi dikirim ulang bila email diubah');adminView()}catch(x){note(x.message,1)}}}
+const FCAT={cv:'CV',foto:'Foto',sertifikat:'Sertifikat',lainnya:'Lainnya'};
+function expLabel(d){if(!d)return'';const days=Math.floor((new Date(d)-new Date(new Date().toDateString()))/86400000);
+ const col=days<0?'#d1242f':(days<=30?'var(--warn)':'inherit');
+ return `<small style="color:${col}">${days<0?'lewat ':days<=30?'segera ':''}${esc(d)}</small>`}
+function expInput(f,onSet){const i=document.createElement('input');i.type='date';i.value=f.expires_on||'';i.style.width='120px';
+ i.onchange=async()=>{try{await api('PATCH',`/me/files/${f.id}`,{expires_on:i.value||null});onSet()}catch(e){note(e.message,1)}};return i}
+async function userFilesDlg(u){let files=[];try{files=(await api('GET',`/admin/users/${u.id}/files`)).files}catch(e){note(e.message,1);return}
+ const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>Berkas pribadi: ${esc(u.username)}</b>
+ <table><tr><th>Kategori</th><th>Judul</th><th>Berkas</th><th>Kedaluwarsa</th><th></th></tr>${files.map(f=>`<tr><td>${FCAT[f.category]||f.category}</td><td>${esc(f.title||'')}</td>
+ <td><a href="/api/user-files/${f.id}/raw" target=_blank>${esc(f.filename)}</a></td><td data-exp="${f.id}">${expLabel(f.expires_on)}</td>
+ <td><button type=button data-del="${f.id}">Hapus</button></td></tr>`).join('')
+ ||'<tr><td colspan=5 style="color:var(--mut)">Belum ada berkas.</td></tr>'}</table>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Tutup</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('Hapus berkas ini?'))return;
+  try{await api('DELETE',`/me/files/${b.dataset.del}`);m.remove();userFilesDlg(u)}catch(e){note(e.message,1)}})}
+function profileEditDlg(){const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>Edit profil</b>
+ <label>Nama<input name=name value="${esc(me.name||'')}"></label>
+ <label>Email<input name=email type=email value="${esc(me.email||'')}" placeholder="email@contoh.com"></label>
+ <label>No. WA<input name=phone_wa value="${esc(me.phone_wa||'')}" placeholder="08xxxxxxxxxx"></label>
+ <label>Tenaga ahli apa<input name=expertise value="${esc(me.expertise||'')}" placeholder="misal: ahli lingkungan, sipil, dst"></label>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();try{await api('PATCH','/me/profile',{name:f.name.value,email:f.email.value,
+   phone_wa:f.phone_wa.value,expertise:f.expertise.value});
+  const emailChanged=f.email.value!==(me.email||'');
+  me.name=f.name.value;me.phone_wa=f.phone_wa.value;me.expertise=f.expertise.value;me.email=f.email.value;
+  if(emailChanged)me.email_verified_at=null;
+  m.remove();note(emailChanged&&me.email?'Profil diperbarui, cek email utk verifikasi ulang':'Profil diperbarui');meFilesView()}
+  catch(x){note(x.message,1)}}}
+function period(p){const s=p.start_date||'?';const e=p.end_date||(p.status==='completed'?'?':'sekarang')
+ ;return `${s} – ${e}`}
+async function meFilesView(){closeDoc();const [{files},{projects}]=await Promise.all([api('GET','/me/files'),api('GET','/me/experience')]);
+ const photo=files.filter(f=>f.category==='foto').sort((a,b)=>b.id-a.id)[0];
+ const cvs=files.filter(f=>f.category==='cv'),certs=files.filter(f=>f.category==='sertifikat'),others=files.filter(f=>f.category==='lainnya');
+ const fileRow=f=>`<p><a href="/api/user-files/${f.id}/raw" target=_blank>${esc(f.title||f.filename)}</a> <span data-exp="${f.id}"></span> <button data-del="${f.id}">Hapus</button></p>`;
+ $('#app').innerHTML=`<div id=docs style="max-width:1100px">
+ <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+ <div style="flex:1;min-width:320px">
+
+ <div class=rc style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+ ${photo?`<img src="/api/user-files/${photo.id}/raw" style="width:96px;height:96px;border-radius:50%;object-fit:cover;border:2px solid var(--line)">`
+  :`<div style="width:96px;height:96px;border-radius:50%;background:var(--bg);display:grid;place-items:center;font-size:32px;color:var(--mut);border:2px solid var(--line)">${esc((me.name||me.username)[0]||'?').toUpperCase()}</div>`}
+ <div style="flex:1;min-width:200px">
+  <h2 style="margin:0 0 2px">${esc(me.name||me.username)}</h2>
+  <div style="color:var(--mut);font-size:13px">${esc(me.expertise||'Belum ada info keahlian')}</div>
+  <div style="font-size:13px;margin-top:4px">${esc(me.email||'—')}${me.email?(me.email_verified_at?' <small style="color:green">✓ terverifikasi</small>':' <small style="color:var(--warn)">belum verifikasi</small>'):''}${me.phone_wa?` · WA ${esc(me.phone_wa)}`:''}</div>
+  <div style="font-size:12px;color:var(--mut);margin-top:2px">Peran sistem: ${me.role}</div>
+ </div>
+ <button id=bep>Edit profil</button></div>
+
+ <div class=rc><div class=rh><b>Ringkasan</b></div>
+ <form id=fbio><textarea name=bio rows=4 placeholder="Tulis ringkasan profil/profesional singkat tentang dirimu…">${esc(me.bio||'')}</textarea>
+ <div style="display:flex;justify-content:flex-end;margin-top:6px"><button class=p>Simpan</button></div></form></div>
+
+ ${projects.length?`<div class=rc><div class=rh><b>Pengalaman Proyek</b></div>
+ ${projects.map(p=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)">
+  <b>${esc(p.name)}</b> <a href="#" data-proj="${p.id}" title="Buka proyek &amp; laporannya" style="font-size:11px;text-decoration:none">[Ref #${p.id}]</a>
+  <small style="color:var(--mut)">(${period(p)})</small><br>
+  <small style="color:var(--mut)">${[p.client,p.location].filter(Boolean).map(esc).join(' · ')||'—'}</small>
+  ${p.roles&&p.roles.length?`<div style="margin-top:3px">${p.roles.map(r=>`<span class=badge style="margin-right:4px">${esc(r)}</span>`).join('')}</div>`:''}
+ </div>`).join('')}</div>`:''}
+
+ ${cvs.length?`<div class=rc><div class=rh><b>Dokumen CV</b></div>${cvs.map(fileRow).join('')}</div>`:''}
+
+ ${certs.length?`<div class=rc><div class=rh><b>Sertifikasi &amp; Pelatihan</b></div>${certs.map(fileRow).join('')}</div>`:''}
+
+ ${others.length?`<div class=rc><div class=rh><b>Dokumen Lainnya</b></div>${others.map(fileRow).join('')}</div>`:''}
+
+ </div>
+ <div style="width:280px;flex-shrink:0;position:sticky;top:60px">
+ <div class=rc><div class=rh><b>Unggah berkas</b></div>
+ <form id=ufup style="display:flex;flex-direction:column;gap:6px">
+ <select name=category><option value=cv>CV</option><option value=foto>Foto profil</option><option value=sertifikat>Sertifikat</option><option value=lainnya>Lainnya (ke bagian akhir)</option></select>
+ <input name=title placeholder="judul (opsional)">
+ <label style="font-size:12px;color:var(--mut);display:flex;gap:4px;align-items:center">Kedaluwarsa<input name=expires_on type=date style="flex:1"></label>
+ <input name=file type=file required><button class=p>Unggah</button></form></div>
+ </div>
+ </div></div>`;
+ [...cvs,...certs,...others].forEach(f=>{const el=$(`[data-exp="${f.id}"]`);if(!el)return;el.innerHTML=expLabel(f.expires_on)+' ';if(f.category==='sertifikat')el.append(expInput(f,meFilesView))});
+ $('#bep').onclick=profileEditDlg;
+ $('#fbio').onsubmit=async e=>{e.preventDefault();try{await api('PATCH','/me/profile',{bio:e.target.bio.value});
+  me.bio=e.target.bio.value;note('Ringkasan disimpan')}catch(x){note(x.message,1)}};
+ $('#app').querySelectorAll('[data-proj]').forEach(a=>a.onclick=e=>{e.preventDefault();projectDetailView(+a.dataset.proj,{tab:'laporan'})});
+ $('#app').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('Hapus berkas ini?'))return;
+  try{await api('DELETE',`/me/files/${b.dataset.del}`);meFilesView()}catch(e){note(e.message,1)}});
+ $('#ufup').onsubmit=async e=>{e.preventDefault();const f=e.target;const fd=new FormData();
+  fd.append('file',f.file.files[0]);fd.append('category',f.category.value);fd.append('title',f.title.value);
+  fd.append('expires_on',f.expires_on.value);
+  try{await api('POST','/me/files',fd,true);note('Berkas diunggah');meFilesView()}catch(x){note(x.message,1)}}}
 async function adminView(){closeDoc();const [{users},{docs}]=await Promise.all([api('GET','/admin/users'),api('GET','/docs')]);
  $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Pengguna</h3>
- <table><tr><th>Username</th><th>Nama</th><th>Peran</th><th>Aktif</th><th></th></tr>${users.map(u=>`<tr><td>${esc(u.username)}</td><td>${esc(u.name)}</td><td>${u.role}</td><td>${u.active?'ya':'tidak'}</td>
- <td>${u.id===me.id?'':`<button data-u="${u.id}" data-a="${u.active?0:1}">${u.active?'Nonaktifkan':'Aktifkan'}</button>`}</td></tr>`).join('')}</table>
+ <table><tr><th>Username</th><th>Nama</th><th>Email</th><th>WA</th><th>Tenaga ahli</th><th>Peran</th><th>Aktif</th><th></th></tr>${users.map(u=>`<tr><td>${esc(u.username)}</td><td>${esc(u.name)}</td>
+ <td>${esc(u.email||'—')}${u.email?(u.email_verified_at?' <small style="color:green">✓terverifikasi</small>':' <small style="color:var(--warn)">belum verifikasi</small>'):''}</td>
+ <td>${esc(u.phone_wa||'—')}</td><td>${esc(u.expertise||'—')}</td><td>${u.role}</td><td>${u.active?'ya':'tidak'}</td>
+ <td style="white-space:nowrap"><button data-edit="${u.id}">Edit</button>
+ ${u.email?`<button data-notif="${u.id}">Kirim notifikasi</button>`:''}
+ <button data-files="${u.id}">Berkas</button>
+ ${u.id===me.id?'':`<button data-u="${u.id}" data-a="${u.active?0:1}">${u.active?'Nonaktifkan':'Aktifkan'}</button>`}</td></tr>`).join('')}</table>
  <h4>Tambah pengguna</h4><form id=nu style="display:flex;gap:6px;flex-wrap:wrap"><input name=username placeholder=username required><input name=name placeholder="nama lengkap">
- <input name=password type=password placeholder="sandi (min 8)" required minlength=8><select name=role><option>author</option><option>reviewer</option><option>admin</option></select><button class=p>Tambah</button></form>
+ <input name=password type=password placeholder="sandi (min 8)" required minlength=8>
+ <input name=email type=email placeholder="email (verifikasi & notifikasi)">
+ <input name=phone_wa placeholder="no. WA"><input name=expertise placeholder="tenaga ahli apa">
+ <select name=role><option>author</option><option>reviewer</option><option>admin</option></select><button class=p>Tambah</button></form>
  <h3 style="margin-top:24px">Penugasan bab</h3><p><select id=ad>${docs.map(d=>`<option value=${d.id}>${esc(d.filename)} (#${d.id})</option>`).join('')}</select></p><div id=asg></div></div>`;
  $('#ab').onclick=e=>{e.preventDefault();docsView()};
  document.querySelectorAll('[data-u]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/admin/users/${b.dataset.u}/active`,{active:!!+b.dataset.a});adminView()}catch(e){note(e.message,1)}});
- $('#nu').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await api('POST','/admin/users',{username:f.username.value,name:f.name.value,password:f.password.value,role:f.role.value});note('Pengguna dibuat');adminView()}catch(x){note(x.message,1)}};
+ document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editUserDlg(users.find(u=>u.id==b.dataset.edit)));
+ document.querySelectorAll('[data-files]').forEach(b=>b.onclick=()=>userFilesDlg(users.find(u=>u.id==b.dataset.files)));
+ document.querySelectorAll('[data-notif]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/admin/users/${b.dataset.notif}/notify`,{});note('Notifikasi dikirim')}catch(e){note(e.message,1)}});
+ $('#nu').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await api('POST','/admin/users',{username:f.username.value,name:f.name.value,password:f.password.value,
+   email:f.email.value,phone_wa:f.phone_wa.value,expertise:f.expertise.value,role:f.role.value});note('Pengguna dibuat');adminView()}catch(x){note(x.message,1)}};
  $('#ad').onchange=()=>assignView(users);if(docs.length)assignView(users)}
 async function assignView(users){const d=+$('#ad').value;const isAdmin=me.role==='admin';const canOutline=isAdmin||me.role==='reviewer';
  const [{items},{map}]=await Promise.all([api('GET',`/docs/${d}/taggable`),api('GET',`/docs/${d}/pic-map`)]);

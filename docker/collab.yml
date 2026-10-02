@@ -74,6 +74,13 @@ services:
       CMS_SECRET_KEY: ${CMS_SECRET_KEY:?isi di .env}
       CMS_DATA_DIR: /data
       CMS_EXPORT_DIR: /data/exports
+      CMS_BASE_URL: ${CMS_BASE_URL:-http://localhost:8879}
+      CMS_SMTP_HOST: ${CMS_SMTP_HOST:-}
+      CMS_SMTP_PORT: ${CMS_SMTP_PORT:-587}
+      CMS_SMTP_USER: ${CMS_SMTP_USER:-}
+      CMS_SMTP_PASS: ${CMS_SMTP_PASS:-}
+      CMS_SMTP_FROM: ${CMS_SMTP_FROM:-}
+      CMS_SMTP_TLS: ${CMS_SMTP_TLS:-1}
     volumes:
       - cms_data:/data
     ports:

@@ -96,6 +96,77 @@ CREATE TABLE IF NOT EXISTS cms_users (
     UNIQUE KEY uq_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- kolom ditambah belakangan (2026-10-02): email (verifikasi & notifikasi), WA, bidang keahlian (tenaga
+-- ahli), token verifikasi email & reset password. Dibungkus stored procedure spt cms_projects di atas
+-- karena MySQL vanilla tak dukung ADD COLUMN IF NOT EXISTS.
+DROP PROCEDURE IF EXISTS cms_tmp_add_user_cols;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_add_user_cols()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='email') THEN
+    ALTER TABLE cms_users ADD COLUMN email VARCHAR(255) DEFAULT NULL AFTER active;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='email_verified_at') THEN
+    ALTER TABLE cms_users ADD COLUMN email_verified_at VARCHAR(19) DEFAULT NULL AFTER email;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='phone_wa') THEN
+    ALTER TABLE cms_users ADD COLUMN phone_wa VARCHAR(32) DEFAULT NULL AFTER email_verified_at;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='expertise') THEN
+    ALTER TABLE cms_users ADD COLUMN expertise VARCHAR(255) DEFAULT NULL AFTER phone_wa;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='bio') THEN
+    ALTER TABLE cms_users ADD COLUMN bio TEXT AFTER expertise;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='verify_token') THEN
+    ALTER TABLE cms_users ADD COLUMN verify_token VARCHAR(64) DEFAULT NULL AFTER bio;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='reset_token') THEN
+    ALTER TABLE cms_users ADD COLUMN reset_token VARCHAR(64) DEFAULT NULL AFTER verify_token;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND COLUMN_NAME='reset_expires') THEN
+    ALTER TABLE cms_users ADD COLUMN reset_expires VARCHAR(19) DEFAULT NULL AFTER reset_token;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_users' AND INDEX_NAME='uq_email') THEN
+    ALTER TABLE cms_users ADD UNIQUE KEY uq_email (email);
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_add_user_cols();
+DROP PROCEDURE cms_tmp_add_user_cols;
+
+-- dokumen pribadi per pengguna (CV, foto, sertifikat keahlian, dll), tersimpan di folder data per user
+-- (lihat cmsapp/api.py _user_file_root). Mandiri: pengguna unggah/kelola milik sendiri; admin bisa lihat semua.
+CREATE TABLE IF NOT EXISTS cms_user_files (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    user_id     INT NOT NULL,
+    category    ENUM('cv','foto','sertifikat','lainnya') NOT NULL DEFAULT 'lainnya',
+    title       VARCHAR(255) DEFAULT NULL,
+    filename    VARCHAR(255) NOT NULL,
+    path        VARCHAR(500) NOT NULL,
+    mime        VARCHAR(100) DEFAULT NULL,
+    size        INT DEFAULT NULL,
+    expires_on  VARCHAR(10) DEFAULT NULL,    -- 'YYYY-MM-DD', mis. tanggal habis berlaku sertifikat; NULL = tak ada expiry
+    uploaded_at VARCHAR(19) DEFAULT NULL,
+    deleted_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_uf_user (user_id),
+    CONSTRAINT fk_uf_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- expires_on ditambah belakangan (2026-10-02), bungkus idempoten (lihat alasan di atas) utk DB yang
+-- sudah sempat terapkan cms_user_files versi sebelum kolom ini ada.
+DROP PROCEDURE IF EXISTS cms_tmp_add_userfile_cols;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_add_userfile_cols()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_files' AND COLUMN_NAME='expires_on') THEN
+    ALTER TABLE cms_user_files ADD COLUMN expires_on VARCHAR(10) DEFAULT NULL AFTER size;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_add_userfile_cols();
+DROP PROCEDURE cms_tmp_add_userfile_cols;
+
 -- scope: 'heading:<id blok heading level berapa pun>' (H1..H4 dst, override turunan) | 'block:<id>'
 -- (caption/tabel/gambar spesifik) | 'part:<cover|front|body|lampiran>'. 'h1:<id>' data lama = alias
 -- 'heading:<id>' utk heading level 1, tetap dibaca (tak dimigrasi), tak ditulis lagi oleh UI baru.
@@ -148,10 +219,25 @@ CREATE TABLE IF NOT EXISTS cms_projects (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- kolom ditambah belakangan (2026-09-30): CREATE TABLE IF NOT EXISTS di atas tak mengubah tabel yg sudah
--- ada di server, jadi tambah lewat ALTER eksplisit (idempoten, MySQL 8.0.29+).
-ALTER TABLE cms_projects ADD COLUMN IF NOT EXISTS sales_team VARCHAR(255) DEFAULT NULL AFTER progress_override;
-ALTER TABLE cms_projects ADD COLUMN IF NOT EXISTS pic VARCHAR(255) DEFAULT NULL AFTER sales_team;
-ALTER TABLE cms_projects ADD COLUMN IF NOT EXISTS pemrakarsa_contact TEXT AFTER pic;
+-- ada di server. "ADD COLUMN IF NOT EXISTS" adalah sintaks MariaDB, TIDAK didukung MySQL vanilla
+-- (image mysql:8.0 yang dipakai stack ini) -> dibungkus stored procedure sementara agar tetap idempoten.
+DROP PROCEDURE IF EXISTS cms_tmp_add_project_cols;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_add_project_cols()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='sales_team') THEN
+    ALTER TABLE cms_projects ADD COLUMN sales_team VARCHAR(255) DEFAULT NULL AFTER progress_override;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='pic') THEN
+    ALTER TABLE cms_projects ADD COLUMN pic VARCHAR(255) DEFAULT NULL AFTER sales_team;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='pemrakarsa_contact') THEN
+    ALTER TABLE cms_projects ADD COLUMN pemrakarsa_contact TEXT AFTER pic;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_add_project_cols();
+DROP PROCEDURE cms_tmp_add_project_cols;
 
 CREATE TABLE IF NOT EXISTS cms_project_documents (
     id          INT AUTO_INCREMENT PRIMARY KEY,

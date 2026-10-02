@@ -13,6 +13,15 @@ class Config:
     SECRET_KEY = os.environ.get("CMS_SECRET_KEY", "")
     UPLOAD_MAX_MB = int(os.environ.get("CMS_UPLOAD_MAX_MB", 20))
     DATA_DIR = os.environ.get("CMS_DATA_DIR", "/data")
+    BASE_URL = os.environ.get("CMS_BASE_URL", "http://localhost:8879")
+
+    # SMTP (opsional): notifikasi akun, verifikasi email, reset password. Kosong = mailer.send_mail no-op.
+    SMTP_HOST = os.environ.get("CMS_SMTP_HOST", "")
+    SMTP_PORT = int(os.environ.get("CMS_SMTP_PORT", 587))
+    SMTP_USER = os.environ.get("CMS_SMTP_USER", "")
+    SMTP_PASS = os.environ.get("CMS_SMTP_PASS", "")
+    SMTP_FROM = os.environ.get("CMS_SMTP_FROM", "")
+    SMTP_TLS = os.environ.get("CMS_SMTP_TLS", "1") == "1"
 
     # flask
     SESSION_COOKIE_HTTPONLY = True

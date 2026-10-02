@@ -94,6 +94,11 @@ CREATE TABLE IF NOT EXISTS cms_activity_log (
 CREATE INDEX IF NOT EXISTS idx_act_created ON cms_activity_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_act_user ON cms_activity_log(username);
 CREATE INDEX IF NOT EXISTS idx_act_doc ON cms_activity_log(doc_id);
+CREATE TABLE IF NOT EXISTS cms_user_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, category TEXT NOT NULL DEFAULT 'lainnya',
+    title TEXT, filename TEXT NOT NULL, path TEXT NOT NULL, mime TEXT, size INTEGER, expires_on TEXT,
+    uploaded_at TEXT, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_uf_user ON cms_user_files(user_id);
 """
 
 
@@ -1151,6 +1156,98 @@ class BlockStore:
             if not self._one(c, "SELECT id FROM cms_project_files WHERE id=? AND deleted_at IS NULL", (file_id,)):
                 raise KeyError(f"berkas {file_id} tidak ada")
             self._x(c, "UPDATE cms_project_files SET deleted_at=? WHERE id=?", (_now(), file_id))
+
+    # -------- dokumen pribadi pengguna (CV/foto/sertifikat keahlian/lainnya), folder per user
+    USER_FILE_CATEGORIES = ("cv", "foto", "sertifikat", "lainnya")
+    PART_LABELS = {"cover": "Cover", "front": "Bagian Depan", "body": "Bagian Isi", "lampiran": "Lampiran"}
+
+    def add_user_file(self, user_id: int, category: str, filename: str, path: str, mime: str = "",
+                      size: Optional[int] = None, title: str = "", expires_on: Optional[str] = None) -> int:
+        if category not in self.USER_FILE_CATEGORIES:
+            raise ValueError("kategori berkas tidak valid")
+        with self._tx() as c:
+            cur = self._x(c, "INSERT INTO cms_user_files(user_id,category,title,filename,path,mime,size,"
+                             "expires_on,uploaded_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                          (user_id, category, title or filename, filename, path, mime, size,
+                           expires_on or None, _now()))
+            return cur.lastrowid
+
+    def list_user_files(self, user_id: int) -> list[dict]:
+        with self._tx() as c:
+            return self._all(c, "SELECT * FROM cms_user_files WHERE user_id=? AND deleted_at IS NULL ORDER BY id DESC",
+                             (user_id,))
+
+    def get_user_file(self, file_id: int) -> dict:
+        with self._tx() as c:
+            r = self._one(c, "SELECT * FROM cms_user_files WHERE id=? AND deleted_at IS NULL", (file_id,))
+        if not r:
+            raise KeyError(f"berkas {file_id} tidak ada")
+        return r
+
+    def set_user_file_expiry(self, file_id: int, expires_on: Optional[str]) -> None:
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_user_files WHERE id=? AND deleted_at IS NULL", (file_id,)):
+                raise KeyError(f"berkas {file_id} tidak ada")
+            self._x(c, "UPDATE cms_user_files SET expires_on=? WHERE id=?", (expires_on or None, file_id))
+
+    def user_project_experience(self, user_id: int) -> list[dict]:
+        """Rekap proyek yg melibatkan user ini sbg penulis/PIC (dari cms_assign -> cms_project_documents),
+        utk halaman profil/CV pribadi: nama proyek, klien/lokasi, status, tanggal, peran (bagian/bab yg
+        ditugaskan). Sumber kebenaran peran = penugasan bab yang sudah ada, bukan field teks sales_team/pic."""
+        with self._tx() as c:
+            assigns = self._all(c, "SELECT DISTINCT doc_id, scope FROM cms_assign WHERE user_id=?", (user_id,))
+            if not assigns:
+                return []
+            doc_ids = sorted({a["doc_id"] for a in assigns})
+            ph = ",".join(["?"] * len(doc_ids))
+            links = self._all(c, f"SELECT project_id, doc_id FROM cms_project_documents WHERE doc_id IN ({ph})", doc_ids)
+            doc_to_projects: dict[int, set] = {}
+            for l in links:
+                doc_to_projects.setdefault(l["doc_id"], set()).add(l["project_id"])
+            proj_scopes: dict[int, set] = {}
+            for a in assigns:
+                for pid in doc_to_projects.get(a["doc_id"], ()):
+                    proj_scopes.setdefault(pid, set()).add(a["scope"])
+            if not proj_scopes:
+                return []
+            pph = ",".join(["?"] * len(proj_scopes))
+            projects = self._all(c, f"SELECT * FROM cms_projects WHERE id IN ({pph}) AND deleted_at IS NULL",
+                                 list(proj_scopes))
+            block_ids = set()
+            for scopes in proj_scopes.values():
+                for s in scopes:
+                    kind, _, rest = s.partition(":")
+                    if kind in ("heading", "h1", "block") and rest.isdigit():
+                        block_ids.add(int(rest))
+            block_text = {}
+            if block_ids:
+                bph = ",".join(["?"] * len(block_ids))
+                for r in self._all(c, f"SELECT id, text, plain FROM cms_blocks WHERE id IN ({bph})", list(block_ids)):
+                    block_text[r["id"]] = (r["plain"] or r["text"] or "").strip()
+        out = []
+        for p in projects:
+            roles = []
+            for s in sorted(proj_scopes.get(p["id"], ())):
+                kind, _, rest = s.partition(":")
+                if kind == "part":
+                    roles.append(self.PART_LABELS.get(rest, rest))
+                elif kind in ("heading", "h1"):
+                    t = block_text.get(int(rest)) if rest.isdigit() else None
+                    roles.append(f"Bab: {t}" if t else "Bab")
+                elif kind == "block":
+                    t = block_text.get(int(rest)) if rest.isdigit() else None
+                    roles.append(f"Bagian: {t}" if t else "Bagian")
+                else:
+                    roles.append(s)
+            out.append({**p, "roles": roles})
+        out.sort(key=lambda p: (p.get("start_date") or "", p["id"]), reverse=True)
+        return out
+
+    def delete_user_file(self, file_id: int) -> None:
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_user_files WHERE id=? AND deleted_at IS NULL", (file_id,)):
+                raise KeyError(f"berkas {file_id} tidak ada")
+            self._x(c, "UPDATE cms_user_files SET deleted_at=? WHERE id=?", (_now(), file_id))
 
     # -------- gantt (baris bab dimaterialisasi on-demand + task manual bebas)
     def list_assign(self, doc_id: int, scope: Optional[str] = None) -> list[dict]:

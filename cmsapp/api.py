@@ -5,11 +5,13 @@ import json
 import os
 import tempfile
 import time
+import uuid
 
 from flask import (Blueprint, Response, abort, current_app, g, jsonify, request, send_file, session,
                    stream_with_context)
+from werkzeug.utils import secure_filename
 
-from cmsapp import auth, export, realtime
+from cmsapp import auth, export, mailer, realtime
 from utils.blockstore import ConflictError, KINDS, LockedError
 
 bp = Blueprint("api", __name__, url_prefix="/api")
@@ -134,6 +136,34 @@ def login():
 def logout():
     session.clear()
     return jsonify(ok=True)
+
+
+@bp.post("/auth/forgot-password")
+def forgot_password():
+    d = body()
+    row = auth.request_password_reset(d.get("email", ""))
+    if row:
+        link = f'{current_app.config["BASE_URL"]}/?reset={row["reset_token"]}'
+        mailer.notify_password_reset(row["email"], row["name"], row["username"], link)
+    return jsonify(ok=True)  # selalu ok -- jangan bocorkan apakah email terdaftar
+
+
+@bp.post("/auth/reset-password")
+def reset_password():
+    d = body()
+    auth.reset_password(d.get("token", ""), d.get("password", ""))
+    return jsonify(ok=True)
+
+
+@bp.get("/auth/verify-email")
+def verify_email():
+    token = request.args.get("token", "")
+    try:
+        auth.verify_email(token)
+        msg = "Email berhasil diverifikasi. Kamu bisa menutup halaman ini."
+    except ValueError as e:
+        msg = f"Gagal verifikasi: {e}"
+    return f"<!doctype html><meta charset=utf-8><body style='font:16px sans-serif;padding:40px'>{msg}</body>", 200
 
 
 @bp.get("/me")
@@ -759,14 +789,49 @@ def export_download(jid):
 
 
 # ---------------------------------------------------------------- admin
+def _verify_link(token: str) -> str:
+    return f'{current_app.config["BASE_URL"]}/api/auth/verify-email?token={token}'
+
+
 @bp.post("/admin/users")
 @auth.require("admin")
 def admin_user():
     d = body()
-    uid = auth.create_user(d["username"], d["password"], d.get("name", ""), d.get("role", "author"))
+    uid, verify_token = auth.create_user(d["username"], d["password"], d.get("name", ""), d.get("role", "author"),
+                                         d.get("email", ""), d.get("phone_wa", ""), d.get("expertise", ""))
     S().log_activity(g.user["username"], "user.create", target_type="user", target_id=uid,
                      summary=f'{d["username"]} ({d.get("role", "author")})')
+    if verify_token and d.get("email"):
+        mailer.notify_account_created(d["email"], d.get("name", ""), d["username"], _verify_link(verify_token))
     return jsonify(id=uid), 201
+
+
+@bp.patch("/admin/users/<int:uid>")
+@auth.require("admin")
+def admin_user_update(uid):
+    d = body()
+    verify_token = auth.update_profile(uid, name=d.get("name"), role=d.get("role"), email=d.get("email"),
+                                       phone_wa=d.get("phone_wa"), expertise=d.get("expertise"), bio=d.get("bio"))
+    S().log_activity(g.user["username"], "user.update", target_type="user", target_id=uid, summary="edit profil")
+    if verify_token and d.get("email"):
+        u = auth.get_user(uid)
+        mailer.notify_account_created(d["email"], u.get("name", ""), u["username"], _verify_link(verify_token))
+    return jsonify(ok=True)
+
+
+@bp.post("/admin/users/<int:uid>/notify")
+@auth.require("admin")
+def admin_user_notify(uid):
+    u = auth.get_user(uid)
+    if not u.get("email"):
+        raise ValueError("pengguna belum punya email")
+    if u.get("email_verified_at"):
+        ok = mailer.notify_account_activated(u["email"], u.get("name", ""), u["username"])
+    else:
+        token = auth.issue_verify_token(uid)
+        ok = mailer.notify_account_created(u["email"], u.get("name", ""), u["username"], _verify_link(token))
+    S().log_activity(g.user["username"], "user.notify", target_type="user", target_id=uid, summary=u["email"])
+    return jsonify(ok=ok)
 
 
 @bp.post("/admin/assign")
@@ -785,7 +850,8 @@ def admin_assign():
 def admin_users():
     st = S()
     with st._tx() as c:
-        rows = st._all(c, "SELECT id, username, name, role, active, last_login FROM cms_users ORDER BY id")
+        rows = st._all(c, "SELECT id, username, name, role, active, email, email_verified_at, phone_wa, "
+                         "expertise, last_login FROM cms_users ORDER BY id")
     return jsonify(users=rows)
 
 
@@ -794,7 +860,12 @@ def admin_users():
 def admin_user_active(uid):
     if uid == g.user["id"]:
         raise ValueError("tidak bisa menonaktifkan diri sendiri")
-    auth.set_active(uid, bool(body().get("active", True)))
+    active = bool(body().get("active", True))
+    auth.set_active(uid, active)
+    if active:
+        u = auth.get_user(uid)
+        if u.get("email"):
+            mailer.notify_account_activated(u["email"], u.get("name", ""), u["username"])
     return jsonify(ok=True)
 
 
@@ -854,3 +925,95 @@ def admin_upload_doc():
     S().log_activity(g.user["username"], "doc.upload", target_type="document", target_id=doc_id, doc_id=doc_id,
                      summary=os.path.basename(f.filename))
     return jsonify(doc_id=doc_id, blocks=res["meta"].get("block_count")), 201
+
+
+# ---------------------------------------------------------------- dokumen pribadi pengguna (CV/foto/sertifikat)
+def _user_file_root(user_id: int) -> str:
+    base = os.path.join(current_app.config["DATA_DIR"], "users", str(user_id), "files")
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def _save_user_upload(user_id: int, f) -> tuple[str, str, str, int]:
+    fn = secure_filename(f.filename or "berkas")
+    stored = f"{uuid.uuid4().hex}_{fn}"
+    path = os.path.join(_user_file_root(user_id), stored)
+    f.save(path)
+    return fn, path, f.mimetype or "", os.path.getsize(path)
+
+
+@bp.patch("/me/profile")
+@auth.require()
+def my_profile_update():
+    d = body()
+    verify_token = auth.update_profile(g.user["id"], name=d.get("name"), email=d.get("email"),
+                                       phone_wa=d.get("phone_wa"), expertise=d.get("expertise"), bio=d.get("bio"))
+    if verify_token and d.get("email"):
+        mailer.notify_account_created(d["email"], d.get("name", ""), g.user["username"], _verify_link(verify_token))
+    return jsonify(ok=True)
+
+
+@bp.get("/me/experience")
+@auth.require()
+def my_experience():
+    return jsonify(projects=S().user_project_experience(g.user["id"]))
+
+
+@bp.get("/me/files")
+@auth.require()
+def my_files():
+    return jsonify(files=S().list_user_files(g.user["id"]))
+
+
+@bp.post("/me/files")
+@auth.require()
+def my_files_upload():
+    f = request.files.get("file")
+    category = request.form.get("category", "lainnya")
+    if not f:
+        raise ValueError("multipart: 'file' wajib")
+    fn, path, mime, size = _save_user_upload(g.user["id"], f)
+    fid = S().add_user_file(g.user["id"], category, fn, path, mime, size, title=request.form.get("title", ""),
+                            expires_on=request.form.get("expires_on") or None)
+    S().log_activity(g.user["username"], "user.file_upload", target_type="file", target_id=fid,
+                     summary=f'[{category}] {fn}')
+    return jsonify(id=fid), 201
+
+
+@bp.patch("/me/files/<int:fid>")
+@auth.require()
+def my_files_set_expiry(fid):
+    r = S().get_user_file(fid)
+    if r["user_id"] != g.user["id"] and g.user["role"] != "admin":
+        abort(403)
+    S().set_user_file_expiry(fid, body().get("expires_on") or None)
+    return jsonify(ok=True)
+
+
+@bp.delete("/me/files/<int:fid>")
+@auth.require()
+def my_files_delete(fid):
+    r = S().get_user_file(fid)
+    if r["user_id"] != g.user["id"] and g.user["role"] != "admin":
+        abort(403)
+    S().delete_user_file(fid)
+    return jsonify(ok=True)
+
+
+@bp.get("/user-files/<int:fid>/raw")
+@auth.require()
+def user_file_raw(fid):
+    r = S().get_user_file(fid)
+    if r["user_id"] != g.user["id"] and g.user["role"] != "admin":
+        abort(403)
+    base = os.path.realpath(_user_file_root(r["user_id"]))
+    p = os.path.realpath(r["path"])
+    if not p.startswith(base + os.sep) or not os.path.isfile(p):
+        abort(404)
+    return send_file(p, download_name=r["filename"])
+
+
+@bp.get("/admin/users/<int:uid>/files")
+@auth.require("admin")
+def admin_user_files(uid):
+    return jsonify(files=S().list_user_files(uid))
