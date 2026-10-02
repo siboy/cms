@@ -232,6 +232,35 @@ def set_printed(pid, link_id):
     return jsonify(ok=True)
 
 
+# ---------------------------------------------------------------- tim proyek (siapa + role apa)
+@bp.get("/projects/<int:pid>/team")
+@auth.require()
+def project_team(pid):
+    return jsonify(team=S().list_project_team(pid))
+
+
+@bp.post("/projects/<int:pid>/team")
+@auth.require("admin")
+def project_team_add(pid):
+    d = body()
+    uid = int(d["user_id"])
+    title = d.get("title", "")
+    if not title.strip():
+        raise ValueError("role/jabatan wajib diisi")
+    S().set_user_project_role(uid, pid, title)
+    S().log_activity(g.user["username"], "project.team_add", target_type="user", target_id=uid, project_id=pid,
+                     summary=title)
+    return jsonify(ok=True), 201
+
+
+@bp.delete("/projects/<int:pid>/team/<int:uid>")
+@auth.require("admin")
+def project_team_remove(pid, uid):
+    S().set_user_project_role(uid, pid, "")
+    S().log_activity(g.user["username"], "project.team_remove", target_type="user", target_id=uid, project_id=pid)
+    return jsonify(ok=True)
+
+
 # ---------------------------------------------------------------- repository berkas
 @bp.get("/projects/<int:pid>/files")
 @auth.require()

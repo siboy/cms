@@ -959,6 +959,13 @@ def my_experience():
     return jsonify(projects=S().user_project_experience(g.user["id"]))
 
 
+@bp.patch("/me/experience/<int:pid>")
+@auth.require()
+def my_experience_set_title(pid):
+    S().set_user_project_role(g.user["id"], pid, body().get("title", ""))
+    return jsonify(ok=True)
+
+
 @bp.get("/me/files")
 @auth.require()
 def my_files():

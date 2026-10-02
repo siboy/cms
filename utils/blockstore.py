@@ -99,6 +99,9 @@ CREATE TABLE IF NOT EXISTS cms_user_files (
     title TEXT, filename TEXT NOT NULL, path TEXT NOT NULL, mime TEXT, size INTEGER, expires_on TEXT,
     uploaded_at TEXT, deleted_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_uf_user ON cms_user_files(user_id);
+CREATE TABLE IF NOT EXISTS cms_user_project_roles (
+    user_id INTEGER NOT NULL, project_id INTEGER NOT NULL, title TEXT NOT NULL, updated_at TEXT,
+    PRIMARY KEY (user_id, project_id));
 """
 
 
@@ -1159,7 +1162,6 @@ class BlockStore:
 
     # -------- dokumen pribadi pengguna (CV/foto/sertifikat keahlian/lainnya), folder per user
     USER_FILE_CATEGORIES = ("cv", "foto", "sertifikat", "lainnya")
-    PART_LABELS = {"cover": "Cover", "front": "Bagian Depan", "body": "Bagian Isi", "lampiran": "Lampiran"}
 
     def add_user_file(self, user_id: int, category: str, filename: str, path: str, mime: str = "",
                       size: Optional[int] = None, title: str = "", expires_on: Optional[str] = None) -> int:
@@ -1192,56 +1194,54 @@ class BlockStore:
 
     def user_project_experience(self, user_id: int) -> list[dict]:
         """Rekap proyek yg melibatkan user ini sbg penulis/PIC (dari cms_assign -> cms_project_documents),
-        utk halaman profil/CV pribadi: nama proyek, klien/lokasi, status, tanggal, peran (bagian/bab yg
-        ditugaskan). Sumber kebenaran peran = penugasan bab yang sudah ada, bukan field teks sales_team/pic."""
+        utk halaman profil/CV pribadi: nama proyek, klien/lokasi, tanggal, + jabatan (title) yang bisa
+        diisi sendiri oleh user per proyek (cms_user_project_roles), dipakai sbg baris CV mis.
+        'Data Analyst <proyek> <klien>, 2025'."""
         with self._tx() as c:
-            assigns = self._all(c, "SELECT DISTINCT doc_id, scope FROM cms_assign WHERE user_id=?", (user_id,))
+            assigns = self._all(c, "SELECT DISTINCT doc_id FROM cms_assign WHERE user_id=?", (user_id,))
             if not assigns:
                 return []
             doc_ids = sorted({a["doc_id"] for a in assigns})
             ph = ",".join(["?"] * len(doc_ids))
-            links = self._all(c, f"SELECT project_id, doc_id FROM cms_project_documents WHERE doc_id IN ({ph})", doc_ids)
-            doc_to_projects: dict[int, set] = {}
-            for l in links:
-                doc_to_projects.setdefault(l["doc_id"], set()).add(l["project_id"])
-            proj_scopes: dict[int, set] = {}
-            for a in assigns:
-                for pid in doc_to_projects.get(a["doc_id"], ()):
-                    proj_scopes.setdefault(pid, set()).add(a["scope"])
-            if not proj_scopes:
+            links = self._all(c, f"SELECT DISTINCT project_id FROM cms_project_documents WHERE doc_id IN ({ph})",
+                              doc_ids)
+            project_ids = sorted({l["project_id"] for l in links})
+            if not project_ids:
                 return []
-            pph = ",".join(["?"] * len(proj_scopes))
+            pph = ",".join(["?"] * len(project_ids))
             projects = self._all(c, f"SELECT * FROM cms_projects WHERE id IN ({pph}) AND deleted_at IS NULL",
-                                 list(proj_scopes))
-            block_ids = set()
-            for scopes in proj_scopes.values():
-                for s in scopes:
-                    kind, _, rest = s.partition(":")
-                    if kind in ("heading", "h1", "block") and rest.isdigit():
-                        block_ids.add(int(rest))
-            block_text = {}
-            if block_ids:
-                bph = ",".join(["?"] * len(block_ids))
-                for r in self._all(c, f"SELECT id, text, plain FROM cms_blocks WHERE id IN ({bph})", list(block_ids)):
-                    block_text[r["id"]] = (r["plain"] or r["text"] or "").strip()
-        out = []
-        for p in projects:
-            roles = []
-            for s in sorted(proj_scopes.get(p["id"], ())):
-                kind, _, rest = s.partition(":")
-                if kind == "part":
-                    roles.append(self.PART_LABELS.get(rest, rest))
-                elif kind in ("heading", "h1"):
-                    t = block_text.get(int(rest)) if rest.isdigit() else None
-                    roles.append(f"Bab: {t}" if t else "Bab")
-                elif kind == "block":
-                    t = block_text.get(int(rest)) if rest.isdigit() else None
-                    roles.append(f"Bagian: {t}" if t else "Bagian")
-                else:
-                    roles.append(s)
-            out.append({**p, "roles": roles})
+                                 project_ids)
+            titles = {r["project_id"]: r["title"] for r in self._all(
+                c, f"SELECT project_id, title FROM cms_user_project_roles WHERE user_id=? AND project_id IN ({pph})",
+                [user_id, *project_ids])}
+        out = [{**p, "title": titles.get(p["id"], "")} for p in projects]
         out.sort(key=lambda p: (p.get("start_date") or "", p["id"]), reverse=True)
         return out
+
+    def list_project_team(self, project_id: int) -> list[dict]:
+        """Tim proyek (cms_user_project_roles): siapa saja + role apa. Ini jadi satu-satunya kolam orang
+        yang bisa ditandai PIC di tab PIC proyek tsb (lihat cmsapp/projects_api.py)."""
+        with self._tx() as c:
+            return self._all(c, "SELECT u.id, u.username, u.name, u.role, u.active, r.title, r.updated_at "
+                                 "FROM cms_user_project_roles r JOIN cms_users u ON u.id=r.user_id "
+                                 "WHERE r.project_id=? AND u.active=1 ORDER BY u.username", (project_id,))
+
+    def set_user_project_role(self, user_id: int, project_id: int, title: str) -> None:
+        title = (title or "").strip()
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            exists = self._one(c, "SELECT 1 AS x FROM cms_user_project_roles WHERE user_id=? AND project_id=?",
+                               (user_id, project_id))
+            if not title:
+                self._x(c, "DELETE FROM cms_user_project_roles WHERE user_id=? AND project_id=?",
+                       (user_id, project_id))
+            elif exists:
+                self._x(c, "UPDATE cms_user_project_roles SET title=?, updated_at=? WHERE user_id=? AND project_id=?",
+                       (title, _now(), user_id, project_id))
+            else:
+                self._x(c, "INSERT INTO cms_user_project_roles(user_id,project_id,title,updated_at) "
+                         "VALUES (?,?,?,?)", (user_id, project_id, title, _now()))
 
     def delete_user_file(self, file_id: int) -> None:
         with self._tx() as c:

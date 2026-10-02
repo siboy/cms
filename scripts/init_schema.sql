@@ -167,6 +167,18 @@ DELIMITER ;
 CALL cms_tmp_add_userfile_cols();
 DROP PROCEDURE cms_tmp_add_userfile_cols;
 
+-- jabatan/title user pada proyek tertentu, diisi mandiri oleh user di halaman CV pribadi (beda proyek
+-- bisa beda jabatan, mis. "Data Analyst" di satu proyek, "Lead Proyek" di proyek lain).
+CREATE TABLE IF NOT EXISTS cms_user_project_roles (
+    user_id    INT NOT NULL,
+    project_id INT NOT NULL,
+    title      VARCHAR(255) NOT NULL,
+    updated_at VARCHAR(19) DEFAULT NULL,
+    PRIMARY KEY (user_id, project_id),
+    CONSTRAINT fk_upr_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_upr_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- scope: 'heading:<id blok heading level berapa pun>' (H1..H4 dst, override turunan) | 'block:<id>'
 -- (caption/tabel/gambar spesifik) | 'part:<cover|front|body|lampiran>'. 'h1:<id>' data lama = alias
 -- 'heading:<id>' utk heading level 1, tetap dibaca (tak dimigrasi), tak ditulis lagi oleh UI baru.

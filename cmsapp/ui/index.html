@@ -269,12 +269,36 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><p><a href="#" id=pback>← Proyek</a></p><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  $('#pback').onclick=e=>{e.preventDefault();projectsView()};
- const tabs=[['ringkasan','Ringkasan'],['laporan','Laporan'],['gantt','Gantt'],['pic','PIC'],['berkas','Berkas']];
+ const tabs=[['ringkasan','Ringkasan'],['laporan','Laporan'],['gantt','Gantt'],['tim','Tim'],['pic','PIC'],['berkas','Berkas']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l])=>`<button data-k="${k}" class="${k===curTab?'cur':''}">${l}</button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
-async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,pic:tabPic,berkas:tabBerkas};
+async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,berkas:tabBerkas};
  try{await fns[curTab]()}catch(e){note(e.message,1)}}
+async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`);
+ let avail=[];if(me.role==='admin'){try{const inTeam=new Set(team.map(t=>t.id));
+  avail=(await api('GET','/admin/users')).users.filter(u=>u.active&&u.role!=='admin'&&!inTeam.has(u.id))}catch(e){}}
+ $('#ptab').innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b></div>
+ <p style="color:var(--mut);font-size:12px">Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC. Role yang diisi dipakai juga di rekap pengalaman proyek (CV) orang tersebut.</p>
+ <table><tr><th>Nama</th><th>Role</th>${me.role==='admin'?'<th></th>':''}</tr>
+ ${team.map(t=>`<tr><td>${esc(t.name||t.username)}</td><td>${me.role==='admin'?`<span data-title="${t.id}"></span>`:esc(t.title||'')}</td>
+ ${me.role==='admin'?`<td><button type=button data-rm="${t.id}">Keluarkan</button></td>`:''}</tr>`).join('')
+ ||`<tr><td colspan=${me.role==='admin'?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table>
+ ${me.role==='admin'?`<h4 style="margin-top:14px">Tambah anggota</h4>
+ <form id=fteam style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+ <select name=user_id required><option value="">— pilih orang —</option>${avail.map(u=>`<option value=${u.id}>${esc(u.name||u.username)}</option>`).join('')}</select>
+ <input name=title list=roleSuggest placeholder="Role di proyek ini (mis. Data Analyst, Lead Proyek, QC…)" required>
+ <button class=p>Tambah</button></form>
+ <datalist id=roleSuggest>${ROLE_SUGGEST.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>`:''}</div>`;
+ if(me.role==='admin'){
+  team.forEach(t=>{const el=$(`[data-title="${t.id}"]`);if(!el)return;const i=document.createElement('input');
+   i.type='text';i.value=t.title||'';i.setAttribute('list','roleSuggest');i.style.cssText='font-size:13px;width:220px';
+   i.onchange=async()=>{try{await api('POST',`/projects/${curProj}/team`,{user_id:t.id,title:i.value});tabTim()}catch(e){note(e.message,1)}};
+   el.append(i)});
+  document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(!confirm('Keluarkan dari tim?'))return;
+   try{await api('DELETE',`/projects/${curProj}/team/${b.dataset.rm}`);tabTim()}catch(e){note(e.message,1)}});
+  if($('#fteam'))$('#fteam').onsubmit=async e=>{e.preventDefault();const f=e.target;
+   try{await api('POST',`/projects/${curProj}/team`,{user_id:+f.user_id.value,title:f.title.value});tabTim()}catch(x){note(x.message,1)}}}}
 
 async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${curProj}`);const adm=me.role==='admin';
  $('#ptab').innerHTML=`<div class=rc>
@@ -327,10 +351,12 @@ async function tabLaporan(){const [{documents},u]=await Promise.all([api('GET',`
 
 async function tabPic(){const {documents}=await api('GET',`/projects/${curProj}/documents`);
  if(!documents.length){$('#ptab').innerHTML='<p style="color:var(--mut)">Tautkan laporan dulu di tab Laporan.</p>';return}
- let users=[];if(me.role==='admin'){try{users=(await api('GET','/admin/users')).users}catch(e){}}
+ let users=[];try{users=(await api('GET',`/projects/${curProj}/team`)).team}catch(e){}
  $('#ptab').innerHTML=`<p><select id=ad>${documents.map(d=>`<option value=${d.doc_id}>${esc(d.label||d.filename)} (#${d.doc_id})</option>`).join('')}</select>
- ${me.role==='admin'?' <button type=button id=goadm>Kelola pengguna…</button>':''}</p><div id=asg></div>`;
- if($('#goadm'))$('#goadm').onclick=()=>adminView();
+ ${me.role==='admin'?' <button type=button id=goadm>Kelola tim…</button>':''}</p>
+ ${!users.length?'<p style="color:var(--warn);font-size:13px">Belum ada anggota tim di proyek ini — tambahkan dulu di tab Tim sebelum menandai PIC.</p>':''}
+ <div id=asg></div>`;
+ if($('#goadm'))$('#goadm').onclick=()=>projectDetailView(curProj,{tab:'tim'});
  $('#ad').onchange=()=>assignView(users);assignView(users)}
 
 async function tabGantt(){const [{project:p},{tasks},scurve]=await Promise.all([api('GET',`/projects/${curProj}`),
@@ -469,6 +495,10 @@ function expLabel(d){if(!d)return'';const days=Math.floor((new Date(d)-new Date(
  return `<small style="color:${col}">${days<0?'lewat ':days<=30?'segera ':''}${esc(d)}</small>`}
 function expInput(f,onSet){const i=document.createElement('input');i.type='date';i.value=f.expires_on||'';i.style.width='120px';
  i.onchange=async()=>{try{await api('PATCH',`/me/files/${f.id}`,{expires_on:i.value||null});onSet()}catch(e){note(e.message,1)}};return i}
+const ROLE_SUGGEST=['QC','Data Analyst','Tenaga Ahli Kimia','Tenaga Ahli Fisika','Tenaga Ahli GIS','Lead Proyek','Admin','Penulis','Surveyor'];
+function titleInput(p,onSet){const i=document.createElement('input');i.type='text';i.value=p.title||'';i.setAttribute('list','roleSuggest');
+ i.placeholder='Role di proyek ini (mis. Data Analyst, Lead Proyek, QC…)';i.style.cssText='font-size:12px;margin-top:4px;width:100%;max-width:300px';
+ i.onchange=async()=>{try{await api('PATCH',`/me/experience/${p.id}`,{title:i.value});onSet()}catch(e){note(e.message,1)}};return i}
 async function userFilesDlg(u){let files=[];try{files=(await api('GET',`/admin/users/${u.id}/files`)).files}catch(e){note(e.message,1);return}
  const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<form class=dlg><b>Berkas pribadi: ${esc(u.username)}</b>
@@ -495,8 +525,14 @@ function profileEditDlg(){const m=document.createElement('div');m.className='mas
   if(emailChanged)me.email_verified_at=null;
   m.remove();note(emailChanged&&me.email?'Profil diperbarui, cek email utk verifikasi ulang':'Profil diperbarui');meFilesView()}
   catch(x){note(x.message,1)}}}
-function period(p){const s=p.start_date||'?';const e=p.end_date||(p.status==='completed'?'?':'sekarang')
- ;return `${s} – ${e}`}
+const MON_ID=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+const monYear=d=>{if(!d)return null;const [y,m]=d.split('-');return `${MON_ID[+m-1]} ${y}`};
+function period(p){if(!p.start_date&&!p.end_date)return '?';
+ if(!p.end_date)return p.start_date?`${monYear(p.start_date)} – sekarang`:'sekarang';
+ if(!p.start_date)return monYear(p.end_date);
+ const sy=p.start_date.slice(0,4),ey=p.end_date.slice(0,4);
+ if(sy===ey)return sy;
+ return `${monYear(p.start_date)} – ${monYear(p.end_date)}`}
 async function meFilesView(){closeDoc();const [{files},{projects}]=await Promise.all([api('GET','/me/files'),api('GET','/me/experience')]);
  const photo=files.filter(f=>f.category==='foto').sort((a,b)=>b.id-a.id)[0];
  const cvs=files.filter(f=>f.category==='cv'),certs=files.filter(f=>f.category==='sertifikat'),others=files.filter(f=>f.category==='lainnya');
@@ -521,12 +557,11 @@ async function meFilesView(){closeDoc();const [{files},{projects}]=await Promise
  <div style="display:flex;justify-content:flex-end;margin-top:6px"><button class=p>Simpan</button></div></form></div>
 
  ${projects.length?`<div class=rc><div class=rh><b>Pengalaman Proyek</b></div>
- ${projects.map(p=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)">
-  <b>${esc(p.name)}</b> <a href="#" data-proj="${p.id}" title="Buka proyek &amp; laporannya" style="font-size:11px;text-decoration:none">[Ref #${p.id}]</a>
-  <small style="color:var(--mut)">(${period(p)})</small><br>
-  <small style="color:var(--mut)">${[p.client,p.location].filter(Boolean).map(esc).join(' · ')||'—'}</small>
-  ${p.roles&&p.roles.length?`<div style="margin-top:3px">${p.roles.map(r=>`<span class=badge style="margin-right:4px">${esc(r)}</span>`).join('')}</div>`:''}
- </div>`).join('')}</div>`:''}
+ ${projects.map(p=>{const line=[p.title,p.name,p.client].filter(Boolean).join(' ');return `<div style="padding:6px 0;border-bottom:1px dashed var(--line)">
+  <b>${esc(line)}</b>, ${period(p)} <a href="#" data-proj="${p.id}" title="Buka proyek &amp; laporannya" style="font-size:11px;text-decoration:none">[Ref #${p.id}]</a>
+  ${p.location?`<br><small style="color:var(--mut)">${esc(p.location)}</small>`:''}
+  <div data-title="${p.id}"></div>
+ </div>`}).join('')}</div>`:''}
 
  ${cvs.length?`<div class=rc><div class=rh><b>Dokumen CV</b></div>${cvs.map(fileRow).join('')}</div>`:''}
 
@@ -543,8 +578,11 @@ async function meFilesView(){closeDoc();const [{files},{projects}]=await Promise
  <label style="font-size:12px;color:var(--mut);display:flex;gap:4px;align-items:center">Kedaluwarsa<input name=expires_on type=date style="flex:1"></label>
  <input name=file type=file required><button class=p>Unggah</button></form></div>
  </div>
- </div></div>`;
+ </div>
+ <datalist id=roleSuggest>${ROLE_SUGGEST.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>
+ </div>`;
  [...cvs,...certs,...others].forEach(f=>{const el=$(`[data-exp="${f.id}"]`);if(!el)return;el.innerHTML=expLabel(f.expires_on)+' ';if(f.category==='sertifikat')el.append(expInput(f,meFilesView))});
+ projects.forEach(p=>{const el=$(`[data-title="${p.id}"]`);if(el)el.append(titleInput(p,meFilesView))});
  $('#bep').onclick=profileEditDlg;
  $('#fbio').onsubmit=async e=>{e.preventDefault();try{await api('PATCH','/me/profile',{bio:e.target.bio.value});
   me.bio=e.target.bio.value;note('Ringkasan disimpan')}catch(x){note(x.message,1)}};
@@ -782,7 +820,7 @@ async function wrapLandscape(el,b){const prevEl=el.previousElementSibling;
   await api('POST',`/docs/${doc}/pagebreak`,{after_id:b.id,layout:{orientation:'portrait',size:'A4'}})})}
 async function picDlg(docId,blockId,label,onClose){
  const m=document.createElement('div');m.className='mask';document.body.append(m);
- let users=[];if(me.role==='admin'){try{users=(await api('GET','/admin/users')).users.filter(u=>u.active&&u.role!=='admin')}catch(e){}}
+ let users=[];if(me.role==='admin'){try{users=(await api('GET',`/projects/${curProj}/team`)).team}catch(e){}}
  const paint=async()=>{
   let info;try{info=await api('GET',`/blocks/${blockId}/pic`)}catch(e){m.remove();note(e.message,1);return}
   const tagged=new Set(info.pics.map(p=>p.user_id));
