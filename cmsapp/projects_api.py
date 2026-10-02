@@ -97,6 +97,8 @@ def create_project():
     tpl = d.get("template_project_id")
     if tpl:
         S().apply_project_template(pid, int(tpl), user=g.user["username"])
+    S().log_activity(g.user["username"], "project.create", target_type="project", target_id=pid, project_id=pid,
+                     summary=d.get("name", ""))
     return jsonify(id=pid), 201
 
 
@@ -109,14 +111,20 @@ def get_project(pid):
 @bp.patch("/projects/<int:pid>")
 @auth.require("admin")
 def update_project(pid):
-    S().update_project(pid, **body())
+    d = body()
+    S().update_project(pid, **d)
+    S().log_activity(g.user["username"], "project.update", target_type="project", target_id=pid, project_id=pid,
+                     summary=", ".join(sorted(d)))
     return jsonify(ok=True)
 
 
 @bp.delete("/projects/<int:pid>")
 @auth.require("admin")
 def delete_project(pid):
+    p = S().get_project(pid)
     S().delete_project(pid)
+    S().log_activity(g.user["username"], "project.delete", target_type="project", target_id=pid, project_id=pid,
+                     summary=p.get("name", ""))
     return jsonify(ok=True)
 
 
@@ -140,6 +148,8 @@ def clone_document(pid):
         raise ValueError("doc_id wajib diisi")
     new_doc_id = S().clone_document_outline(pid, int(src_doc_id), report_type=d.get("report_type") or "draft",
                                             label=d.get("label", ""), user=g.user["username"])
+    S().log_activity(g.user["username"], "doc.clone", target_type="document", target_id=new_doc_id, doc_id=new_doc_id,
+                     project_id=pid, summary=f'outline disalin dari dok #{src_doc_id}')
     return jsonify(ok=True, doc_id=new_doc_id), 201
 
 
@@ -156,6 +166,9 @@ def copy_team(pid):
     if not any(x["doc_id"] == int(target_doc_id) for x in S().list_project_documents(pid)):
         raise ValueError("dokumen tujuan bukan laporan proyek ini")
     n = S().copy_team_to_document(int(target_doc_id), int(src_doc_id))
+    S().log_activity(g.user["username"], "project.copy_team", target_type="document", target_id=int(target_doc_id),
+                     doc_id=int(target_doc_id), project_id=pid,
+                     summary=f'{n} penugasan disalin dari dok #{src_doc_id}')
     return jsonify(ok=True, assignments_added=n)
 
 
@@ -203,13 +216,19 @@ def link_document(pid):
         report_type = d.get("report_type", "draft")
         label = d.get("label", "")
     link_id = st.link_document(pid, doc_id, report_type, label)
+    st.log_activity(g.user["username"], "doc.upload" if request.files.get("file") else "doc.link",
+                    target_type="document", target_id=doc_id, doc_id=doc_id, project_id=pid,
+                    summary=f'{report_type} "{label}"'.strip())
     return jsonify(id=link_id, doc_id=doc_id), 201
 
 
 @bp.post("/projects/<int:pid>/documents/<int:link_id>/print")
 @auth.require("admin")
 def set_printed(pid, link_id):
-    S().set_printed(link_id, bool(body().get("printed", True)), user=g.user["username"])
+    printed = bool(body().get("printed", True))
+    S().set_printed(link_id, printed, user=g.user["username"])
+    S().log_activity(g.user["username"], "doc.print", target_type="document", target_id=link_id, project_id=pid,
+                     summary="tandai dicetak" if printed else "batal cetak")
     return jsonify(ok=True)
 
 
@@ -232,6 +251,8 @@ def upload_file(pid):
                                title=request.form.get("title", ""), description=request.form.get("description", ""),
                                status=request.form.get("status", ""), doc_date=request.form.get("doc_date") or None,
                                user=g.user["username"])
+    S().log_activity(g.user["username"], "project.file_upload", target_type="file", target_id=fid, project_id=pid,
+                     summary=f'[{category}] {fn}')
     return jsonify(id=fid), 201
 
 
@@ -249,7 +270,10 @@ def raw_file(fid):
 @bp.delete("/project-files/<int:fid>")
 @auth.require("admin", "author")
 def delete_file(fid):
+    r = S().get_project_file(fid)
     S().delete_project_file(fid)
+    S().log_activity(g.user["username"], "project.file_delete", target_type="file", target_id=fid,
+                     project_id=r["project_id"], summary=r["filename"])
     return jsonify(ok=True)
 
 
@@ -279,6 +303,8 @@ def create_task(pid):
                                   start_date=d.get("start_date"), end_date=d.get("end_date"),
                                   progress_percent=d.get("progress_percent"), status=d.get("status"),
                                   parent_task_id=d.get("parent_task_id"), user=g.user["username"])
+    S().log_activity(g.user["username"], "task.create", target_type="task", target_id=tid, project_id=pid,
+                     doc_id=doc_id, summary=d.get("title", ""))
     return jsonify(id=tid), 201
 
 
@@ -288,22 +314,32 @@ def update_task(tid):
     t = _task_row(tid)
     if not _can_edit_task(t):
         abort(403, description="tidak ditugaskan pada bab ini")
-    S().update_project_task(tid, **body())
+    d = body()
+    S().update_project_task(tid, **d)
+    S().log_activity(g.user["username"], "task.update", target_type="task", target_id=tid, project_id=t["project_id"],
+                     doc_id=t.get("doc_id"), summary=", ".join(sorted(d)))
     return jsonify(ok=True)
 
 
 @bp.delete("/tasks/<int:tid>")
 @auth.require("admin")
 def delete_task(tid):
+    t = _task_row(tid)
     S().delete_project_task(tid)
+    S().log_activity(g.user["username"], "task.delete", target_type="task", target_id=tid, project_id=t["project_id"],
+                     doc_id=t.get("doc_id"), summary=t.get("title", ""))
     return jsonify(ok=True)
 
 
 @bp.post("/tasks/<int:tid>/tag")
 @auth.require("admin")
 def tag_task(tid):
+    t = _task_row(tid)
     d = body()
-    S().tag_task(tid, [int(u) for u in d.get("user_ids", [])], tagged_by=g.user["username"])
+    uids = [int(u) for u in d.get("user_ids", [])]
+    S().tag_task(tid, uids, tagged_by=g.user["username"])
+    S().log_activity(g.user["username"], "task.tag", target_type="task", target_id=tid, project_id=t["project_id"],
+                     summary=f'{len(uids)} pengguna ditandai')
     return jsonify(ok=True)
 
 

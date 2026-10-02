@@ -88,6 +88,12 @@ CREATE INDEX IF NOT EXISTS idx_pt_project ON cms_project_tasks(project_id);
 CREATE TABLE IF NOT EXISTS cms_project_task_tags (
     task_id INTEGER NOT NULL, user_id INTEGER NOT NULL, tagged_by TEXT, tagged_at TEXT, read_at TEXT,
     PRIMARY KEY (task_id, user_id));
+CREATE TABLE IF NOT EXISTS cms_activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, action TEXT NOT NULL,
+    target_type TEXT, target_id INTEGER, doc_id INTEGER, project_id INTEGER, summary TEXT, created_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_act_created ON cms_activity_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_act_user ON cms_activity_log(username);
+CREATE INDEX IF NOT EXISTS idx_act_doc ON cms_activity_log(doc_id);
 """
 
 
@@ -477,6 +483,46 @@ class BlockStore:
         with self._tx() as c:
             return self._all(c, "SELECT version, changed_by, changed_at, note, text FROM cms_block_history WHERE block_id=? ORDER BY id", (block_id,))
 
+    # ------------------------------------------------------------ log aktivitas (audit, admin-only)
+    def log_activity(self, username: str, action: str, target_type: Optional[str] = None, target_id: Optional[int] = None,
+                     doc_id: Optional[int] = None, project_id: Optional[int] = None, summary: str = ""):
+        """Catatan aktivitas lintas-fitur (edit/insert/delete/move blok, komentar, proyek, berkas, task, dst) --
+        TIDAK terikat ke satu dokumen/blok seperti cms_block_history, dipakai utk halaman admin "Aktivitas"
+        (mirip Activity di Google Drive). Gagal mencatat tidak boleh menggagalkan aksi utamanya."""
+        try:
+            with self._tx() as c:
+                self._x(c, "INSERT INTO cms_activity_log(username,action,target_type,target_id,doc_id,project_id,summary,created_at) "
+                           "VALUES (?,?,?,?,?,?,?,?)",
+                        (username or "", action, target_type, target_id, doc_id, project_id, (summary or "")[:255], _now()))
+        except Exception:                                      # noqa: BLE001
+            pass
+
+    def list_activity(self, *, username: Optional[str] = None, action: Optional[str] = None, doc_id: Optional[int] = None,
+                      project_id: Optional[int] = None, date_from: Optional[str] = None, date_to: Optional[str] = None,
+                      limit: int = 100, offset: int = 0) -> tuple[list[dict], int]:
+        where, p = ["1=1"], []
+        if username:
+            where.append("l.username=?"); p.append(username)
+        if action:
+            where.append("l.action=?"); p.append(action)
+        if doc_id:
+            where.append("l.doc_id=?"); p.append(doc_id)
+        if project_id:
+            where.append("l.project_id=?"); p.append(project_id)
+        if date_from:
+            where.append("l.created_at>=?"); p.append(date_from)
+        if date_to:
+            where.append("l.created_at<=?"); p.append(date_to)
+        w = " AND ".join(where)
+        with self._tx() as c:
+            total = self._one(c, f"SELECT COUNT(*) AS n FROM cms_activity_log l WHERE {w}", p)["n"]
+            rows = self._all(c, f"SELECT l.id, l.username, l.action, l.target_type, l.target_id, l.doc_id, l.project_id, "
+                                 f"l.summary, l.created_at, d.filename AS doc_name, pr.name AS project_name "
+                                 f"FROM cms_activity_log l LEFT JOIN cms_documents d ON d.id=l.doc_id "
+                                 f"LEFT JOIN cms_projects pr ON pr.id=l.project_id WHERE {w} ORDER BY l.id DESC LIMIT ? OFFSET ?",
+                             [*p, limit, offset])
+        return rows, total
+
     # ------------------------------------------------------------ posisi
     def _renumber(self, c, doc_id: int):
         rows = self._all(c, "SELECT id FROM cms_blocks WHERE doc_id=? ORDER BY seq, id", (doc_id,))
@@ -538,10 +584,13 @@ class BlockStore:
                 raise ValueError(f"part harus salah satu {PARTS}")
             if kind == "heading" and level == 1 and part == "body" and "numbered" not in data:
                 data.update(self._chapter_num_data(c, doc_id))
+            data_json = json.dumps(data, ensure_ascii=False)
             cur = self._x(c, "INSERT INTO cms_blocks(doc_id,seq,part,kind,level,style,text,plain,data,updated_by,updated_at) "
                              "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                          (doc_id, seq, part, kind, level, "", text, plain(text), json.dumps(data, ensure_ascii=False), user, _now()))
-            return cur.lastrowid
+                          (doc_id, seq, part, kind, level, "", text, plain(text), data_json, user, _now()))
+            block_id = cur.lastrowid
+            self._snapshot(c, {"id": block_id, "version": 1, "text": text, "data": data_json, "updated_by": user}, user, "tambah")
+            return block_id
 
     def move_block(self, block_id: int, after_id: Optional[int], user: str = "", expected_version: Optional[int] = None):
         """Pindahkan blok ke setelah after_id (None = paling awal)."""

@@ -223,3 +223,23 @@ CREATE TABLE IF NOT EXISTS cms_project_task_tags (
     CONSTRAINT fk_ptt_task FOREIGN KEY (task_id) REFERENCES cms_project_tasks(id) ON DELETE CASCADE,
     CONSTRAINT fk_ptt_user FOREIGN KEY (user_id) REFERENCES cms_users(id)         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---- Tahap 5: log aktivitas (audit, mirip "Activity" Google Drive) -- admin-only, lihat cmsapp/api.py /admin/activity.
+-- doc_id/project_id sengaja TANPA FK (dokumen/proyek bisa dihapus, riwayat aktivitas tetap harus tersisa).
+CREATE TABLE IF NOT EXISTS cms_activity_log (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    username    VARCHAR(100) NOT NULL,
+    action      VARCHAR(40) NOT NULL,           -- block.edit|block.insert|block.delete|block.move|block.restore|
+                                                 -- comment.add|comment.resolve|comment.delete|doc.upload|doc.export|
+                                                 -- project.create|project.update|project.delete|project.file|task.*|pic.*
+    target_type VARCHAR(40) DEFAULT NULL,       -- block|comment|document|project|task|file
+    target_id   INT DEFAULT NULL,
+    doc_id      INT DEFAULT NULL,
+    project_id  INT DEFAULT NULL,
+    summary     VARCHAR(255) DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_act_created (created_at),
+    INDEX idx_act_user (username),
+    INDEX idx_act_doc (doc_id),
+    INDEX idx_act_project (project_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

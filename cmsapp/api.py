@@ -26,9 +26,22 @@ def out(b: dict) -> dict:
     return {k: b[k] for k in ("id", "doc_id", "seq", "part", "kind", "level", "text", "data", "version", "status", "assignee") if k in b}
 
 
-def emit(doc_id: int, etype: str, extra_ch=(), force_global=False, **payload):
+def snip(t, n=60) -> str:
+    t = (t or "").strip().replace("\n", " ")
+    return t if len(t) <= n else t[:n] + "…"
+
+
+LOG_ACTIONS = {"block": "block.edit", "insert": "block.insert", "delete": "block.delete",
+               "move": "block.move", "comment": "comment"}
+
+
+def emit(doc_id: int, etype: str, extra_ch=(), force_global=False, log_summary: str = "", log_action: str = None,
+        **payload):
     """Siarkan event + id bab terdampak (`ch`, daftar) agar klien yang hanya membuka satu bab bisa disaring server.
-    `g`=True bila outline bisa berubah (blok H1 / bab tak diketahui) -> semua klien menerima."""
+    `g`=True bila outline bisa berubah (blok H1 / bab tak diketahui) -> semua klien menerima.
+    Titik pusat pencatatan ke cms_activity_log (lihat /admin/activity) utk etype di LOG_ACTIONS -- lock/unlock/
+    presence sengaja TIDAK dicatat (terlalu sering, bukan aktivitas berarti). `log_summary`/`log_action` TIDAK
+    ikut dikirim ke klien realtime (beda dari **payload)."""
     payload["by"] = g.user["username"]
     anchor = payload.get("id") or (payload.get("ids") or [None])[0] or payload.get("after")
     chs = {c for c in extra_ch if c}
@@ -44,6 +57,12 @@ def emit(doc_id: int, etype: str, extra_ch=(), force_global=False, **payload):
     payload["ch"] = sorted(chs)
     if glob:
         payload["g"] = 1
+    if etype in LOG_ACTIONS:
+        ids = payload.get("ids") or ([payload["id"]] if payload.get("id") is not None else [])
+        tid = payload.get("cid") if etype == "comment" else (ids[0] if ids else anchor)
+        S().log_activity(g.user["username"], log_action or LOG_ACTIONS[etype],
+                         target_type="comment" if etype == "comment" else "block",
+                         target_id=tid, doc_id=doc_id, summary=log_summary)
     return realtime.publish(R(), doc_id, etype, payload)
 
 
@@ -296,7 +315,17 @@ def patch_block(bid):
     v = S().update_block(bid, g.user["username"], text=d.get("text"), data=d.get("data"), level=d.get("level"),
                          status=d.get("status"), assignee=d.get("assignee"), expected_version=d.get("version"),
                          kind=d.get("kind"))
-    emit(b["doc_id"], "block", id=bid, version=v, force_global="level" in d or "kind" in d)
+    bits = []
+    if d.get("text") is not None:
+        bits.append(f'teks "{snip(d["text"])}"')
+    if d.get("status") is not None:
+        bits.append(f'status={d["status"]}')
+    if d.get("assignee") is not None:
+        bits.append(f'assignee={d["assignee"]}')
+    if d.get("kind") is not None:
+        bits.append(f'jenis={d["kind"]}')
+    emit(b["doc_id"], "block", id=bid, version=v, force_global="level" in d or "kind" in d,
+         log_summary=f'{b["kind"]} #{bid}: ' + ("; ".join(bits) or "ubah atribut"))
     return jsonify(id=bid, version=v)
 
 
@@ -308,7 +337,8 @@ def set_generated(bid):
     d = body()
     b = S().get_block(bid)
     v = S().set_heading_generated(bid, d.get("generated") or None, g.user["username"], expected_version=d.get("version"))
-    emit(b["doc_id"], "block", id=bid, version=v, force_global=True)
+    emit(b["doc_id"], "block", id=bid, version=v, force_global=True,
+         log_summary=f'daftar otomatis heading #{bid} -> {d.get("generated") or "heading biasa"}')
     return jsonify(id=bid, version=v)
 
 
@@ -324,7 +354,7 @@ def insert_outline(doc_id):
         raise ValueError("level 1..4")
     nid = S().insert_block(doc_id, d.get("after_id"), "heading", d.get("text", ""), level=level,
                            part=d.get("part"), user=g.user["username"])
-    emit(doc_id, "insert", ids=[nid], after=d.get("after_id"))
+    emit(doc_id, "insert", ids=[nid], after=d.get("after_id"), log_summary=f'heading L{level} "{snip(d.get("text", ""))}"')
     return jsonify(id=nid), 201
 
 
@@ -336,7 +366,7 @@ def delete_outline(bid):
     if b["kind"] != "heading":
         raise ValueError("bukan blok heading")
     S().delete_block(bid, g.user["username"], request.args.get("version", type=int))
-    emit(b["doc_id"], "delete", id=bid)
+    emit(b["doc_id"], "delete", id=bid, log_summary=f'heading #{bid}: "{snip(b.get("text", ""))}"')
     return jsonify(ok=True)
 
 
@@ -350,7 +380,8 @@ def set_hidden(bid):
     d = body()
     b = S().get_block(bid)
     v = S().set_block_hidden(bid, bool(d.get("hidden")), g.user["username"], expected_version=d.get("version"))
-    emit(b["doc_id"], "block", id=bid, version=v, force_global=True)
+    emit(b["doc_id"], "block", id=bid, version=v, force_global=True, log_action="block.hidden",
+         log_summary=f'{"sembunyikan" if d.get("hidden") else "tampilkan"} {b["kind"]} #{bid}')
     return jsonify(id=bid, version=v)
 
 
@@ -368,7 +399,8 @@ def move_outline(bid):
     else:
         S().move_block(bid, after_id, g.user["username"])
         n = 1
-    emit(b["doc_id"], "move", id=bid, after=after_id, force_global=True)
+    emit(b["doc_id"], "move", id=bid, after=after_id, force_global=True,
+         log_summary=f'{b["kind"]} #{bid} ({n} blok) -> setelah #{after_id or "(awal)"}')
     return jsonify(ok=True, moved=n)
 
 
@@ -389,7 +421,8 @@ def insert(doc_id):
         abort(403, description="hanya admin yang membuat bab baru")
     nid = S().insert_block(doc_id, after, kind, d.get("text", ""), int(d.get("level", 0)), d.get("data"),
                            d.get("part"), g.user["username"])
-    emit(doc_id, "insert", ids=[nid], after=after)
+    lvl = f' L{d.get("level")}' if kind == "heading" else ""
+    emit(doc_id, "insert", ids=[nid], after=after, log_summary=f'{kind}{lvl} "{snip(d.get("text", ""))}"')
     return jsonify(id=nid), 201
 
 
@@ -405,7 +438,8 @@ def add_table(doc_id):
         raise ValueError("rows: matriks <=500 baris x <=30 kolom")
     ids = S().add_table(doc_id, after, [[str(c) for c in r] for r in rows], bool(d.get("header", True)), None,
                         d.get("caption"), g.user["username"])
-    emit(doc_id, "insert", ids=ids, after=after)
+    emit(doc_id, "insert", ids=ids, after=after,
+         log_summary=f'tabel {len(rows)} baris' + (f' "{snip(d.get("caption"))}"' if d.get("caption") else ""))
     return jsonify(ids=ids), 201
 
 
@@ -505,7 +539,7 @@ def pagebreak(doc_id):
         abort(403, description="tidak ditugaskan pada bab ini")
     layout = d.get("layout")
     nid = S().add_page_break(doc_id, after, g.user["username"], data={"layout": layout} if layout else None)
-    emit(doc_id, "insert", ids=[nid], after=after)
+    emit(doc_id, "insert", ids=[nid], after=after, log_summary="page break")
     return jsonify(id=nid), 201
 
 
@@ -525,7 +559,7 @@ def image(doc_id):
                             user=g.user["username"])
     finally:
         os.remove(t.name)
-    emit(doc_id, "insert", ids=ids, after=after)
+    emit(doc_id, "insert", ids=ids, after=after, log_summary=f'gambar "{snip(f.filename, 80)}"')
     return jsonify(ids=ids), 201
 
 
@@ -534,7 +568,7 @@ def image(doc_id):
 def delete(bid):
     b = guard(bid)
     S().delete_block(bid, g.user["username"], request.args.get("version", type=int))
-    emit(b["doc_id"], "delete", id=bid)
+    emit(b["doc_id"], "delete", id=bid, log_summary=f'{b["kind"]} #{bid}: "{snip(b.get("text", ""))}"')
     return jsonify(ok=True)
 
 
@@ -543,7 +577,8 @@ def delete(bid):
 def restore(bid):
     b = guard(bid)
     S().restore_block(bid, g.user["username"])
-    emit(b["doc_id"], "insert", ids=[bid], after=None)
+    emit(b["doc_id"], "insert", ids=[bid], after=None, log_action="block.restore",
+         log_summary=f'pulihkan {b["kind"]} #{bid}: "{snip(b.get("text", ""))}"')
     return jsonify(ok=True)
 
 
@@ -557,7 +592,8 @@ def move(bid):
         abort(403, description="tujuan di luar bab Anda")
     src = chapter_id(bid)
     S().move_block(bid, after, g.user["username"], d.get("version"))
-    emit(b["doc_id"], "move", extra_ch=(src, chapter_id(after)), id=bid, after=after)
+    emit(b["doc_id"], "move", extra_ch=(src, chapter_id(after)), id=bid, after=after,
+         log_summary=f'{b["kind"]} #{bid} -> setelah #{after or "(awal)"}')
     return jsonify(ok=True)
 
 
@@ -565,8 +601,10 @@ def move(bid):
 @auth.require("admin", "author")
 def revert(bid):
     b = guard(bid)
-    v = S().restore_version(bid, int(need(body().get("version"), "version")), g.user["username"])
-    emit(b["doc_id"], "block", id=bid, version=v)
+    version = int(need(body().get("version"), "version"))
+    v = S().restore_version(bid, version, g.user["username"])
+    emit(b["doc_id"], "block", id=bid, version=v, log_action="block.revert",
+         log_summary=f'{b["kind"]} #{bid} -> kembalikan ke versi {version}')
     return jsonify(id=bid, version=v)
 
 
@@ -593,15 +631,17 @@ def comments(doc_id):
 def add_comment(bid):
     d = body()
     c = S().add_comment(bid, g.user["username"], d.get("text", ""), d.get("parent_id"))
-    emit(c["doc_id"], "comment", id=bid, cid=c["id"])
+    emit(c["doc_id"], "comment", id=bid, cid=c["id"], log_action="comment.add", log_summary=snip(d.get("text", ""), 120))
     return jsonify(id=c["id"]), 201
 
 
 @bp.post("/comments/<int:cid>/resolve")
 @auth.require("admin", "author", "reviewer")
 def resolve_comment(cid):
-    cm = S().resolve_comment(cid, g.user["username"], bool(body().get("resolved", True)))
-    emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid)
+    resolved = bool(body().get("resolved", True))
+    cm = S().resolve_comment(cid, g.user["username"], resolved)
+    emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid, log_action="comment.resolve",
+         log_summary="selesai" if resolved else "buka lagi")
     return jsonify(ok=True)
 
 
@@ -612,7 +652,7 @@ def del_comment(cid):
     if g.user["role"] != "admin" and cm["author"] != g.user["username"]:
         abort(403, description="hanya penulis komentar / admin")
     S().delete_comment(cid)
-    emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid)
+    emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid, log_action="comment.delete")
     return jsonify(ok=True)
 
 
@@ -697,6 +737,7 @@ def export_start(doc_id):
     r = R()
     if not r.set(f"cms:rl:export:{g.user['id']}", 1, nx=True, ex=5):
         return jsonify(error="tunggu beberapa detik"), 429
+    S().log_activity(g.user["username"], "doc.export", target_type="document", target_id=doc_id, doc_id=doc_id)
     return jsonify(export.enqueue(r, S(), doc_id, g.user["username"]))
 
 
@@ -726,6 +767,8 @@ def export_download(jid):
 def admin_user():
     d = body()
     uid = auth.create_user(d["username"], d["password"], d.get("name", ""), d.get("role", "author"))
+    S().log_activity(g.user["username"], "user.create", target_type="user", target_id=uid,
+                     summary=f'{d["username"]} ({d.get("role", "author")})')
     return jsonify(id=uid), 201
 
 
@@ -734,6 +777,9 @@ def admin_user():
 def admin_assign():
     d = body()
     (auth.unassign if d.get("remove") else auth.assign)(int(d["doc_id"]), int(d["user_id"]), d["scope"])
+    S().log_activity(g.user["username"], "pic.unassign" if d.get("remove") else "pic.assign",
+                     target_type="user", target_id=int(d["user_id"]), doc_id=int(d["doc_id"]),
+                     summary=f'user #{d["user_id"]}: {d["scope"]}')
     return jsonify(ok=True)
 
 
@@ -765,6 +811,29 @@ def admin_assignments(doc_id):
     return jsonify(assignments=rows)
 
 
+@bp.get("/admin/activity")
+@auth.require("admin")
+def admin_activity():
+    """Log aktivitas lintas-fitur (edit/sisip/hapus/pindah blok, komentar, proyek, berkas, task, dst) --
+    admin-only, mirip "Activity" Google Drive. Filter opsional: user, action, doc_id, project_id, from, to
+    (created_at, format 'YYYY-MM-DD' atau 'YYYY-MM-DD HH:MM:SS'); limit<=200, offset utk paginasi."""
+    items, total = S().list_activity(
+        username=request.args.get("user") or None, action=request.args.get("action") or None,
+        doc_id=request.args.get("doc_id", type=int), project_id=request.args.get("project_id", type=int),
+        date_from=request.args.get("from") or None, date_to=request.args.get("to") or None,
+        limit=min(request.args.get("limit", 100, type=int), 200), offset=request.args.get("offset", 0, type=int))
+    return jsonify(items=items, total=total)
+
+
+@bp.get("/admin/activity/actions")
+@auth.require("admin")
+def admin_activity_actions():
+    st = S()
+    with st._tx() as c:
+        rows = st._all(c, "SELECT DISTINCT action FROM cms_activity_log ORDER BY action")
+    return jsonify(actions=[r["action"] for r in rows])
+
+
 @bp.post("/admin/docs")
 @auth.require("admin")
 def admin_upload_doc():
@@ -785,4 +854,6 @@ def admin_upload_doc():
         raise ValueError(f"gagal membaca docx: {e}")
     res["meta"]["source_file"] = os.path.basename(f.filename)
     doc_id = S().import_result(res, media, g.user["username"], path)
+    S().log_activity(g.user["username"], "doc.upload", target_type="document", target_id=doc_id, doc_id=doc_id,
+                     summary=os.path.basename(f.filename))
     return jsonify(doc_id=doc_id, blocks=res["meta"].get("block_count")), 201

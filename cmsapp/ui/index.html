@@ -59,7 +59,7 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 </style></head><body>
 <header><b>CMS Kolaborasi</b><span id="who"></span><span id="pres" title="online"></span>
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
-<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="badm" hidden>Admin</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
+<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="badm" hidden>Admin</button><button id="bact" hidden>Aktivitas</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
@@ -116,7 +116,7 @@ function dom2mk(root){let out='';const walk=(n,first)=>{for(const c of n.childNo
  walk(root);out=out.replace(/(\\*)(\*\*|__|\+\+|\^\^|~~)\2/g,(m,bs,mk)=>bs.length%2?m:bs);return out.replace(/\n+$/,'') }
 function note(t,err){const b=$('#bar');b.hidden=!t;b.className=err?'err':'';b.textContent=t||'';if(t)setTimeout(()=>{b.hidden=true},4000)}
 async function boot(){try{me=(await api('GET','/me')).user}catch(e){return loginView()}
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#badm').hidden=me.role!=='admin';$('#bdocs').hidden=false;$('#bproj').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#badm').hidden=me.role!=='admin';$('#bact').hidden=me.role!=='admin';$('#bdocs').hidden=false;$('#bproj').hidden=false;
  setNotif(me.unread_tags||0);projectsView()}
 function setNotif(n){const b=$('#bnotif');b.hidden=!n;b.textContent='🔔 '+n}
 async function notifPanel(){document.querySelector('.notifd')?.remove();
@@ -131,6 +131,7 @@ async function notifPanel(){document.querySelector('.notifd')?.remove();
 function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder=username autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span></form>`;
  $('#login').onsubmit=async e=>{e.preventDefault();try{await api('POST','/login',{username:e.target.u.value,password:e.target.p.value});boot()}catch(x){$('#le').textContent=x.message}}}
 $('#badm').onclick=()=>adminView();
+$('#bact').onclick=()=>activityView();
 $('#bdocs').onclick=()=>docsView();
 $('#bproj').onclick=()=>projectsView();
 $('#bnotif').onclick=notifPanel;
@@ -396,6 +397,35 @@ function fileDlg(){const m=document.createElement('div');m.className='mask';
   try{await api('POST',`/projects/${curProj}/files`,fd,true);m.remove();tabBerkas()}catch(x){note(x.message,1)}}}
 // ===================== /Manajemen Proyek =====================
 
+// ===================== Aktivitas (admin) =====================
+let actState={offset:0,limit:50,user:'',action:'',from:'',to:''};
+async function activityView(){closeDoc();
+ const [{users},{actions}]=await Promise.all([api('GET','/admin/users'),api('GET','/admin/activity/actions')]);
+ actState={offset:0,limit:50,user:'',action:'',from:'',to:''};
+ $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Log Aktivitas</h3>
+ <form id=actf style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+ <select name=user><option value="">— semua pengguna —</option>${users.map(u=>`<option value="${esc(u.username)}">${esc(u.username)}</option>`).join('')}</select>
+ <select name=action><option value="">— semua aksi —</option>${actions.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('')}</select>
+ <label style="font-size:12px;color:var(--mut)">dari<br><input type=date name=from></label>
+ <label style="font-size:12px;color:var(--mut)">s/d<br><input type=date name=to></label>
+ <button class=p style="align-self:end">Filter</button></form>
+ <div id=actbody></div>
+ <p><button id=actprev>← Sebelumnya</button> <button id=actnext>Berikutnya →</button></p></div>`;
+ $('#ab').onclick=e=>{e.preventDefault();docsView()};
+ $('#actf').onsubmit=e=>{e.preventDefault();const f=e.target;Object.assign(actState,{offset:0,user:f.user.value,action:f.action.value,from:f.from.value,to:f.to.value});loadActivity()};
+ $('#actprev').onclick=()=>{actState.offset=Math.max(0,actState.offset-actState.limit);loadActivity()};
+ $('#actnext').onclick=()=>{actState.offset+=actState.limit;loadActivity()};
+ loadActivity()}
+async function loadActivity(){
+ const q=new URLSearchParams();for(const k of['user','action','from','to'])if(actState[k])q.set(k,actState[k]);
+ q.set('limit',actState.limit);q.set('offset',actState.offset);
+ const {items,total}=await api('GET',`/admin/activity?${q}`);
+ const tgt=it=>it.doc_name?`Dok: ${esc(it.doc_name)}`:(it.project_name?`Proyek: ${esc(it.project_name)}`:(it.target_type?`${esc(it.target_type)} #${it.target_id??''}`:'—'));
+ $('#actbody').innerHTML=`<table><tr><th>Waktu</th><th>Pengguna</th><th>Aksi</th><th>Target</th><th>Ringkasan</th></tr>${
+ items.map(it=>`<tr><td>${esc(it.created_at||'')}</td><td>${esc(it.username)}</td><td>${esc(it.action)}</td><td>${tgt(it)}</td><td>${esc(it.summary||'')}</td></tr>`).join('')
+ ||'<tr><td colspan=5 style="color:var(--mut)">Tidak ada aktivitas.</td></tr>'}</table>
+ <p style="color:var(--mut);font-size:12px">${total?`${actState.offset+1}-${actState.offset+items.length} dari ${total}`:'0 hasil'}</p>`}
+// ===================== /Aktivitas =====================
 async function adminView(){closeDoc();const [{users},{docs}]=await Promise.all([api('GET','/admin/users'),api('GET','/docs')]);
  $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Pengguna</h3>
  <table><tr><th>Username</th><th>Nama</th><th>Peran</th><th>Aktif</th><th></th></tr>${users.map(u=>`<tr><td>${esc(u.username)}</td><td>${esc(u.name)}</td><td>${u.role}</td><td>${u.active?'ya':'tidak'}</td>
