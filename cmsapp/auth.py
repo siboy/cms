@@ -1,7 +1,7 @@
 """
 Pengguna, peran, dan otorisasi per bab.
 
-Peran:  admin (semua) | author (hanya bab/bagian yang ditugaskan) | reviewer (baca, ubah status, tidak mengedit isi)
+Peran:  admin (semua) | author (hanya bab/bagian yang ditugaskan) | reviewer/QC (edit semua blok seperti admin, kecuali bab H1 & kelola pengguna)
 Sesi:   cookie bertanda tangan (tanpa state di server); data pengguna di-cache di Redis 60 dtk.
 CSRF:   semua request non-GET wajib membawa header X-CMS: 1 (tidak bisa dikirim lintas-situs tanpa CORS).
 """
@@ -143,9 +143,9 @@ def require(*roles):
 def can_edit(doc_id: int, block_id: int) -> bool:
     """admin: semua; author: bila PIC efektif blok ini (heading/caption/tabel/gambar terdekat yang
     ditugaskan, berjenjang - override di level lebih dalam menang atas warisan dari H1/bagian di
-    atasnya, lihat BlockStore.effective_pic); reviewer: tidak."""
+    atasnya, lihat BlockStore.effective_pic); reviewer (QC): semua, seperti admin."""
     u = g.user
-    if u["role"] == "admin":
+    if u["role"] in ("admin", "reviewer"):
         return True
     if u["role"] != "author":
         return False

@@ -586,7 +586,7 @@ function bodyOf(b){
 const GENLIST_LABELS={toc:'Daftar Isi',tof_tabel:'Daftar Tabel',tof_gambar:'Daftar Gambar'};
 const HIDEABLE_KINDS=['heading','table','image','caption'];
 function view(b){const el=document.createElement('div');el.className='blk'+(b.kind==='heading'?' h':'')+(b.locked_by?' locked':'');el.dataset.id=b.id;
- const canEdit=me.role!=='reviewer',gen=b.kind==='heading'&&(b.data||{}).generated,hidden=HIDEABLE_KINDS.includes(b.kind)&&(b.data||{}).hidden;
+ const canEdit=true,gen=b.kind==='heading'&&(b.data||{}).generated,hidden=HIDEABLE_KINDS.includes(b.kind)&&(b.data||{}).hidden;
  const canOutline=me.role==='admin'||me.role==='reviewer';
  el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
  el.append(bodyOf(b));const a=document.createElement('div');a.className='acts';
@@ -595,7 +595,7 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
  if(canOutline&&HIDEABLE_KINDS.includes(b.kind))btn(hidden?'👁 Tampilkan lagi':'🙈 Sembunyikan dari ekspor',()=>api('POST',`/blocks/${b.id}/hidden`,{hidden:!hidden,version:b.version}));
  if(['paragraph','heading','list_item','caption','note'].includes(b.kind)&&canEdit)btn('Edit',()=>edit(el,b));
- if(me.role!=='reviewer'){btn('+ Blok',()=>blockDlg(b));
+ if(true){btn('+ Blok',()=>blockDlg(b));
   btn('+ Gambar',async()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('after_id',b.id);
    try{await api('POST',`/docs/${doc}/images`,fd,true)}catch(e){note(e.message,1)}};f.click()});
   btn('+ Tabel',()=>tableDlg(b));
@@ -734,7 +734,7 @@ function runOf(L,i,key){const R=L.records,v=k=>R[k].v[key],sp=k=>(R[k].span||{})
 function pathLine(c){const p=c.path.slice();if(c.brk!=null&&c.brk<p.length)p[c.brk]='/'+p[c.brk];return p.join(' > ')}
 async function formEd(id,open){const m=document.createElement('div');m.className='fmask';document.body.append(m);
  const st={id,m,b:null,q:'',prev:false,stale:false};fe=st;document.execCommand('styleWithCSS',false,false);
- const ro=()=>me.role==='reviewer'||!!(st.b&&st.b.locked_by);
+ const ro=()=>!!(st.b&&st.b.locked_by);
  st.close=()=>{m.remove();if(fe===st)fe=null;refreshBlock(id)};
  st.load=async force=>{const {block}=await api('GET',`/blocks/${id}`);if(!force&&st.b&&block.version===st.b.version)return;st.b=block;st.stale=false;render()};
  st.sync=()=>{if(m.contains(document.activeElement)&&document.activeElement.classList.contains('fld'))st.stale=true;else st.load().catch(()=>{})};
@@ -766,7 +766,7 @@ async function formEd(id,open){const m=document.createElement('div');m.className
   if(!ro()){tb('Kolom & header…',()=>colsDlg());tb('Tempel baris (Excel)…',()=>pasteDlg());tb('＋ Record',()=>op({op:'add',after:n-1,rows:[{}]},n))}
   tb('Tutup',()=>st.close(),1);
   if(!ro()&&!st.prev){const bar=toolbar({focus(){}},()=>{},true);bar.lastChild.remove();hd.append(bar)}
-  if(ro()){const w=document.createElement('small');w.textContent=me.role==='reviewer'?'(hanya baca)':'🔒 dikunci '+st.b.locked_by;hd.querySelector('b').after(w)}
+  if(ro()){const w=document.createElement('small');w.textContent='🔒 dikunci '+st.b.locked_by;hd.querySelector('b').after(w)}
   hd.querySelector('.q').oninput=e=>{st.q=e.target.value;const pos=e.target.selectionStart;render();const q=m.querySelector('.q');q.focus();q.setSelectionRange(pos,pos)};
   const body=document.createElement('div');body.className='fbody';m.append(hd,body);
   if(st.prev)body.append(tblPreview(st.b.data));
@@ -823,7 +823,7 @@ async function edit(el,b){try{await api('POST',`/blocks/${b.id}/lock`);locks[b.i
 async function hist(el,b){const {history}=await api('GET',`/blocks/${b.id}/history`);let p=el.querySelector('.hist');if(p){p.remove();return}
  p=document.createElement('div');p.className='hist meta';p.style.flexDirection='column';p.style.alignItems='flex-start';
  history.slice().reverse().slice(0,15).forEach(h=>{const r=document.createElement('div');r.innerHTML=`v${h.version} · ${esc(h.changed_by||'')} · ${esc((h.text||'').slice(0,80))} `;
-  if(me.role!=='reviewer'){const x=document.createElement('button');x.textContent='Kembalikan';x.onclick=()=>api('POST',`/blocks/${b.id}/revert`,{version:h.version}).catch(e=>note(e.message,1));r.append(x)}p.append(r)});el.append(p)}
+  {const x=document.createElement('button');x.textContent='Kembalikan';x.onclick=()=>api('POST',`/blocks/${b.id}/revert`,{version:h.version}).catch(e=>note(e.message,1));r.append(x)}p.append(r)});el.append(p)}
 async function refreshBlock(id){if(fe&&fe.id===id&&fe.sync)fe.sync();const el=$(`.blk[data-id="${id}"]`);if(!el)return;if(el.classList.contains('edit')&&locks[id])return;
  await loadCmts();try{const {block}=await api('GET',`/blocks/${id}`);if(block.deleted)return el.remove();el.replaceWith(view(block))}catch(e){el.remove()}}
 let rl=null;function reloadSoon(){clearTimeout(rl);rl=setTimeout(()=>{if(!$('.blk.edit'))(section?loadSection(section):loadChapter());loadOutline()},400)}

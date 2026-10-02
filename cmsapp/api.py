@@ -304,10 +304,7 @@ def asset(doc_id, sha1):
 def patch_block(bid):
     d = body()
     b = S().get_block(bid)
-    if g.user["role"] == "reviewer":
-        if not set(d) <= {"status", "version"} or "status" not in d:
-            abort(403, description="reviewer hanya boleh mengubah status")
-    elif not auth.can_edit(b["doc_id"], bid):
+    if not auth.can_edit(b["doc_id"], bid):
         abort(403, description="tidak ditugaskan pada bab ini")
     if ("level" in d or "kind" in d) and g.user["role"] != "admin" and (
             b["level"] == 1 or int(d.get("level") or (2 if d.get("kind") == "heading" else 0)) == 1):
@@ -405,7 +402,7 @@ def move_outline(bid):
 
 
 @bp.post("/docs/<int:doc_id>/blocks")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def insert(doc_id):
     d = body()
     after = d.get("after_id")
@@ -427,7 +424,7 @@ def insert(doc_id):
 
 
 @bp.post("/docs/<int:doc_id>/tables")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def add_table(doc_id):
     d = body()
     after = need(d.get("after_id"), "after_id")
@@ -444,7 +441,7 @@ def add_table(doc_id):
 
 
 @bp.patch("/blocks/<int:bid>/cell")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def cell(bid):
     d = body()
     b = guard(bid)
@@ -455,7 +452,7 @@ def cell(bid):
 
 
 @bp.post("/blocks/<int:bid>/rows")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def rows(bid):
     d = body()
     b = guard(bid)
@@ -469,7 +466,7 @@ def rows(bid):
 
 
 @bp.post("/blocks/<int:bid>/long")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def table_long(bid):
     """Ubah mode tabel: {"on": true[, "force": true]} -> mode form (long-form; force = konversi longgar),
     {"on": false} -> kembali ke grid, {"preview": true} -> cek konversi tanpa menyimpan."""
@@ -486,7 +483,7 @@ def table_long(bid):
 
 
 @bp.patch("/blocks/<int:bid>/rec")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def table_rec(bid):
     """Ubah satu isian record tabel: {rec, key, text, group?}. Tanpa `version` = digabung ke versi terbaru."""
     d = body()
@@ -498,7 +495,7 @@ def table_rec(bid):
 
 
 @bp.post("/blocks/<int:bid>/records")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def table_records(bid):
     """Operasi record: {op:"add", after, rows:[[...]|{kolom:teks}]} | {op:"delete", rec} | {op:"move", rec, to} | {op:"span", rec, key, n}."""
     d = body()
@@ -514,7 +511,7 @@ def table_records(bid):
 
 
 @bp.post("/blocks/<int:bid>/columns")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def table_columns(bid):
     """Atur kolom/header: {columns:[{key?, path:"Grup > Sub", merge?, align?, size?}], dry?}. dry=true -> hanya pratinjau grid."""
     d = body()
@@ -531,7 +528,7 @@ def table_columns(bid):
 
 
 @bp.post("/docs/<int:doc_id>/pagebreak")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def pagebreak(doc_id):
     d = body()
     after = need(d.get("after_id"), "after_id")
@@ -544,7 +541,7 @@ def pagebreak(doc_id):
 
 
 @bp.post("/docs/<int:doc_id>/images")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def image(doc_id):
     f = request.files.get("file")
     after = request.form.get("after_id", type=int)
@@ -564,7 +561,7 @@ def image(doc_id):
 
 
 @bp.delete("/blocks/<int:bid>")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def delete(bid):
     b = guard(bid)
     S().delete_block(bid, g.user["username"], request.args.get("version", type=int))
@@ -573,7 +570,7 @@ def delete(bid):
 
 
 @bp.post("/blocks/<int:bid>/restore")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def restore(bid):
     b = guard(bid)
     S().restore_block(bid, g.user["username"])
@@ -583,7 +580,7 @@ def restore(bid):
 
 
 @bp.post("/blocks/<int:bid>/move")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def move(bid):
     d = body()
     b = guard(bid)
@@ -598,7 +595,7 @@ def move(bid):
 
 
 @bp.post("/blocks/<int:bid>/revert")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def revert(bid):
     b = guard(bid)
     version = int(need(body().get("version"), "version"))
@@ -658,7 +655,7 @@ def del_comment(cid):
 
 # ---------------------------------------------------------------- lock
 @bp.post("/blocks/<int:bid>/lock")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def lock(bid):
     b = guard(bid)
     until = S().lock_block(bid, g.user["username"])
@@ -667,7 +664,7 @@ def lock(bid):
 
 
 @bp.delete("/blocks/<int:bid>/lock")
-@auth.require("admin", "author")
+@auth.require("admin", "author", "reviewer")
 def unlock(bid):
     b = S().get_block(bid)
     S().unlock_block(bid, g.user["username"])
