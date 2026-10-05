@@ -42,13 +42,14 @@ def para(text: str, fmt: Optional[dict] = None) -> dict:
     return {"kind": "paragraph", "level": 0, "style": "Normal" if fmt else "", "text": text, "data": dict(fmt or {})}
 
 
-_OL = re.compile(r"^\s*\d{1,3}[.)]\s+(.*)$")
+_OL = re.compile(r"^\s*\d{1,3}([.)])\s+(.*)$")
 _UL = re.compile(r"^\s*[•▪◦]\s+(.*)$")
 
 
 def _cell_text(cell: dict) -> str:
-    """Teks sel; item daftar diberi penanda `1) ` (bernomor, urut & mulai ulang) atau `• ` (bullet) supaya bisa diedit
-    sebagai teks dan dibentuk lagi oleh `blocks_of`."""
+    """Teks sel; item daftar diberi penanda `1) `/`1. ` (bernomor, urut & mulai ulang -- pemisah dari
+    `data.sep`, default ')') atau `• ` (bullet) supaya bisa diedit sebagai teks dan dibentuk lagi oleh
+    `blocks_of`."""
     out, n = [], 0
     for b in cell.get("blocks", []):
         t = b.get("text", "")
@@ -56,7 +57,7 @@ def _cell_text(cell: dict) -> str:
             d = b.get("data") or {}
             if d.get("ordered"):
                 n = 1 if (d.get("restart") or n == 0) else n + 1
-                t = f"{n}) {t}"
+                t = f"{n}{d.get('sep', ')')} {t}"
             else:
                 n, t = 0, f"• {t}"
         else:
@@ -116,9 +117,11 @@ def blocks_of(text: str, fmt: Optional[dict]) -> list[dict]:
             flush()
             ordered = bool(mo)
             d: dict[str, Any] = {"ordered": ordered, "ilvl": 0}
-            if ordered and not prev_ol:
-                d["restart"] = True
-            out.append({"kind": "list_item", "level": 0, "style": "", "text": (mo or mu).group(1), "data": d})
+            if ordered:
+                d["sep"] = mo.group(1)
+                if not prev_ol:
+                    d["restart"] = True
+            out.append({"kind": "list_item", "level": 0, "style": "", "text": (mo.group(2) if mo else mu.group(1)), "data": d})
             prev_ol = ordered
         else:
             plain.append(ln)

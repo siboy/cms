@@ -78,21 +78,30 @@ const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json'
 let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,section=null,es=null,outline=[],locks={},hb=null;
 const hasPerm=k=>!!(me&&(me.is_super||(me.perms||[]).includes(k)));
 const view_restricted_client=()=>hasPerm('doc_view_assigned_only')&&!hasPerm('block_edit_all');
-function cellText(c){let n=0;return (c.blocks||[]).map(x=>{const d=x.data||{};if(x.kind==='list_item'){if(d.ordered){n=(d.restart||!n)?1:n+1;return n+') '+x.text}n=0;return '• '+x.text}n=0;return x.text}).join('\n')}
-/* daftar dlm sel tabel: awali tiap baris terpilih dgn `1) ` / `• ` (server menjadikannya list_item; klik lagi = lepas) */
-function listMark(ordered){const sel=getSelection();if(!sel.rangeCount)throw new Error('Klik/sorot baris di dalam sel dulu');
+function cellText(c){let n=0;return (c.blocks||[]).map(x=>{const d=x.data||{};if(x.kind==='list_item'){if(d.ordered){n=(d.restart||!n)?1:n+1;return n+(d.sep||')')+' '+x.text}n=0;return '• '+x.text}n=0;return x.text}).join('\n')}
+/* daftar dlm sel tabel: awali tiap baris terpilih dgn `1) `/`1. ` / `• ` (server menjadikannya list_item; klik lagi
+   = lepas). `sep` pilih gaya nomor (')' default, atau '.'). Utk ordered, nomor LANJUT dari item bernomor
+   terakhir SEBELUM seleksi (scan mundur di luar `hit`) -- bukan selalu mulai dari 1, supaya baris baru yang
+   ditandai belakangan tetap urut dgn baris yang sudah ada di atasnya. */
+function listMark(ordered,sep){sep=sep||')';const sel=getSelection();if(!sel.rangeCount)throw new Error('Klik/sorot baris di dalam sel dulu');
  const r=sel.getRangeAt(0);let host=r.commonAncestorContainer;host=host.nodeType===1?host:host.parentElement;host=host&&host.closest('[contenteditable="true"]');
  if(!host||!host.matches('td,th,.fld'))throw new Error('Klik/sorot baris di dalam sel dulu');
  const w=document.createTreeWalker(host,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT,{acceptNode:n=>n.nodeType===3||n.nodeName==='BR'?1:3});
  const segs=[];let cur=[];for(let n=w.nextNode();n;n=w.nextNode()){cur.push(n);if(n.nodeName==='BR'){segs.push(cur);cur=[]}}segs.push(cur);
- const hit=segs.filter(sg=>sg.some(n=>r.intersectsNode(n)));if(!hit.length)return;
- const re=ordered?/^\s*\d{1,3}[.)]\s/:/^\s*[•▪◦]\s/,any=/^\s*(\d{1,3}[.)]|[•▪◦])\s/;
+ const hitIdx=segs.map((sg,i)=>sg.some(n=>r.intersectsNode(n))?i:-1).filter(i=>i>=0);if(!hitIdx.length)return;
+ const any=/^\s*(\d{1,3}[.)]|[•▪◦])\s/,ordRe=/^\s*(\d{1,3})[.)]\s/,bulRe=/^\s*[•▪◦]\s/;
  const first=sg=>sg.find(n=>n.nodeType===3&&n.data.length);
- const on=hit.every(sg=>{const t=first(sg);return t&&re.test(t.data)});let k=0;
- for(const sg of hit){const t=first(sg);
-  if(on){t.data=t.data.replace(any,'');continue}
+ const re=ordered?/^\s*\d{1,3}[.)]\s/:bulRe;
+ const on=hitIdx.every(i=>{const t=first(segs[i]);return t&&re.test(t.data)});
+ if(on){for(const i of hitIdx){const t=first(segs[i]);if(t)t.data=t.data.replace(any,'')}host.dispatchEvent(new Event('blur'));return}
+ let k=0;
+ if(ordered){
+  for(let i=hitIdx[0]-1;i>=0;i--){const t=first(segs[i]);if(!t)continue;
+   const m=t.data.match(ordRe);if(m){k=+m[1];break}
+   if(bulRe.test(t.data)||t.data.trim())break}}
+ for(const i of hitIdx){const sg=segs[i],t=first(sg);
   if(t&&any.test(t.data))t.data=t.data.replace(any,'');
-  const m=document.createTextNode(ordered?(++k)+') ':'• ');const a=t||sg[0];a.parentNode.insertBefore(m,a)}
+  const m=document.createTextNode(ordered?(++k)+sep+' ':'• ');const a=t||sg[0];a.parentNode.insertBefore(m,a)}
  host.dispatchEvent(new Event('blur'))}
 async function api(m,u,b,raw){const r=await fetch('/api'+u,{method:m,headers:raw?{'X-CMS':'1'}:H,body:raw?b:(b?JSON.stringify(b):undefined),credentials:'same-origin'});
  let j={};try{j=await r.json()}catch(e){}if(!r.ok){const e=new Error(j.error||r.status);e.status=r.status;e.body=j;throw e}return j}
@@ -983,7 +992,8 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   if(b.kind==='table'&&b.data.long){btn('✎ Edit form',async()=>formEd(b.id));btn('Kolom & header',async()=>formEd(b.id,'cols'));
    btn('→ Mode grid',async()=>{if(confirm('Kembali ke mode grid? Edit per record dinonaktifkan untuk tabel ini.'))await api('POST',`/blocks/${b.id}/long`,{on:false})})}
   else if(b.kind==='table'){const rw=()=>{const t=el.querySelector('table');return t.dataset.row!==undefined?+t.dataset.row:(b.data.rows.length-1)};
-   btn('1) Nomor',async()=>listMark(true));a.lastChild.title='Sorot baris di dalam sel, lalu klik: jadi daftar bernomor (klik lagi = lepas)';a.lastChild.onmousedown=e=>e.preventDefault();
+   btn('1) Nomor',async()=>listMark(true,')'));a.lastChild.title='Sorot baris di dalam sel, lalu klik: jadi daftar bernomor gaya 1) 2) 3) (klik lagi = lepas)';a.lastChild.onmousedown=e=>e.preventDefault();
+   btn('1. Nomor',async()=>listMark(true,'.'));a.lastChild.title='Sorot baris di dalam sel, lalu klik: jadi daftar bernomor gaya 1. 2. 3. (klik lagi = lepas)';a.lastChild.onmousedown=e=>e.preventDefault();
    btn('• Bullet',async()=>listMark(false));a.lastChild.title='Sorot baris di dalam sel, lalu klik: jadi bullet (klik lagi = lepas)';a.lastChild.onmousedown=e=>e.preventDefault();
    btn('+ Baris',async()=>{const r=rw(),n=b.data.ncols||b.data.rows[0].cells.length;await api('POST',`/blocks/${b.id}/rows`,{after_row:r,values:Array(n).fill(''),version:b.version})});
    btn('− Baris',async()=>{if(b.data.rows.length<2)throw new Error('sisakan minimal 1 baris');if(confirm('Hapus baris terpilih (klik sel dulu; default terakhir)?'))await api('POST',`/blocks/${b.id}/rows`,{delete:rw(),version:b.version})})
@@ -1180,7 +1190,9 @@ function toolbar(ed,rawToggle,lists,blockId){const d=document.createElement('div
  mk('Tautan','Sisipkan tautan',()=>{ed.focus();const u=prompt('URL (https://…):');if(u)document.execCommand('createLink',false,u)});
  mk('Lepas','Hapus tautan',cmd('unlink'));mk('Bersih','Hapus format',cmd('removeFormat'));
  mk('🖼','Sisipkan gambar/ikon/screenshot rumus di sini',()=>insertInlineImage(ed,blockId));
- if(lists){mk('1)','Daftar bernomor (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(true)}catch(e){note(e.message,1)}});mk('•','Daftar bullet (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(false)}catch(e){note(e.message,1)}})}
+ if(lists){mk('1)','Daftar bernomor, gaya 1) 2) 3) (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(true,')')}catch(e){note(e.message,1)}});
+  mk('1.','Daftar bernomor, gaya 1. 2. 3. (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(true,'.')}catch(e){note(e.message,1)}});
+  mk('•','Daftar bullet (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(false)}catch(e){note(e.message,1)}})}
  const r=mk('&lt;/&gt;','Lihat/ubah kode markup',rawToggle);r.style.marginLeft='auto';return d}
 async function edit(el,b){try{await api('POST',`/blocks/${b.id}/lock`);locks[b.id]=1}catch(e){return note(e.message,1)}
  el.classList.add('edit');const old=el.querySelector('.txt');let ed=document.createElement('div');ed.className='wys';ed.contentEditable=true;ed.append(mk2dom(b.text));
