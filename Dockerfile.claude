@@ -20,6 +20,9 @@ RUN apt-get update \
     && npm cache clean --force \
     && rm -rf /var/lib/apt/lists/*
 
+# docker CLI (static) utk docker exec ke container lain lewat /var/run/docker.sock (lihat claude.yml)
+COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
+
 COPY scripts/claude-runner.sh /usr/local/bin/claude-runner.sh
 RUN chmod +x /usr/local/bin/claude-runner.sh
 

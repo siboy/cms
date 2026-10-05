@@ -17,6 +17,9 @@ services:
       HOST_GID: ${HOST_GID:?jalankan lewat make}
       HOME: ${HOST_HOME:?jalankan lewat make}
       CLAUDE_WORKDIR: ${HOST_HOME}/cms
+    # Akses docker host (uji coba: docker exec xtest ...). Setara root di host, sengaja tanpa pembatasan.
+    group_add:
+      - "${DOCKER_GID:-1001}"
     working_dir: ${HOST_HOME}/cms
     volumes:
       # Path container = path host → skrip/Makefile yang pakai ~/flask dst. tetap jalan.
@@ -27,6 +30,7 @@ services:
       - ${HOST_HOME}/diskusidata:${HOST_HOME}/diskusidata
       # Login Claude milik container ini (persisten, akun terpisah dari host).
       - claude-home:/claude-home
+      - /var/run/docker.sock:/var/run/docker.sock
       # Memori + riwayat sesi host (per proyek, rw). Path container = path host, jadi nama
       # folder proyek cocok & memori repo yang di-mount langsung terbaca/tertulis ke host.
       # Hanya projects/ — login tetap akun container sendiri (BUKAN seluruh ~/.claude).
