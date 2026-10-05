@@ -266,25 +266,54 @@ def project_team(pid):
 @bp.post("/projects/<int:pid>/team")
 @auth.require("project_team_manage")
 def project_team_add(pid):
+    """JSON {user_id, title} utk akun CMS yg sudah ada, ATAU {external_name, external_contact?, title}
+    utk anggota eksternal (tanpa akun CMS, tak bisa ditandai PIC)."""
     _project_visible(pid)
     d = body()
-    uid = int(d["user_id"])
-    title = d.get("title", "")
-    if not title.strip():
-        raise ValueError("role/jabatan wajib diisi")
-    S().set_user_project_role(uid, pid, title)
+    uid = int(d["user_id"]) if d.get("user_id") else None
+    row_id = S().add_project_team_member(pid, d.get("title", ""), user_id=uid,
+                                        external_name=d.get("external_name", ""),
+                                        external_contact=d.get("external_contact", ""))
     S().log_activity(g.user["username"], "project.team_add", target_type="user", target_id=uid, project_id=pid,
-                     summary=title)
-    return jsonify(ok=True), 201
+                     summary=d.get("title", "") + (f' ({d.get("external_name", "")})' if not uid else ""))
+    return jsonify(ok=True, row_id=row_id), 201
 
 
-@bp.delete("/projects/<int:pid>/team/<int:uid>")
+@bp.patch("/projects/<int:pid>/team/<int:row_id>")
 @auth.require("project_team_manage")
-def project_team_remove(pid, uid):
+def project_team_update(pid, row_id):
     _project_visible(pid)
-    S().set_user_project_role(uid, pid, "")
-    S().log_activity(g.user["username"], "project.team_remove", target_type="user", target_id=uid, project_id=pid)
+    d = body()
+    S().update_project_team_member(row_id, title=d.get("title"), external_name=d.get("external_name"),
+                                   external_contact=d.get("external_contact"))
+    S().log_activity(g.user["username"], "project.team_update", target_type="user", target_id=row_id, project_id=pid,
+                     summary=", ".join(sorted(d)))
     return jsonify(ok=True)
+
+
+@bp.delete("/projects/<int:pid>/team/<int:row_id>")
+@auth.require("project_team_manage")
+def project_team_remove(pid, row_id):
+    _project_visible(pid)
+    S().remove_project_team_member(row_id)
+    S().log_activity(g.user["username"], "project.team_remove", target_type="user", target_id=row_id, project_id=pid)
+    return jsonify(ok=True)
+
+
+@bp.post("/projects/<int:pid>/team/import")
+@auth.require("project_team_manage")
+def project_team_import(pid):
+    """Bulk-import semua anggota tim (akun CMS + eksternal) dari proyek lain (`src_project_id`) ke proyek
+    ini -- yang sudah ada dilewati, aman dipanggil berkali-kali."""
+    _project_visible(pid)
+    d = body()
+    if not d.get("src_project_id"):
+        raise ValueError("src_project_id wajib diisi")
+    src_pid = int(d["src_project_id"])
+    n = S().import_project_team(src_pid, pid)
+    S().log_activity(g.user["username"], "project.team_import", target_type="project", target_id=src_pid,
+                     project_id=pid, summary=f'{n} anggota diimpor')
+    return jsonify(ok=True, imported=n)
 
 
 # ---------------------------------------------------------------- repository berkas

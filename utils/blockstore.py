@@ -106,8 +106,9 @@ CREATE TABLE IF NOT EXISTS cms_user_files (
     uploaded_at TEXT, deleted_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_uf_user ON cms_user_files(user_id);
 CREATE TABLE IF NOT EXISTS cms_user_project_roles (
-    user_id INTEGER NOT NULL, project_id INTEGER NOT NULL, title TEXT NOT NULL, updated_at TEXT,
-    PRIMARY KEY (user_id, project_id));
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, project_id INTEGER NOT NULL, title TEXT NOT NULL,
+    external_name TEXT, external_contact TEXT, updated_at TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_upr_user_project ON cms_user_project_roles(user_id, project_id);
 """
 
 
@@ -1469,16 +1470,113 @@ class BlockStore:
         return [r["expertise"] for r in rows]
 
     def list_project_team(self, project_id: int) -> list[dict]:
-        """Tim proyek (cms_user_project_roles): siapa saja + role apa. Ini jadi satu-satunya kolam orang
-        yang bisa ditandai PIC di tab PIC proyek tsb (lihat cmsapp/projects_api.py)."""
+        """Tim proyek (cms_user_project_roles): siapa saja + role apa. Akun CMS (user_id terisi) adalah
+        satu-satunya kolam orang yang bisa ditandai PIC di tab PIC (lihat cmsapp/projects_api.py); anggota
+        EKSTERNAL (user_id NULL, external_name terisi) cuma tampil di roster, tak bisa jadi PIC. `row_id`
+        = id baris cms_user_project_roles, dipakai hapus/ubah (beda dari `user_id` yg bisa NULL)."""
         with self._tx() as c:
-            rows = self._all(c, "SELECT u.id, u.username, u.name, g.name AS role, g.is_super, u.active, "
-                                 "r.title, r.updated_at FROM cms_user_project_roles r JOIN cms_users u ON u.id=r.user_id "
-                                 "JOIN cms_groups g ON g.id=u.group_id WHERE r.project_id=? AND u.active=1 "
-                                 "ORDER BY u.username", (project_id,))
+            rows = self._all(c, "SELECT r.id AS row_id, r.user_id, u.username, u.name, g.name AS role, "
+                                 "g.is_super, u.active, r.external_name, r.external_contact, r.title, r.updated_at "
+                                 "FROM cms_user_project_roles r LEFT JOIN cms_users u ON u.id=r.user_id "
+                                 "LEFT JOIN cms_groups g ON g.id=u.group_id "
+                                 "WHERE r.project_id=? AND (r.user_id IS NULL OR u.active=1) "
+                                 "ORDER BY COALESCE(u.username, r.external_name)", (project_id,))
         for r in rows:
             r["is_super"] = bool(r["is_super"])
+            r["is_external"] = r["user_id"] is None
         return rows
+
+    def add_project_team_member(self, project_id: int, title: str, user_id: Optional[int] = None,
+                                external_name: str = "", external_contact: str = "") -> int:
+        """Tambah anggota tim: `user_id` (akun CMS, upsert by user_id+project_id -- pindah jabatan kalau
+        sudah ada) ATAU `external_name` (tanpa akun, SELALU baris baru -- boleh >1 orang eksternal per
+        proyek). Return row_id."""
+        title = (title or "").strip()
+        if not title:
+            raise ValueError("role/jabatan wajib diisi")
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
+                raise KeyError(f"proyek {project_id} tidak ada")
+            if user_id:
+                exists = self._one(c, "SELECT id FROM cms_user_project_roles WHERE user_id=? AND project_id=?",
+                                   (user_id, project_id))
+                if exists:
+                    self._x(c, "UPDATE cms_user_project_roles SET title=?, updated_at=? WHERE id=?",
+                           (title, _now(), exists["id"]))
+                    return exists["id"]
+                cur = self._x(c, "INSERT INTO cms_user_project_roles(user_id,project_id,title,updated_at) "
+                                "VALUES (?,?,?,?)", (user_id, project_id, title, _now()))
+                return cur.lastrowid
+            external_name = (external_name or "").strip()
+            if not external_name:
+                raise ValueError("nama anggota eksternal wajib diisi")
+            cur = self._x(c, "INSERT INTO cms_user_project_roles(project_id,title,external_name,"
+                            "external_contact,updated_at) VALUES (?,?,?,?,?)",
+                         (project_id, title, external_name, (external_contact or "").strip() or None, _now()))
+            return cur.lastrowid
+
+    def update_project_team_member(self, row_id: int, title: Optional[str] = None,
+                                   external_name: Optional[str] = None, external_contact: Optional[str] = None) -> None:
+        with self._tx() as c:
+            row = self._one(c, "SELECT id, user_id FROM cms_user_project_roles WHERE id=?", (row_id,))
+            if not row:
+                raise KeyError(f"anggota tim {row_id} tidak ada")
+            sets, args = [], []
+            if title is not None:
+                t = title.strip()
+                if not t:
+                    raise ValueError("role/jabatan wajib diisi")
+                sets.append("title=?"); args.append(t)
+            if row["user_id"] is None:
+                if external_name is not None:
+                    en = external_name.strip()
+                    if not en:
+                        raise ValueError("nama anggota eksternal wajib diisi")
+                    sets.append("external_name=?"); args.append(en)
+                if external_contact is not None:
+                    sets.append("external_contact=?"); args.append(external_contact.strip() or None)
+            if sets:
+                sets.append("updated_at=?"); args.append(_now())
+                self._x(c, f"UPDATE cms_user_project_roles SET {','.join(sets)} WHERE id=?", (*args, row_id))
+
+    def remove_project_team_member(self, row_id: int) -> None:
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_user_project_roles WHERE id=?", (row_id,)):
+                raise KeyError(f"anggota tim {row_id} tidak ada")
+            self._x(c, "DELETE FROM cms_user_project_roles WHERE id=?", (row_id,))
+
+    def import_project_team(self, src_project_id: int, dst_project_id: int) -> int:
+        """Bulk-import semua anggota tim (akun CMS maupun eksternal) dari proyek lain ke proyek ini.
+        Lewati yang sudah ada (akun: cek user_id; eksternal: cek kesamaan persis external_name) supaya
+        aman dipanggil berkali-kali. Return jumlah baris baru ditambahkan."""
+        with self._tx() as c:
+            if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (dst_project_id,)):
+                raise KeyError(f"proyek {dst_project_id} tidak ada")
+            if src_project_id == dst_project_id:
+                raise ValueError("proyek sumber & tujuan tidak boleh sama")
+            src_rows = self._all(c, "SELECT user_id, title, external_name, external_contact "
+                                    "FROM cms_user_project_roles WHERE project_id=?", (src_project_id,))
+            existing_users = {r["user_id"] for r in self._all(
+                c, "SELECT user_id FROM cms_user_project_roles WHERE project_id=? AND user_id IS NOT NULL",
+                (dst_project_id,))}
+            existing_ext = {r["external_name"] for r in self._all(
+                c, "SELECT external_name FROM cms_user_project_roles WHERE project_id=? AND external_name IS NOT NULL",
+                (dst_project_id,))}
+            n = 0
+            for r in src_rows:
+                if r["user_id"]:
+                    if r["user_id"] in existing_users:
+                        continue
+                    self._x(c, "INSERT INTO cms_user_project_roles(user_id,project_id,title,updated_at) "
+                              "VALUES (?,?,?,?)", (r["user_id"], dst_project_id, r["title"], _now()))
+                else:
+                    if not r["external_name"] or r["external_name"] in existing_ext:
+                        continue
+                    self._x(c, "INSERT INTO cms_user_project_roles(project_id,title,external_name,"
+                              "external_contact,updated_at) VALUES (?,?,?,?,?)",
+                           (dst_project_id, r["title"], r["external_name"], r["external_contact"], _now()))
+                n += 1
+            return n
 
     def visible_project_ids(self, user_id: int) -> set[int]:
         """Proyek yang 'terlihat' bagi user ini tanpa permission project_view_all: dia masuk Tim proyek

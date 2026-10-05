@@ -265,17 +265,53 @@ DELIMITER ;
 CALL cms_tmp_add_userfile_cols();
 DROP PROCEDURE cms_tmp_add_userfile_cols;
 
--- jabatan/title user pada proyek tertentu, diisi mandiri oleh user di halaman CV pribadi (beda proyek
--- bisa beda jabatan, mis. "Data Analyst" di satu proyek, "Lead Proyek" di proyek lain).
+-- Tim proyek: jabatan/title user pada proyek tertentu (diisi admin di tab Tim, ATAU mandiri oleh user
+-- sendiri di halaman CV pribadi -- beda proyek bisa beda jabatan, mis. "Data Analyst" di satu proyek,
+-- "Lead Proyek" di proyek lain). user_id NULL = anggota EKSTERNAL (tanpa akun CMS, mis. freelance/
+-- kontributor luar) -- cuma dicatat nama+kontak utk roster tim, TAK BISA ditandai PIC (PIC butuh identitas
+-- login). id surrogate (bukan lagi PK komposit) krn user_id boleh NULL & bisa >1 entri eksternal per proyek.
 CREATE TABLE IF NOT EXISTS cms_user_project_roles (
-    user_id    INT NOT NULL,
-    project_id INT NOT NULL,
-    title      VARCHAR(255) NOT NULL,
-    updated_at VARCHAR(19) DEFAULT NULL,
-    PRIMARY KEY (user_id, project_id),
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    user_id          INT DEFAULT NULL,
+    project_id       INT NOT NULL,
+    title            VARCHAR(255) NOT NULL,
+    external_name    VARCHAR(255) DEFAULT NULL,
+    external_contact VARCHAR(255) DEFAULT NULL,
+    updated_at       VARCHAR(19) DEFAULT NULL,
+    UNIQUE KEY uq_upr_user_project (user_id, project_id),
+    INDEX idx_upr_project (project_id),
     CONSTRAINT fk_upr_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE,
     CONSTRAINT fk_upr_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- migrasi utk DB yg sudah terlanjur pakai skema lama (user_id NOT NULL, PK komposit tanpa kolom id).
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_team_external;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_team_external()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_project_roles' AND COLUMN_NAME='id') THEN
+    ALTER TABLE cms_user_project_roles ADD COLUMN id INT NOT NULL AUTO_INCREMENT UNIQUE FIRST;
+  END IF;
+  -- unique (user_id, project_id) HARUS ada sebelum PK lama dilepas: PK lama itu index yg dipakai FK fk_upr_user (ERROR 1553)
+  IF NOT EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_project_roles' AND INDEX_NAME='uq_upr_user_project') THEN
+    ALTER TABLE cms_user_project_roles ADD UNIQUE KEY uq_upr_user_project (user_id, project_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_project_roles' AND INDEX_NAME='PRIMARY' AND COLUMN_NAME='project_id') THEN
+    ALTER TABLE cms_user_project_roles DROP PRIMARY KEY, ADD PRIMARY KEY (id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_project_roles' AND COLUMN_NAME='user_id' AND IS_NULLABLE='NO') THEN
+    ALTER TABLE cms_user_project_roles MODIFY COLUMN user_id INT DEFAULT NULL;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_project_roles' AND COLUMN_NAME='external_name') THEN
+    ALTER TABLE cms_user_project_roles ADD COLUMN external_name VARCHAR(255) DEFAULT NULL AFTER title;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_project_roles' AND COLUMN_NAME='external_contact') THEN
+    ALTER TABLE cms_user_project_roles ADD COLUMN external_contact VARCHAR(255) DEFAULT NULL AFTER external_name;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_team_external();
+DROP PROCEDURE cms_tmp_migrate_team_external;
 
 -- scope: 'heading:<id blok heading level berapa pun>' (H1..H4 dst, override turunan) | 'block:<id>'
 -- (caption/tabel/gambar spesifik) | 'part:<cover|front|body|lampiran>'. 'h1:<id>' data lama = alias

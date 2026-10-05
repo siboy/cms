@@ -319,30 +319,51 @@ async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,
  try{await fns[curTab]()}catch(e){note(e.message,1)}}
 async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`);
  const canManage=hasPerm('project_team_manage');
- let avail=[],opts=ROLE_SUGGEST;if(canManage){try{const inTeam=new Set(team.map(t=>t.id));
+ let avail=[],opts=ROLE_SUGGEST;if(canManage){try{const inTeam=new Set(team.filter(t=>t.user_id).map(t=>t.user_id));
   avail=(await api('GET','/admin/users')).users.filter(u=>u.active&&!u.is_super&&!inTeam.has(u.id))}catch(e){}
   opts=await roleOptions()}
- $('#ptab').innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b></div>
- <p style="color:var(--mut);font-size:12px">Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC. Role yang diisi dipakai juga di rekap pengalaman proyek (CV) orang tersebut. Default role: "${ROLE_DEFAULT}" kalau belum ada yang lebih spesifik.</p>
+ const nameOf=t=>t.is_external?`${esc(t.external_name)} <span class=badge style="background:var(--mut)">Eksternal</span>`:esc(t.name||t.username);
+ $('#ptab').innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b>${canManage?'<button type=button id=timport>📥 Impor dari proyek lain…</button>':''}</div>
+ <p style="color:var(--mut);font-size:12px">Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC (anggota eksternal tanpa akun CMS tak bisa jadi PIC). Role yang diisi dipakai juga di rekap pengalaman proyek (CV) orang tersebut. Default role: "${ROLE_DEFAULT}" kalau belum ada yang lebih spesifik.</p>
  <table><tr><th>Nama</th><th>Role</th>${canManage?'<th></th>':''}</tr>
- ${team.map(t=>`<tr><td>${esc(t.name||t.username)}</td><td>${canManage?`<span data-title="${t.id}"></span>`:esc(t.title||ROLE_DEFAULT)}</td>
- ${canManage?`<td><button type=button data-rm="${t.id}">Keluarkan</button></td>`:''}</tr>`).join('')
+ ${team.map(t=>`<tr><td>${nameOf(t)}${t.external_contact?`<br><small style="color:var(--mut)">${esc(t.external_contact)}</small>`:''}</td><td>${canManage?`<span data-title="${t.row_id}"></span>`:esc(t.title||ROLE_DEFAULT)}</td>
+ ${canManage?`<td><button type=button data-rm="${t.row_id}">Keluarkan</button></td>`:''}</tr>`).join('')
  ||`<tr><td colspan=${canManage?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table>
  ${canManage?`<h4 style="margin-top:14px">Tambah anggota</h4>
  <form id=fteam style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+ <select name=kind><option value=akun>Akun CMS</option><option value=eksternal>Eksternal (tanpa akun)</option></select>
  <select name=user_id required><option value="">— pilih orang —</option>${avail.map(u=>`<option value=${u.id}>${esc(u.name||u.username)}</option>`).join('')}</select>
+ <input name=external_name placeholder="Nama anggota eksternal" hidden>
+ <input name=external_contact placeholder="Kontak (telp/email, opsional)" hidden>
  <input name=title list=roleSuggest value="${esc(ROLE_DEFAULT)}" required>
  <button class=p>Tambah</button></form>
  <datalist id=roleSuggest>${opts.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>`:''}</div>`;
  if(canManage){
-  team.forEach(t=>{const el=$(`[data-title="${t.id}"]`);if(!el)return;const i=document.createElement('input');
+  team.forEach(t=>{const el=$(`[data-title="${t.row_id}"]`);if(!el)return;const i=document.createElement('input');
    i.type='text';i.value=t.title||ROLE_DEFAULT;i.setAttribute('list','roleSuggest');i.style.cssText='font-size:13px;width:220px';
-   i.onchange=async()=>{try{await api('POST',`/projects/${curProj}/team`,{user_id:t.id,title:i.value});tabTim()}catch(e){note(e.message,1)}};
+   i.onchange=async()=>{try{await api('PATCH',`/projects/${curProj}/team/${t.row_id}`,{title:i.value});tabTim()}catch(e){note(e.message,1)}};
    el.append(i)});
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(!confirm('Keluarkan dari tim?'))return;
    try{await api('DELETE',`/projects/${curProj}/team/${b.dataset.rm}`);tabTim()}catch(e){note(e.message,1)}});
-  if($('#fteam'))$('#fteam').onsubmit=async e=>{e.preventDefault();const f=e.target;
-   try{await api('POST',`/projects/${curProj}/team`,{user_id:+f.user_id.value,title:f.title.value});tabTim()}catch(x){note(x.message,1)}}}}
+  const f=$('#fteam');
+  f.kind.onchange=()=>{const ext=f.kind.value==='eksternal';f.user_id.hidden=ext;f.user_id.required=!ext;
+   f.external_name.hidden=!ext;f.external_name.required=ext;f.external_contact.hidden=!ext};
+  f.onsubmit=async e=>{e.preventDefault();
+   try{await api('POST',`/projects/${curProj}/team`,f.kind.value==='eksternal'
+     ?{external_name:f.external_name.value,external_contact:f.external_contact.value,title:f.title.value}
+     :{user_id:+f.user_id.value,title:f.title.value});tabTim()}catch(x){note(x.message,1)}};
+  $('#timport').onclick=()=>teamImportDlg()}}
+async function teamImportDlg(){const {projects}=await api('GET','/projects');
+ const others=projects.filter(p=>p.id!==curProj);
+ const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>Impor tim dari proyek lain</b>
+ <p style="color:var(--mut);font-size:12px">Semua anggota tim (akun CMS maupun eksternal) dari proyek yang dipilih akan disalin ke proyek ini. Yang sudah ada di tim ini dilewati (aman diulang).</p>
+ <label>Proyek sumber<select name=src required><option value="">— pilih proyek —</option>${others.map(p=>`<option value=${p.id}>${esc(p.name)}</option>`).join('')}</select></label>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Impor</button></div></form>`;
+ document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+ f.onsubmit=async e=>{e.preventDefault();if(!f.src.value)return note('Pilih proyek sumber dulu',1);
+  try{const r=await api('POST',`/projects/${curProj}/team/import`,{src_project_id:+f.src.value});
+   m.remove();note(`${r.imported} anggota diimpor`);tabTim()}catch(x){note(x.message,1)}}}
 
 async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${curProj}`);const adm=hasPerm('project_manage');
  $('#ptab').innerHTML=`<div class=rc>
@@ -777,9 +798,9 @@ async function assignView(users){const d=+$('#ad').value;const isAdmin=hasPerm('
  const [{items},{map}]=await Promise.all([api('GET',`/docs/${d}/taggable`),api('GET',`/docs/${d}/pic-map`)]);
  const {assignments}=await api('GET',`/admin/docs/${d}/assign`).catch(()=>({assignments:[]}));
  const parts=['cover','front','body','lampiran'].map(p=>({scope:'part:'+p,label:'Bagian: '+p}));
- const who=sc=>assignments.filter(a=>a.scope===sc);const nonAdmin=users.filter(u=>!u.is_super&&u.active);
+ const who=sc=>assignments.filter(a=>a.scope===sc);const nonAdmin=users.filter(u=>u.user_id&&!u.is_super&&u.active);
  const partRows=parts.map(x=>`<tr><td>${esc(x.label)}</td><td>${who(x.scope).map(a=>`<span class=badge style="background:var(--mut)">${esc(a.username)}${isAdmin?` <a href="#" data-rm="${a.user_id}|${x.scope}" style="color:#fff">×</a>`:''}</span>`).join(' ')||'<small style="color:var(--mut)">—</small>'}</td>
- ${isAdmin?`<td><select data-add="${x.scope}"><option value="">+ tugaskan…</option>${nonAdmin.map(u=>`<option value=${u.id}>${esc(u.username)}</option>`).join('')}</select></td>`:''}</tr>`).join('');
+ ${isAdmin?`<td><select data-add="${x.scope}"><option value="">+ tugaskan…</option>${nonAdmin.map(u=>`<option value=${u.user_id}>${esc(u.username)}</option>`).join('')}</select></td>`:''}</tr>`).join('');
  let curHLevel=1;
  const itemRows=items.map(it=>{const indent=it.kind==='heading'?(it.level-1)*2:curHLevel*2+2;
   if(it.kind==='heading')curHLevel=it.level;
@@ -999,7 +1020,7 @@ async function picDlg(docId,blockId,label,onClose){
     ${canAssign&&info.direct?`<button type=button data-rm="${p.user_id}" style="color:#d1242f">Lepas</button>`:''}
    </div>`}).join(''):'<p style="color:var(--mut)">Belum ada PIC.</p>';
   const inherit=info.scope&&!info.direct?`<p><small style="color:var(--mut)">Mewarisi penugasan dari atasan (<code>${esc(info.scope)}</code>). Menambah PIC di sini akan meng-override khusus utk bagian ini ke bawah.</small></p>`:'';
-  const addSel=canAssign?`<label>+ tugaskan di sini<select id=picadd><option value="">— pilih user —</option>${users.filter(u=>!(info.direct&&tagged.has(u.id))).map(u=>`<option value=${u.id}>${esc(u.username)}</option>`).join('')}</select></label>`:'';
+  const addSel=canAssign?`<label>+ tugaskan di sini<select id=picadd><option value="">— pilih user —</option>${users.filter(u=>u.user_id&&!(info.direct&&tagged.has(u.user_id))).map(u=>`<option value=${u.user_id}>${esc(u.username)}</option>`).join('')}</select></label>`:'';
   m.innerHTML=`<form class=dlg><b>PIC — ${esc((label||'').slice(0,70))}</b>${inherit}<div>${rows}</div>${addSel}
    <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Tutup</button></div></form>`;
   const f=m.querySelector('form');f.onsubmit=e=>e.preventDefault();
