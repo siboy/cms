@@ -21,7 +21,7 @@ import re
 import shutil
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from . import tablemodel as tm
@@ -151,10 +151,22 @@ class BlockStore:
         cur.execute(sql.replace("?", self.ph), tuple(params))
         return cur
 
+    @staticmethod
+    def _cell(v):
+        """MySQL (pymysql) kembalikan kolom DATE/DATETIME sbg objek date/datetime, bukan string --
+        jsonify Flask memformatnya sbg HTTP-date ('Mon, 06 Oct 2025 ...') yg tak valid utk
+        <input type=date>, bikin field edit tampak kosong. Samakan jadi string ISO di sini (titik
+        tunggal, berlaku utk semua kolom/tabel) spt yg sudah dipakai SQLite (kolom TEXT)."""
+        if isinstance(v, datetime):
+            return v.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(v, date):
+            return v.isoformat()
+        return v
+
     def _all(self, c, sql, params=()):
         cur = self._x(c, sql, params)
         cols = [d[0] for d in cur.description] if cur.description else []
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
+        return [{k: self._cell(v) for k, v in zip(cols, r)} for r in cur.fetchall()]
 
     def _one(self, c, sql, params=()):
         r = self._all(c, sql, params)
