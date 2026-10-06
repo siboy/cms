@@ -13,7 +13,8 @@ DC = docker compose -f $(COLLAB_DIR)/collab.yml --env-file $(COLLAB_DIR)/.env
 
 # ---- Stack Docker (mysql + redis + app + worker) ----
 # Idempoten: build image, terapkan skema, up. Bisa di server maupun PC (default ~/cms-collab).
-stack rx7:
+# (dulu `rx7` alias target ini; sejak 2026-10-06 rx7 = start/restart panel super-admin, lihat bawah)
+stack:
 	bash scripts/collab_deploy.sh
 
 stack-down:
@@ -42,6 +43,31 @@ dev:
 
 tunnel:
 	ssh -N -L 3307:127.0.0.1:3307 -L 6380:127.0.0.1:6380 dbscraping
+
+# ---- Control panel super-admin multi-tenant (cmspanel, 127.0.0.1:8890) ----
+# Password dibuat otomatis sekali di ~/.cms_panel_pass (chmod 600). Akses dari PC: make panel-tunnel.
+panel:
+	@test -f $(HOME)/.cms_panel_pass || { umask 077; openssl rand -hex 16 > $(HOME)/.cms_panel_pass; echo "[OK] password panel baru: $(HOME)/.cms_panel_pass"; }
+	@echo "Panel: http://127.0.0.1:8890  (password: cat ~/.cms_panel_pass)"
+	@PANEL_PASSWORD=$$(cat $(HOME)/.cms_panel_pass) PYTHONPATH=$(CURDIR) python3 -m cmspanel.panel
+
+panel-tunnel:
+	ssh -N -L 8890:127.0.0.1:8890 dbscraping
+
+# daftarkan stack lama :8879 sbg tenant pertama di panel (tanpa mengubah stacknya)
+panel-adopt:
+	bash scripts/adopt-legacy-tenant.sh utama
+
+# rx7 = nyalakan panel super-admin di background (belum jalan -> start; sudah jalan -> restart otomatis).
+rx7:
+	@test -f $(HOME)/.cms_panel_pass || { umask 077; openssl rand -hex 16 > $(HOME)/.cms_panel_pass; echo "[OK] password panel baru dibuat: ~/.cms_panel_pass"; }
+	@PYTHONPATH=$(CURDIR) python3 -m cmspanel.panel --kill; sleep 1
+	@PANEL_PASSWORD=$$(cat $(HOME)/.cms_panel_pass) PYTHONPATH=$(CURDIR) \
+	nohup python3 -m cmspanel.panel > $(HOME)/.cms_panel.log 2>&1 & \
+	sleep 2; \
+	if curl -sf -o /dev/null http://127.0.0.1:8890/login; then \
+	  echo "[OK] panel jalan: http://127.0.0.1:8890  (password: cat ~/.cms_panel_pass | log: ~/.cms_panel.log)"; \
+	else echo "[FATAL] panel gagal start:"; tail -5 $(HOME)/.cms_panel.log; exit 1; fi
 
 # ---- DB Schema ----
 # Skema utama diterapkan otomatis oleh 'make stack'. Target di bawah = jalur razan (~/flask), opsional.

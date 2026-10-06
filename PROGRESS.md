@@ -65,6 +65,12 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   tenant end-to-end (admin via exec, panel.json), slug dobel/jahat ditolak, status/stats/du terbaca,
   power, settings menulis .env tanpa menghapus sandi, format limit salah ditolak, rename+MinIO
   tersimpan, tambah admin. **Belum dicoba** dgn Docker sungguhan.
+  **Susulan (sama hari)**: `make rx7` = start/restart panel background (dulu rx7 alias `make stack` —
+  DIALIHKAN atas permintaan user; password otomatis ~/.cms_panel_pass, log ~/.cms_panel.log, mode
+  `--kill` di panel.py utk restart portabel tanpa pkill); `make panel`/`panel-tunnel`/`panel-adopt`;
+  `scripts/adopt-legacy-tenant.sh` = stack lama :8879 tampil di panel sbg tenant 'utama' (panel.json
+  `container_prefix`/`compose_dir`/`compose_file`, helper `cname()`; limit RAM tak berlaku utk stack
+  lama). Diuji: rx7 start→restart single-instance, tenant legacy tampil+stats+power via docker stub.
 - [x] **Multi-tenant per perusahaan: template compose + nginx + add-tenant.sh (2026-10-06)** — pelengkap
   entri isolasi di bawah. `docker/tenant.yml` (4 service mysql/redis/app/worker; network TANPA `name:` +
   volume diprefix COMPOSE_PROJECT_NAME -> privat per tenant; DNS antar-container pakai nama service, BUKAN

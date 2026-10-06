@@ -96,9 +96,19 @@ def write_meta(slug: str, meta: dict):
     json.dump(meta, open(meta_path(slug), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
 
+def cname(slug: str, svc: str) -> str:
+    """Nama container suatu service. Default cms-<slug>-<svc> (tenant.yml); stack LAMA cmscollab
+    (container cms-app/cms-mysql dst, tanpa slug) bisa diadopsi dgn panel.json
+    {"container_prefix": "cms-"} -- lihat scripts/adopt-legacy-tenant.sh."""
+    return (read_meta(slug).get("container_prefix") or f"cms-{slug}-") + svc
+
+
 def compose(slug: str, *args: str, timeout: int = 180) -> tuple[int, str]:
     d = tenant_dir(slug)
-    return sh(["docker", "compose", "-f", os.path.join(d, "compose.yml"), *args], timeout=timeout, cwd=d)
+    m = read_meta(slug)
+    cdir = os.path.expanduser(m.get("compose_dir") or d)      # stack lama: ~/cms-collab
+    cfile = m.get("compose_file") or "compose.yml"            # stack lama: collab.yml
+    return sh(["docker", "compose", "-f", os.path.join(cdir, cfile), *args], timeout=timeout, cwd=cdir)
 
 
 CONTAINERS = ("app", "worker", "mysql", "redis")
@@ -106,15 +116,15 @@ CONTAINERS = ("app", "worker", "mysql", "redis")
 
 def container_states(slug: str) -> dict:
     """Status + health 4 container tenant via docker inspect (1 panggilan)."""
-    names = [f"cms-{slug}-{c}" for c in CONTAINERS]
+    names = [cname(slug, c) for c in CONTAINERS]
     rc, out = sh(["docker", "inspect", "--format",
                   '{{.Name}}\t{{.State.Status}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}', *names], 20)
+    byname = {("/" + n): c for n, c in zip(names, CONTAINERS)}
     st = {}
     for line in out.splitlines():
         parts = line.split("\t")
-        if len(parts) >= 2 and parts[0].startswith("/cms-"):
-            svc = parts[0].rsplit("-", 1)[-1]
-            st[svc] = {"status": parts[1], "health": parts[2] if len(parts) > 2 else ""}
+        if len(parts) >= 2 and parts[0] in byname:
+            st[byname[parts[0]]] = {"status": parts[1], "health": parts[2] if len(parts) > 2 else ""}
     for c in CONTAINERS:
         st.setdefault(c, {"status": "absent", "health": ""})
     return st
@@ -122,14 +132,15 @@ def container_states(slug: str) -> dict:
 
 def container_stats(slug: str) -> dict:
     """RAM/CPU/NetIO per container (docker stats sekali jalan). NetIO = kumulatif sejak container start."""
-    names = [f"cms-{slug}-{c}" for c in CONTAINERS]
+    names = [cname(slug, c) for c in CONTAINERS]
+    byname = dict(zip(names, CONTAINERS))
     rc, out = sh(["docker", "stats", "--no-stream", "--format",
                   "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}", *names], 30)
     res = {}
     for line in out.splitlines():
         p = line.split("\t")
-        if len(p) == 5 and p[0].startswith("cms-"):
-            res[p[0].rsplit("-", 1)[-1]] = {"cpu": p[1], "mem": p[2], "mem_pct": p[3], "net": p[4]}
+        if len(p) == 5 and p[0] in byname:
+            res[byname[p[0]]] = {"cpu": p[1], "mem": p[2], "mem_pct": p[3], "net": p[4]}
     return res
 
 
@@ -137,7 +148,7 @@ def storage_usage(slug: str) -> dict:
     """Pemakaian disk: du di DALAM container (tanpa butuh root host). Container mati -> None."""
     out = {}
     for svc, path in (("mysql", "/var/lib/mysql"), ("app", "/data")):
-        rc, o = sh(["docker", "exec", f"cms-{slug}-{svc}", "du", "-sb", path], 60)
+        rc, o = sh(["docker", "exec", cname(slug, svc), "du", "-sb", path], 60)
         try:
             out[svc + "_bytes"] = int(o.split()[0]) if rc == 0 else None
         except Exception:                               # noqa: BLE001
@@ -226,7 +237,7 @@ def api_create():
     admin_msg = ""
     for _ in range(60):
         if container_states(slug).get("app", {}).get("health") == "healthy":
-            rc2, out2 = sh(["docker", "exec", f"cms-{slug}-app", "python", "scripts/cms_admin.py", "user",
+            rc2, out2 = sh(["docker", "exec", cname(slug, "app"), "python", "scripts/cms_admin.py", "user",
                             admin_user, admin_pass, "--name", company, "--role", "admin", "--email", admin_email], 60)
             admin_msg = "admin dibuat" if rc2 == 0 else f"GAGAL buat admin: {out2[-300:]}"
             break
@@ -291,7 +302,7 @@ def api_add_admin(slug):
     u, p = (d.get("username") or "").strip(), d.get("password") or secrets.token_urlsafe(10)
     if not u:
         return jsonify(error="username wajib"), 400
-    rc, out = sh(["docker", "exec", f"cms-{slug}-app", "python", "scripts/cms_admin.py", "user",
+    rc, out = sh(["docker", "exec", cname(slug, "app"), "python", "scripts/cms_admin.py", "user",
                   u, p, "--name", d.get("name", ""), "--role", d.get("role", "admin"),
                   "--email", d.get("email", "")], 60)
     if rc != 0:
@@ -412,7 +423,28 @@ paint();setInterval(paint,15000);
 </script>""")
 
 
+def _kill_others() -> int:
+    """Matikan instance panel lain (utk `make rx7` restart; portabel, tanpa pkill)."""
+    import glob
+    import signal
+    n = 0
+    for f in glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            cmd = open(f, "rb").read()
+            pid = int(f.split("/")[2])
+            if b"cmspanel.panel" in cmd and b"--kill" not in cmd and pid != os.getpid():
+                os.kill(pid, signal.SIGTERM)
+                n += 1
+        except (OSError, ValueError):
+            pass
+    return n
+
+
 if __name__ == "__main__":
+    import sys
+    if "--kill" in sys.argv:
+        print(f"{_kill_others()} instance panel dimatikan")
+        raise SystemExit(0)
     if not PASSWORD:
         raise SystemExit("set env PANEL_PASSWORD dulu (wajib)")
     app.run(host="127.0.0.1", port=int(os.environ.get("PANEL_PORT", 8890)))

@@ -73,8 +73,15 @@ simpan setelan MinIO per tenant (endpoint/access/secret/bucket/kuota — **baru 
 👤 tambah admin tenant.
 
 ```
-PANEL_PASSWORD=<rahasia> python -m cmspanel.panel     # 127.0.0.1:8890 SAJA
+make rx7           # start panel; kalau sudah jalan -> restart (background, log ~/.cms_panel.log;
+                   # password dibuat otomatis sekali -> cat ~/.cms_panel_pass; port 127.0.0.1:8890)
+make panel         # varian foreground; make panel-tunnel = SSH tunnel 8890 dari PC
+make panel-adopt   # daftarkan stack lama :8879 (cmscollab, container cms-app dst) sbg tenant 'utama'
 ```
+(`rx7` dulu alias `make stack`; sejak 2026-10-06 dialihkan ke panel.) Stack lama yang diadopsi
+(`scripts/adopt-legacy-tenant.sh`, panel.json `container_prefix`/`compose_dir`/`compose_file`) bisa
+di-start/stop/monitor/tambah-admin dari panel, tapi setting limit RAM TIDAK berlaku baginya
+(collab.yml tak membaca APP_MEM dkk).
 Jalankan DI HOST Docker (butuh docker CLI + `~/cms-tenants`). Panel memegang kendali penuh docker —
 JANGAN diekspos publik; akses lewat SSH tunnel/VPN. Login = PANEL_PASSWORD; semua POST wajib header
 `X-PANEL: 1`. Metadata per tenant: `~/cms-tenants/<slug>/panel.json`; kuota storage saat ini
