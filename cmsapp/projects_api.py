@@ -351,7 +351,7 @@ def project_team(pid):
     _project_visible(pid)
     return jsonify(team=S().list_project_team(pid),
                    can_manage=auth.has_perm(g.user, "project_team_manage") or S().is_project_leader(g.user["id"], pid),
-                   can_appoint=auth.has_perm(g.user, "project_team_manage"))
+                   can_appoint=bool(g.user.get("is_super")))     # angkat/lepas ketua: KHUSUS grup admin (super)
 
 
 @bp.get("/projects/<int:pid>/team/candidates")
@@ -391,8 +391,8 @@ def project_team_update(pid, row_id):
     _project_visible(pid)
     _team_manage_guard(pid)
     d = body()
-    if "is_leader" in d:                              # angkat/lepas Ketua Tim: KHUSUS admin, bukan sesama ketua
-        if not auth.has_perm(g.user, "project_team_manage"):
+    if "is_leader" in d:                              # angkat/lepas Ketua Tim: KHUSUS grup admin (super),
+        if not g.user.get("is_super"):                # bukan sesama ketua / pemegang project_team_manage biasa
             abort(403, description="hanya admin yang bisa mengangkat/melepas Ketua Tim")
         S().set_team_leader(row_id, bool(d["is_leader"]))
         S().log_activity(g.user["username"], "project.team_leader", target_type="user", target_id=row_id,
