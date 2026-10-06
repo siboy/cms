@@ -49,6 +49,22 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Iterasi UI dari uji pakai nyata di :8879 (2026-10-06, susulan)** — semua SUDAH di-hot-deploy ke
+  container live (docker cp + build ulang image `cms-collab:dev`, krn `make stack` user belum rebuild):
+  (1) layout Laporan diperbaiki: flex-wrap+min-width:0 (tanpa scroll horizontal), chatbox `min(70vh,620px)`
+  + sticky (input tak tenggelam); (2) Aktivitas proyek: infinite scroll 30/muat (IntersectionObserver) +
+  pencarian server-side `?q=` (list_project_activity), lalu render diganti FEED ala pesan WA (ikon aksi
+  bulat + nama·jam + narasi + 📄 dokumen, pemisah tanggal `chatday`) — bukan tabel; (3) BUG bottom-nav
+  "turun/hilang" saat tab Tim: tabel tanpa wrapper melebarkan halaman > viewport sehingga position:fixed
+  lepas dari visual viewport HP — fix `.otable` wrapper + guard `#docs{overflow-x:clip}` mobile;
+  (4) kategori Berkas jadi pil berikon scrollable (`.cattabs`, FILE_CATS dapat kolom ikon); (5) field chat
+  2,5 baris (min-height 62px); (6) chat mobile menyatu: chatwrap fixed top:46px..bottom:100px, repmenu
+  fixed polos (border-top, tanpa radius) nempel di atas bottom-nav; (7) heading "Manajemen Proyek" +
+  baris "← Proyek" (pback) dihapus (kembali via tombol Proyek header); (8) Tim: editor role
+  input+datalist DIGANTI `<select>` sungguhan (datalist tak membuka daftar saat diklik di banyak
+  browser — dilaporkan "button tidak berfungsi") + opsi "Role lain…" prompt; saran role +KTPA/ATPA;
+  (9) Tim di HP: `.timwrap` tabel jadi tumpukan kartu tanpa scroll samping. Masih perlu dicek manual
+  di HP sungguhan: seam 1-2px antara chatin-repmenu-bottomnav (tinggi nav beda antar browser).
 - [x] **Tab Laporan 2 kolom + Diskusi Tim ala WhatsApp + nav bawah mobile (2026-10-06)** —
   `tabLaporan` (ui/index.html) jadi `.lrwrap` 2 kolom: kiri seksi Draft/Interim/Final + form tautkan/
   unggah (semua logika lama utuh), kanan `chatbox` diskusi tim per PROYEK: bubble ala WA (milik sendiri
