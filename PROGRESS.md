@@ -54,7 +54,9 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   ada call server selama mengetik; server tetap baru dihubungi saat Simpan (perilaku lama). Buka edit lagi
   setelah crash/tab tertutup -> confirm "Pulihkan?" (plus peringatan bila versi blok sudah berubah = diedit
   orang lain). Draft dihapus saat Simpan sukses atau Batal; gagal simpan (termasuk 409) draft DIPERTAHANKAN
-  ("Ketikanmu aman di draft lokal"). Draft >7 hari dibersihkan saat `boot()` (`pruneDrafts`). **Diuji**:
+  ("Ketikanmu aman di draft lokal"). Setelah 409, Batal juga TIDAK membuang draft (flag `conflicted`:
+  Batal di situasi konflik berarti "lihat dulu versi orang lain" — draft baru dibuang kalau tawaran
+  "Pulihkan?" berikutnya ditolak). Draft >7 hari dibersihkan saat `boot()` (`pruneDrafts`). **Diuji**:
   `node --check` lolos; **belum dicoba di browser sungguhan** (skenario crash/pulihkan/409 perlu dirasakan manual).
 - [x] **Offload ke client (ETag+304, patch SSE) + polish UI/mobile + hardening keamanan (2026-10-06)**
   - **ETag/304** (`cmsapp/api.py`): helper `_doc_rev` (counter event Redis `cms:doc:<id>:seq` + `fingerprint`

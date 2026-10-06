@@ -1264,10 +1264,12 @@ async function edit(el,b){try{await api('POST',`/blocks/${b.id}/lock`);locks[b.i
  const done=async(keepDraft)=>{clearInterval(dtimer);if(!keepDraft)try{localStorage.removeItem(dk)}catch(e){}
   delete locks[b.id];try{await api('DELETE',`/blocks/${b.id}/lock`)}catch(e){}};
  const val=()=>raw?raw.value:dom2mk(ed);
+ let conflicted=false;   // setelah 409, Batal = "lihat dulu versi orang lain", draft JANGAN dibuang
  async function save(){try{await api('PATCH',`/blocks/${b.id}`,{text:val(),version:b.version});await done();refreshBlock(b.id)}
-  catch(e){dsave();note(e.status===409?'Konflik: blok diubah orang lain, muat ulang. (Ketikanmu aman di draft lokal)':e.message,1)}}
+  catch(e){dsave();if(e.status===409)conflicted=true;
+   note(e.status===409?'Konflik: blok diubah orang lain, muat ulang. (Ketikanmu aman di draft lokal)':e.message,1)}}
  const s=document.createElement('button');s.className='p';s.textContent='Simpan (Ctrl+Enter)';s.onclick=save;
- const c=document.createElement('button');c.textContent='Batal';c.onclick=async()=>{await done();refreshBlock(b.id)};acts.append(s,c)}
+ const c=document.createElement('button');c.textContent='Batal';c.onclick=async()=>{await done(conflicted);refreshBlock(b.id)};acts.append(s,c)}
 async function hist(el,b){const {history}=await api('GET',`/blocks/${b.id}/history`);let p=el.querySelector('.hist');if(p){p.remove();return}
  p=document.createElement('div');p.className='hist meta';p.style.flexDirection='column';p.style.alignItems='flex-start';
  history.slice().reverse().slice(0,15).forEach(h=>{const r=document.createElement('div');r.innerHTML=`v${h.version} · ${esc(h.changed_by||'')} · ${esc((h.text||'').slice(0,80))} `;
