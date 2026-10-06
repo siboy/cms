@@ -390,14 +390,14 @@ async function workloadDlg(){let items=[];try{items=(await api('GET','/team-work
  const LV={merah:['#d1242f','🔴 Overload'],kuning:['#b45309','🟡 Padat'],hijau:['#2da44e','🟢 Normal']};
  const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg style="width:min(680px,94vw)"><b>📊 Beban Tim</b>
- <p style="color:var(--mut);font-size:12px;margin:0">Skor gabungan: proyek aktif yang diikuti + PIC yang belum selesai + task berjalan + intensitas aktivitas 14 hari terakhir. 🌙 = aksi di luar jam kerja (sebelum 07.00 / setelah 18.00), 📅 = aksi Sabtu/Minggu — keduanya menaikkan indikasi kelelahan.</p>
+ <p style="color:var(--mut);font-size:12px;margin:0">Skor = proyek aktif + PIC belum selesai + task berjalan + <b>poin usaha</b> 14 hari — BERBOBOT: unggah/ekstrak dokumen berat, pindah blok ringan, dan edit teks dihitung dari <b>besar perubahan nyata</b> (±400 karakter = 1 poin), bukan jumlah klik. 🔥 Kelelahan hanya ditandai bila usaha di luar jam kerja/akhir pekan ≥8 poin, ≥30% dari total, dan terjadi ≥2 hari berbeda — menambah 2 kalimat di hari Sabtu tidak dihitung lelah.</p>
  <div style="display:grid;gap:8px">${items.map(u=>{const [col,lbl]=LV[u.level];const w=Math.min(100,u.score/15*100);
   return `<div style="border:1px solid var(--line);border-radius:10px;padding:8px 11px;${u.level==='merah'?'border-color:#d1242f;background:#d1242f14':''}">
    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(u.name||u.username)}</b>
     <span class=badge style="background:${col}">${lbl} · ${u.score}</span>
     ${u.fatigued?'<span class=badge style="background:#d1242f" title="Sering bekerja malam / akhir pekan dlm 14 hari terakhir">🔥 Indikasi kelelahan</span>':''}</div>
    <div class=pbar style="margin:6px 0"><i style="width:${w}%;background:${col}"></i></div>
-   <small style="color:var(--mut)">📁 ${u.projects_active} proyek aktif · 📌 ${u.pic_open} PIC belum selesai · 🗓 ${u.tasks_active} task berjalan · ⚡ ${u.actions_14d} aksi/14h ${u.late_actions?`· 🌙 ${u.late_actions} malam`:''} ${u.weekend_actions?`· 📅 ${u.weekend_actions} akhir pekan`:''}</small>
+   <small style="color:var(--mut)">📁 ${u.projects_active} proyek aktif · 📌 ${u.pic_open} PIC belum selesai · 🗓 ${u.tasks_active} task berjalan · ⚡ ${u.effort_14d} poin usaha/14h (${u.actions_14d} aksi, ${u.days_active} hari)${u.effort_out?` · 🌙📅 ${u.effort_out} poin di luar jam kerja (${Math.round((u.out_ratio||0)*100)}%, ${u.out_days} hari)`:''}</small>
   </div>`}).join('')||'<p style="color:var(--mut)">Belum ada data pengguna.</p>'}</div>
  <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()}}

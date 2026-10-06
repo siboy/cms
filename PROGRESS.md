@@ -62,6 +62,13 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   di SQLite CLI). CATATAN: "meeting/scheduler" belum ada fiturnya di sistem — proxy beban memakai task
   gantt + aktivitas; kalau nanti ada fitur agenda, tambahkan ke skor. **Diuji**: 3 cek (200 utk admin,
   metrik lengkap utk anggota 2 proyek, 403 user biasa) + seluruh suite lolos. Live di :8879.
+  **Revisi perhitungan (sama hari, dari kritik user)**: hitungan aksi mentah diganti POIN USAHA —
+  (a) bobot per jenis aksi (`ACTION_EFFORT`: doc.upload=8, file_upload=3, insert=1.2, move/delete=0.3,
+  dst); (b) block.edit dihitung dari BESAR perubahan nyata: |delta panjang teks| antar versi berurutan
+  `cms_block_history` (~400 char = 1 poin, cap 5/versi) — tambah 2 kalimat ±0.3 poin, tulis ulang bab
+  = poin besar; (c) kelelahan PROPORSIONAL: flag hanya bila poin luar-jam >=8 DAN >=30% total DAN
+  >=2 hari berbeda (upload besar di SATU Sabtu malam = belum lelah; berulang Sabtu kedua = lelah —
+  dua-duanya diuji sintetis). Field baru: effort_14d/effort_out/out_ratio/days_active/out_days.
 - [x] **Mention @ di Diskusi -> notifikasi unread (2026-10-06)** — ketik `@` di chat memunculkan saran
   (anggota tim / `@tim` = semua / `📁 @proyek` = tim proyek lain, sisip `@proyek:<id>`); yang disebut
   dapat notifikasi badge 🔔 (type `chat_mention`, sistem cms_notifications yg sudah ada). Server

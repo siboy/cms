@@ -683,12 +683,23 @@ class BlockStore:
         with self._tx() as c:
             self._x(c, "UPDATE cms_project_chat SET deleted_at=? WHERE id=?", (_now(), chat_id))
 
+    # bobot "poin usaha" per jenis aksi (bukan 1 aksi = 1 poin): upload/ekstrak dokumen berat,
+    # pindah/hapus blok ringan; block.edit TIDAK dihitung dari sini melainkan dari BESAR perubahan
+    # teks sungguhan (selisih panjang antar versi di cms_block_history, ~400 karakter = 1 poin).
+    ACTION_EFFORT = {"doc.upload": 8.0, "project.file_upload": 3.0, "user.file_upload": 2.0,
+                     "block.insert": 1.2, "block.edit": 0.0, "block.move": 0.3, "block.delete": 0.3,
+                     "block.restore": 0.5, "block.revert": 0.5, "block.hidden": 0.2,
+                     "comment.add": 0.6, "comment.resolve": 0.2, "comment.delete": 0.1,
+                     "doc.export": 0.8, "pic.assign": 0.3, "pic.unassign": 0.2, "doc.share": 0.2}
+
     def team_workload(self) -> list[dict]:
-        """Profil beban kerja per pengguna aktif (panel 'Beban Tim' di daftar proyek): proyek aktif yang
-        diikuti, penugasan PIC yang belum selesai, task gantt aktif yang menandainya, intensitas aktivitas
-        14 hari terakhir dari cms_activity_log — termasuk kerja MALAM (sebelum 07:00 / >=18:00) dan AKHIR
-        PEKAN (Sabtu/Minggu, dihitung dari created_at). Skor gabungan -> level hijau/kuning/merah +
-        flag indikasi kelelahan. Semua sumber best-effort (tabel bisa tak ada di SQLite CLI)."""
+        """Profil beban kerja per pengguna aktif (panel 'Beban Tim'): proyek aktif diikuti, PIC belum
+        selesai, task gantt aktif, dan POIN USAHA 14 hari terakhir — berbobot per jenis aksi
+        (ACTION_EFFORT) + usaha edit dihitung dari BESAR perubahan teks (delta panjang antar versi
+        cms_block_history), supaya 'tambah 2 kalimat' tidak setara 'unggah & ekstrak dokumen'.
+        Kerja MALAM (sebelum 07:00 / >=18:00) & AKHIR PEKAN dihitung dalam poin usaha juga; flag
+        kelelahan PROPORSIONAL: poin luar-jam >= 8 DAN >= 30% total DAN kejadian di >= 2 hari beda
+        (sekali-sekali lembur kecil tidak dicap lelah). Semua sumber best-effort."""
         from datetime import datetime, timedelta
         since = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
         def safe(fn, default):
@@ -712,30 +723,57 @@ class BlockStore:
                 c, "SELECT tg.user_id, COUNT(DISTINCT t.id) AS n FROM cms_project_task_tags tg "
                    "JOIN cms_project_tasks t ON t.id=tg.task_id AND t.deleted_at IS NULL "
                    "AND COALESCE(t.progress_percent,0)<100 GROUP BY tg.user_id"), [])}
-            acts = safe(lambda: self._all(c, "SELECT username, created_at FROM cms_activity_log "
+            acts = safe(lambda: self._all(c, "SELECT username, action, created_at FROM cms_activity_log "
                                              "WHERE created_at>=?", (since,)), [])
+            # usaha edit teks sesungguhnya: |delta panjang| antar versi berurutan (karakter diketik/dihapus)
+            edits = safe(lambda: self._all(c, "SELECT h2.changed_by AS username, h2.changed_at AS created_at, "
+                                              "ABS(LENGTH(COALESCE(h2.text,'')) - LENGTH(COALESCE(h1.text,''))) AS delta "
+                                              "FROM cms_block_history h2 LEFT JOIN cms_block_history h1 "
+                                              "ON h1.block_id=h2.block_id AND h1.version=h2.version-1 "
+                                              "WHERE h2.changed_at>=?", (since,)), [])
         per: dict[str, dict] = {}
-        for a in acts:
-            s = per.setdefault(a["username"] or "", {"n": 0, "late": 0, "weekend": 0})
-            s["n"] += 1
+
+        def bucket(username, created_at, points):
+            s = per.setdefault(username or "", {"n": 0, "pts": 0.0, "pts_out": 0.0,
+                                                "late": 0, "weekend": 0, "days": set(), "out_days": set()})
+            s["pts"] += points
             try:
-                dt = datetime.strptime(str(a["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
-                if dt.hour < 7 or dt.hour >= 18:
-                    s["late"] += 1
-                if dt.weekday() >= 5:
-                    s["weekend"] += 1
+                dt = datetime.strptime(str(created_at)[:19], "%Y-%m-%d %H:%M:%S")
             except Exception:                           # noqa: BLE001
-                pass
+                return s
+            s["days"].add(dt.date())
+            outside = dt.hour < 7 or dt.hour >= 18 or dt.weekday() >= 5
+            if outside:
+                s["pts_out"] += points
+                s["out_days"].add(dt.date())
+            if dt.hour < 7 or dt.hour >= 18:
+                s["late"] += 1
+            if dt.weekday() >= 5:
+                s["weekend"] += 1
+            return s
+
+        for a in acts:
+            s = bucket(a["username"], a["created_at"], self.ACTION_EFFORT.get(a["action"], 0.5))
+            s["n"] += 1
+        for e in edits:                                  # block.edit: poin = besar perubahan, ~400 char = 1 poin (cap 5/versi)
+            bucket(e["username"], e["created_at"], min((e["delta"] or 0) / 400.0, 5.0))
         out = []
         for u in users:
-            st = per.get(u["username"], {"n": 0, "late": 0, "weekend": 0})
+            st = per.get(u["username"], {"n": 0, "pts": 0.0, "pts_out": 0.0,
+                                         "late": 0, "weekend": 0, "days": set(), "out_days": set()})
             p, po, tk = proj.get(u["id"], 0), pic_open.get(u["id"], 0), tasks.get(u["id"], 0)
-            score = round(p * 1.5 + po * 2 + tk * 2 + st["n"] / 25 + st["late"] / 8 + st["weekend"] / 6, 1)
-            fatigued = st["weekend"] >= 8 or st["late"] >= 12   # sering kerja akhir pekan / di luar jam kerja
+            pts, pts_out = round(st["pts"], 1), round(st["pts_out"], 1)
+            out_ratio = round(pts_out / pts, 2) if pts else 0.0
+            score = round(p * 1.5 + po * 2 + tk * 2 + pts / 6, 1)
+            # kelelahan PROPORSIONAL: usaha luar-jam signifikan (>=8 poin), porsinya besar (>=30%),
+            # dan bukan insiden sekali (>=2 hari berbeda) — tambah 2 kalimat di hari Sabtu TIDAK memicu
+            fatigued = pts_out >= 8 and out_ratio >= 0.3 and len(st["out_days"]) >= 2
             level = "merah" if (score >= 12 or (fatigued and score >= 6)) else ("kuning" if score >= 6 else "hijau")
             out.append({"user_id": u["id"], "username": u["username"], "name": u["name"],
                         "projects_active": p, "pic_open": po, "tasks_active": tk,
-                        "actions_14d": st["n"], "late_actions": st["late"], "weekend_actions": st["weekend"],
+                        "actions_14d": st["n"], "effort_14d": pts, "effort_out": pts_out,
+                        "out_ratio": out_ratio, "days_active": len(st["days"]), "out_days": len(st["out_days"]),
+                        "late_actions": st["late"], "weekend_actions": st["weekend"],
                         "score": score, "level": level, "fatigued": fatigued})
         out.sort(key=lambda x: -x["score"])
         return out
