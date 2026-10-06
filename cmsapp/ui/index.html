@@ -153,6 +153,15 @@ header b{letter-spacing:.2px}
     position:fixed (bottom-nav) lepas dari visual viewport di browser HP (kasus tab Tim) */
  #docs{overflow-x:clip}
  #ptab table{width:100%}
+ /* Tim Proyek di HP: tabel jadi tumpukan kartu (nama di atas, role & aksi di bawahnya) — tanpa geser kanan-kiri */
+ .timwrap{overflow:visible}
+ .timwrap table,.timwrap tbody{display:block;width:100%}
+ .timwrap tr{display:block;border:1px solid var(--line);border-radius:10px;padding:8px 11px;margin-bottom:8px;
+  background:var(--card);box-shadow:var(--sh)}
+ .timwrap tr:first-child{display:none}
+ .timwrap td{display:block;border:none;padding:2px 0;min-width:0;word-break:break-word}
+ .timwrap td:first-child{font-weight:600}
+ .timwrap td select,.timwrap td input{width:100%;box-sizing:border-box}
  /* nav tab proyek jadi bottom bar berikon ala aplikasi HP */
  #ptabs{position:fixed;left:0;right:0;bottom:0;z-index:16;display:grid;grid-auto-flow:column;gap:0;margin:0;
   background:var(--card);border-top:1px solid var(--line);box-shadow:var(--sh2)}
@@ -488,7 +497,7 @@ async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`
  const nameOf=t=>t.is_external?`${esc(t.external_name)} <span class=badge style="background:var(--mut)">Eksternal</span>`:esc(t.name||t.username);
  $('#ptab').innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b>${canManage?'<button type=button id=timport>📥 Impor dari proyek lain…</button>':''}</div>
  <p style="color:var(--mut);font-size:12px">Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC (anggota eksternal tanpa akun CMS tak bisa jadi PIC). Role yang diisi dipakai juga di rekap pengalaman proyek (CV) orang tersebut. Default role: "${ROLE_DEFAULT}" kalau belum ada yang lebih spesifik.</p>
- <div class=otable><table><tr><th>Nama</th><th>Role</th>${canManage?'<th></th>':''}</tr>
+ <div class="otable timwrap"><table><tr><th>Nama</th><th>Role</th>${canManage?'<th></th>':''}</tr>
  ${team.map(t=>`<tr><td>${nameOf(t)}${t.external_contact?`<br><small style="color:var(--mut)">${esc(t.external_contact)}</small>`:''}</td><td>${canManage?`<span data-title="${t.row_id}"></span>`:esc(t.title||ROLE_DEFAULT)}</td>
  ${canManage?`<td><button type=button data-rm="${t.row_id}">Keluarkan</button></td>`:''}</tr>`).join('')
  ||`<tr><td colspan=${canManage?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table></div>
