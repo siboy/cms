@@ -69,6 +69,15 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `projects_api._process_chat_hashtags`. Mobile repmenu jadi: Diskusi|Laporan|Task|Kal.
   **Diuji**: 12 skenario end-to-end baru semua lolos (termasuk jadwal kalender = baris Gantt &
   show-all lintas proyek). Live di :8879. Belum: autocomplete `#` di chat (hanya `@` yang ada).
+  **Susulan (sama hari)**: tab Berkas DIBUANG -> repository pindah ke kartu "📂 Tambah Dokumen" (rename
+  dari "Tambah laporan") di tab "MyTask" (rename tab Laporan); unggah berkas kini boleh SEMUA anggota
+  tim (tombol selalu tampil; hapus = pengelola/pengunggah); checkbox global `workload_detail` di halaman
+  Admin (tabel BARU `cms_settings` get/set_setting) menggantikan toggle detail di dialog Beban Tim;
+  note Beban Tim dipecah: "Sering kerja lembur"/"Sering overtime (Sabtu-Minggu)"/"Banyak direvisi"
+  (komentar QC)/"Laporan tidak sesuai, banyak direplace" (rework edit vs cmt dipisah); SUB-TASK Gantt:
+  tombol "+ Sub-task/jadwal" di Gantt (semua anggota, via endpoint /calendar), dialog Kalender &
+  "+ Task" punya pilihan induk (boleh kosong; "+ Task" bisa sekaligus masuk Gantt sbg utama/sub),
+  Gantt render hirarki ↳ menjorok (ordered array — data-idx merujuk ordered, bukan tasks).
 - [x] **Filter status daftar proyek + panel Beban Tim / deteksi overload (2026-10-06)** — daftar proyek:
   pil filter "Aktif (n)" (default, = status!=completed) / Planning / Ongoing / On hold / Done / Semua,
   jumlah di tiap label (`projFilter` global, render ulang projectsView). Tombol "📊 Beban Tim"
