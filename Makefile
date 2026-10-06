@@ -19,7 +19,7 @@ stack:
 
 # restart cepat app+worker (:8879) tanpa build/skema; mysql & redis TIDAK disentuh.
 # ganti kode perlu image baru -> tetap 'make stack'.
-stack-restart:
+stack-restart rr:
 	$(DC) restart app worker
 	@sleep 2; curl -s http://127.0.0.1:8879/health || echo "app belum menjawab (cek: make stack-logs)"; echo
 
@@ -183,4 +183,4 @@ ccms:
 %:
 	@:
 
-.PHONY: push stack stack-restart rx7 stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
+.PHONY: push stack stack-restart rr rx7 stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
