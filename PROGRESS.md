@@ -49,6 +49,20 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Multi-tenant per perusahaan: template compose + nginx + add-tenant.sh (2026-10-06)** — pelengkap
+  entri isolasi di bawah. `docker/tenant.yml` (4 service mysql/redis/app/worker; network TANPA `name:` +
+  volume diprefix COMPOSE_PROJECT_NAME -> privat per tenant; DNS antar-container pakai nama service, BUKAN
+  container_name; image `cms-collab:dev` SATU utk semua tenant; port host hanya 127.0.0.1); nginx SATU
+  shared di host: `docker/nginx-tenant.conf.template` (placeholder __SLUG__/__DOMAIN__/__PORT__, SSE
+  proxy_buffering off + read_timeout 1h, X-Real-IP utk throttle app, certbot utk HTTPS);
+  `scripts/add-tenant.sh <slug> <domain> [port]` idempoten: port otomatis (8901+, scan TENANT_PORT tenant
+  lain), subnet 172.29.<port-8900>.0/24 (hindari 172.20.x VPN; stack lama cmscollab=.250), .env sandi acak
+  sekali buat, build image bila belum ada (REBUILD=1 paksa), compose up, generate nginx conf + instruksi
+  (certbot, cms_admin buat admin, cron backup). `collab_backup.sh` kini terima env `CMS_MYSQL_CONTAINER`
+  (per tenant: cms-<slug>-mysql; default lama cms-mysql tetap). **Diuji**: bash -n, yaml tenant.yml
+  tervalidasi (interpolasi disimulasikan), dry-run add-tenant 2 tenant dgn docker di-stub (port/subnet
+  urut otomatis, .env tak tertimpa saat rerun, nginx conf tersubstitusi). **Belum dicoba** dgn Docker/
+  nginx/certbot sungguhan.
 - [x] **Isolasi antar divisi (default-deny dokumen) + share link baca-saja (2026-10-06)** — kebutuhan multi-
   perusahaan/divisi. **Antar PERUSAHAAN: pisahkan stack+DB per perusahaan** (bukan kode — compose project,
   volume media, Redis DB, subdomain sendiri per tenant; isolasi by construction, user & identitas tak

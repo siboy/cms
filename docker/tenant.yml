@@ -1,0 +1,123 @@
+# Stack CMS SATU TENANT (perusahaan): mysql + redis + app + worker, terisolasi penuh dari tenant lain
+# (network, volume, sandi, port sendiri). Di-generate & dikelola scripts/add-tenant.sh — semua nilai
+# ${...} dibaca dari .env di folder tenant (JANGAN di-commit). nginx shared di host me-reverse-proxy
+# subdomain tiap tenant ke 127.0.0.1:${TENANT_PORT} (lihat docker/nginx-tenant.conf.template).
+# Nama project compose diisi lewat COMPOSE_PROJECT_NAME di .env (cms-<slug>).
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: cms-${TENANT}-mysql
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Jakarta
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?isi di .env}
+      MYSQL_DATABASE: cms
+      MYSQL_USER: cms
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?isi di .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/cms.cnf:/etc/mysql/conf.d/cms.cnf:ro
+      - ./init:/docker-entrypoint-initdb.d:ro      # dijalankan sekali saat data dir kosong
+    ports:
+      - "127.0.0.1:${TENANT_MYSQL_PORT}:3306"      # hanya utk debug/backup dari host
+    mem_limit: ${MYSQL_MEM:-2g}
+    networks: [net]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: cms-${TENANT}-redis
+    restart: unless-stopped
+    command: >
+      redis-server --requirepass ${REDIS_PASSWORD:?isi di .env}
+      --maxmemory ${REDIS_MEM:-512mb} --maxmemory-policy noeviction
+      --appendonly yes --appendfsync everysec
+      --maxclients 5000 --tcp-backlog 1024
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:${TENANT_REDIS_PORT}:6379"
+    mem_limit: 768m
+    networks: [net]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  app:
+    image: ${CMS_IMAGE:-cms-collab:dev}             # SATU image dipakai semua tenant; data tetap terpisah
+    container_name: cms-${TENANT}-app
+    restart: unless-stopped
+    command: >
+      gunicorn -k gevent -w ${CMS_WORKERS:-3} --worker-connections 1000
+      -b 0.0.0.0:8879 --timeout 120 --graceful-timeout 20 --keep-alive 30
+      --access-logfile - "cmsapp:create_app()"
+    environment: &appenv
+      TZ: Asia/Jakarta
+      PYTHONPATH: /app
+      CMS_DB_HOST: mysql                            # DNS nama service, privat per project/network tenant
+      CMS_DB_USER: cms
+      CMS_DB_PASS: ${MYSQL_PASSWORD}
+      CMS_DB_NAME: cms
+      CMS_DB_POOL: "12"
+      CMS_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CMS_SECRET_KEY: ${CMS_SECRET_KEY:?isi di .env}
+      CMS_DATA_DIR: /data
+      CMS_EXPORT_DIR: /data/exports
+      CMS_BASE_URL: ${CMS_BASE_URL:?isi di .env}    # https://<subdomain-tenant>, dipakai link email & share
+      CMS_COOKIE_SECURE: ${CMS_COOKIE_SECURE:-1}    # 1: wajib HTTPS (di belakang nginx+cert)
+      CMS_SMTP_HOST: ${CMS_SMTP_HOST:-}
+      CMS_SMTP_PORT: ${CMS_SMTP_PORT:-587}
+      CMS_SMTP_USER: ${CMS_SMTP_USER:-}
+      CMS_SMTP_PASS: ${CMS_SMTP_PASS:-}
+      CMS_SMTP_FROM: ${CMS_SMTP_FROM:-}
+      CMS_SMTP_TLS: ${CMS_SMTP_TLS:-1}
+    volumes:
+      - app_data:/data
+    ports:
+      - "127.0.0.1:${TENANT_PORT}:8879"             # hanya lokal; dunia luar lewat nginx
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    mem_limit: 2g
+    networks: [net]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8879/health',timeout=3)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    image: ${CMS_IMAGE:-cms-collab:dev}
+    container_name: cms-${TENANT}-worker
+    restart: unless-stopped
+    command: python -m cmsapp.worker
+    environment: *appenv
+    volumes:
+      - app_data:/data
+    depends_on:
+      mysql: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    mem_limit: 1500m
+    networks: [net]
+
+networks:
+  net:                                              # tanpa `name:` -> diprefix nama project = privat per tenant
+    ipam:
+      config:
+        - subnet: ${TENANT_SUBNET}                  # di-set add-tenant.sh; hindari 172.20.x (rute VPN)
+
+volumes:                                            # diprefix nama project -> data tiap tenant terpisah
+  mysql_data:
+  redis_data:
+  app_data:
