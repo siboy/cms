@@ -494,3 +494,18 @@ CREATE TABLE IF NOT EXISTS cms_notifications (
     INDEX idx_notif_user (user_id, read_at),
     CONSTRAINT fk_notif_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- share link read-only per dokumen (isolasi antar divisi: dokumen default-deny, dibagikan eksplisit
+-- lewat token; dibuka TANPA login via /api/shared/<token>/..., bisa kedaluwarsa & dicabut).
+CREATE TABLE IF NOT EXISTS cms_share_links (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    token       VARCHAR(64) NOT NULL,
+    doc_id      INT NOT NULL,
+    created_by  VARCHAR(100) DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    expires_at  VARCHAR(19) DEFAULT NULL,
+    revoked_at  VARCHAR(19) DEFAULT NULL,
+    UNIQUE KEY uq_share_token (token),
+    INDEX idx_share_doc (doc_id),
+    CONSTRAINT fk_share_doc FOREIGN KEY (doc_id) REFERENCES cms_documents(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -292,6 +292,10 @@ def docs():
     if view_restricted():
         visible = S().assigned_doc_ids(g.user["id"])
         items = [d for d in items if d["id"] in visible]
+    elif not (g.user.get("is_super") or auth.has_perm(g.user, "doc_view_all")):
+        # isolasi antar divisi: tanpa doc_view_all hanya dokumen sendiri/PIC/proyek yang diikuti
+        visible = S().visible_doc_ids(g.user["id"], g.user["username"])
+        items = [d for d in items if d["id"] in visible]
     return jsonify(docs=items)
 
 
@@ -1033,6 +1037,9 @@ def export_status(jid):
     st = export.status(R(), jid)
     if not st:
         return jsonify(error="job tidak ada / kedaluwarsa"), 404
+    d = R().hget(export.JOB + jid, "doc")
+    if d and not auth.can_view_doc(int(d)):
+        return jsonify(error="job tidak ada / kedaluwarsa"), 404
     return jsonify(st)
 
 
@@ -1042,9 +1049,83 @@ def export_download(jid):
     h = R().hgetall(export.JOB + jid)
     if not h or h.get("status") != "done" or not os.path.isfile(h.get("file", "")):
         return jsonify(error="belum siap"), 409
+    if h.get("doc") and not auth.can_view_doc(int(h["doc"])):
+        return jsonify(error="job tidak ada / kedaluwarsa"), 404
     name = f"dokumen_{h['doc']}_{time.strftime('%Y%m%d_%H%M')}.docx"
     return send_file(h["file"], as_attachment=True, download_name=name,
                      mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+# ---------------------------------------------------------------- share link (baca-saja lintas divisi/pihak luar)
+@bp.get("/docs/<int:doc_id>/share")
+@auth.require("doc_share")
+def share_list(doc_id):
+    return jsonify(links=S().list_share_links(doc_id))
+
+
+@bp.post("/docs/<int:doc_id>/share")
+@auth.require("doc_share")
+def share_create(doc_id):
+    d = body()
+    days = d.get("days")
+    link = S().create_share_link(doc_id, g.user["username"], int(days) if days else None)
+    S().log_activity(g.user["username"], "doc.share", target_type="document", target_id=doc_id, doc_id=doc_id,
+                     summary=f'link baca-saja{f" {days} hari" if days else ""}')
+    return jsonify(**link), 201
+
+
+@bp.delete("/share-links/<int:link_id>")
+@auth.require("doc_share")
+def share_revoke(link_id):
+    S().revoke_share_link(link_id, g.user["username"])
+    S().log_activity(g.user["username"], "doc.share_revoke", target_type="share", target_id=link_id)
+    return jsonify(ok=True)
+
+
+def _share_doc(token: str) -> int:
+    """Validasi token share utk rute publik /shared/* (TANPA login): rate-limit per IP + token masih
+    berlaku. Token hanya membuka BACA dokumen miliknya sendiri -- tak ada jalan ke dokumen/aksi lain."""
+    throttle(f"share:{request.headers.get('X-Real-IP') or request.remote_addr or ''}", 240, 60)
+    sh = S().get_share(token)
+    if not sh:
+        raise KeyError("link tidak berlaku (salah, kedaluwarsa, atau dicabut)")
+    return sh["doc_id"]
+
+
+@bp.get("/shared/<token>")
+def shared_meta(token):
+    doc_id = _share_doc(token)
+    d = S().load_document(doc_id)
+    return jsonify(doc={"filename": d.get("filename")}, outline=S().outline(doc_id, 4))
+
+
+@bp.get("/shared/<token>/blocks")
+def shared_blocks(token):
+    doc_id = _share_doc(token)
+    s = S()
+    fs = ts = None
+    ch, hd = request.args.get("chapter", type=int), request.args.get("heading", type=int)
+    anchor = ch or hd
+    if anchor:
+        h = s.get_block(anchor)
+        if h["doc_id"] != doc_id:                        # blok dokumen lain: jangan bocor lintas token
+            raise KeyError("bab tidak ada di dokumen ini")
+        fs = h["seq"]
+        nxt = [x for x in s.outline(doc_id, 1 if ch else 4) if x["seq"] > fs]
+        ts = nxt[0]["seq"] if nxt else None
+    bl = s.blocks_range(doc_id, fs, ts, limit=500)
+    return jsonify(blocks=[out(b) for b in bl])
+
+
+@bp.get("/shared/<token>/asset/<sha1>")
+def shared_asset(token, sha1):
+    doc_id = _share_doc(token)
+    p = S().get_asset_path(doc_id, sha1)
+    if not p:
+        abort(404)
+    resp = send_file(p)
+    resp.headers["Cache-Control"] = "private, max-age=3600"
+    return resp
 
 
 # ---------------------------------------------------------------- admin

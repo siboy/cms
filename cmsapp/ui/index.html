@@ -100,12 +100,13 @@ header b{letter-spacing:.2px}
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
 <button id="bmenu" title="Menu" hidden>☰</button>
 <nav id="navbtns">
-<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
+<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
 </nav></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
-let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,section=null,es=null,outline=[],locks={},hb=null;
+let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,section=null,es=null,outline=[],locks={},hb=null,shareTok=null;
+const assetUrl=s=>shareTok?`/api/shared/${shareTok}/asset/${s}`:`/api/docs/${doc}/asset/${s}`;
 const hasPerm=k=>!!(me&&(me.is_super||(me.perms||[]).includes(k)));
 const view_restricted_client=()=>hasPerm('doc_view_assigned_only')&&!hasPerm('block_edit_all');
 function cellText(c){let n=0;return (c.blocks||[]).map(x=>{const d=x.data||{};if(x.kind==='list_item'){if(d.ordered){n=(d.restart||!n)?1:n+1;return n+(d.sep||')')+' '+x.text}n=0;return '• '+x.text}n=0;return x.text}).join('\n')}
@@ -160,7 +161,7 @@ function mk2dom(t){const frag=document.createDocumentFragment();const runs=[];
  for(const r of parseInline(t||'')){const l=runs[runs.length-1];const k=[...r[1]].sort().join();if(l&&l.k===k&&l.url===r[2])l.t+=r[0];else runs.push({t:r[0],f:r[1],k,url:r[2]})}
  for(const r of runs){let node=null;
   if(r.url&&typeof r.url==='object'&&r.url.img){
-   const img=document.createElement('img');img.src=`/api/docs/${doc}/asset/${r.url.sha1}`;img.alt=r.url.alt||'';
+   const img=document.createElement('img');img.src=assetUrl(r.url.sha1);img.alt=r.url.alt||'';
    img.dataset.sha1=r.url.sha1;img.dataset.alt=r.url.alt||'';img.style.cssText='max-width:220px;max-height:220px;vertical-align:middle';
    node=img;for(const f of ['sub','sup','u','i','b']){if(r.f.has(f)){const e=document.createElement(f);e.append(node);node=e}}
    frag.append(node);continue}
@@ -187,6 +188,7 @@ function dom2mk(root){let out='';const walk=(n,first)=>{for(const c of n.childNo
 function note(t,err){const b=$('#bar');b.hidden=!t;b.className=err?'err':'';b.textContent=t||'';if(t)setTimeout(()=>{b.hidden=true},4000)}
 async function boot(){const qp=new URLSearchParams(location.search);const rtok=qp.get('reset');
  if(rtok)return resetPasswordView(rtok);
+ const stok=qp.get('share');if(stok)return shareView(stok);
  try{me=(await api('GET','/me')).user}catch(e){return loginView()}
  pruneDrafts();
  $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;
@@ -949,10 +951,47 @@ async function blockNotesDlg(docId,blockId,label){const m=document.createElement
   f.querySelectorAll('[data-done]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/comments/${b.dataset.done}/resolve`,{resolved:b.dataset.cur!=='1'});paint()}catch(x){note(x.message,1)}});
   f.querySelectorAll('[data-delc]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus catatan?')){try{await api('DELETE',`/comments/${b.dataset.delc}`);paint()}catch(x){note(x.message,1)}}})};
  await paint()}
-function closeDoc(){if(es)es.close();es=null;doc=null;chapter=null;section=null;clearInterval(hb);$('#bexp').hidden=true;$('#bopt').hidden=true;$('#bgal').hidden=true;$('#pres').textContent=''}
+function closeDoc(){if(es)es.close();es=null;doc=null;chapter=null;section=null;clearInterval(hb);$('#bexp').hidden=true;$('#bopt').hidden=true;$('#bgal').hidden=true;$('#bshare').hidden=true;$('#pres').textContent=''}
+/* Mode baca via share link (?share=<token>): TANPA login, read-only, hanya dokumen milik token itu. */
+async function shareView(token){shareTok=token;
+ let meta;try{meta=await api('GET',`/shared/${token}`)}
+ catch(e){$('#app').innerHTML='<p style="padding:40px;color:var(--mut)">🔗 Link tidak berlaku — salah, kedaluwarsa, atau sudah dicabut.</p>';return}
+ $('#who').textContent='👁 mode baca via link';
+ $('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div><button id=stog title="Daftar isi">📑</button>';
+ $('#stog').onclick=()=>$('#side').classList.toggle('open');
+ const o=meta.outline||[];let chId=null;o.forEach(h=>{if(h.level===1)chId=h.id;h.chapId=chId==null?h.id:chId});
+ $('#side').innerHTML=`<b style="display:block;padding:4px 6px;word-break:break-word">${esc(meta.doc.filename||'Dokumen')}</b>`
+  +o.map(h=>`<a data-ch="${h.chapId}" class="lv${h.level}" style="padding-left:${(h.level-1)*2}ch">${esc((h.text||'(tanpa judul)').slice(0,60))}</a>`).join('');
+ const load=async ch=>{const r=await api('GET',`/shared/${token}/blocks${ch?`?chapter=${ch}`:''}`);$('#ed').innerHTML='';
+  for(const b of r.blocks){const el=document.createElement('div');el.className='blk'+(b.kind==='heading'?' h':'');
+   el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span></div>`;el.append(bodyOf(b));$('#ed').append(el)}
+  if(!r.blocks.length)$('#ed').textContent='Bab kosong.'};
+ $('#side').addEventListener('click',e=>{const a=e.target.closest('a[data-ch]');if(!a)return;
+  $('#side').querySelectorAll('a').forEach(x=>x.classList.remove('cur'));a.classList.add('cur');
+  load(+a.dataset.ch);if(innerWidth<=800)$('#side').classList.remove('open')});
+ await load(o[0]?o[0].chapId:null)}
+$('#bshare').onclick=async()=>{const m=document.createElement('div');m.className='mask';document.body.append(m);
+ const paint=async()=>{const {links}=await api('GET',`/docs/${doc}/share`);
+  m.innerHTML=`<div class=dlg><b>🔗 Bagikan dokumen (baca-saja)</b>
+  <p style="color:var(--mut);font-size:12px;margin:0">Siapa pun yang memegang link bisa MEMBACA dokumen ini tanpa login — utk divisi lain / pihak luar. Tidak bisa mengedit, dan tidak membuka dokumen lain. Cabut kapan saja.</p>
+  <div style="display:flex;gap:6px;align-items:end"><label style="flex:1">Masa berlaku link baru
+   <select id=shd><option value="">Tanpa batas (sampai dicabut)</option><option value=7>7 hari</option><option value=30>30 hari</option><option value=90>90 hari</option></select></label>
+  <button class=p type=button id=shnew>+ Buat link</button></div>
+  <div>${links.map(l=>`<div style="display:flex;gap:6px;align-items:center;margin:4px 0;font-size:12px;flex-wrap:wrap">
+   <input readonly value="${location.origin}/?share=${esc(l.token)}" style="flex:1;min-width:160px" ${l.revoked_at?'disabled':''}>
+   ${l.revoked_at?'<span class=err>dicabut</span>':`<button type=button data-cp="${esc(l.token)}">Salin</button><button type=button data-rv="${l.id}">Cabut</button>`}
+   <small style="color:var(--mut)">${l.expires_at?'s/d '+esc(l.expires_at):'tanpa batas'} · ${esc(l.created_by||'')}</small></div>`).join('')
+   ||'<small style="color:var(--mut)">Belum ada link utk dokumen ini.</small>'}</div>
+  <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
+  m.querySelector('#x').onclick=()=>m.remove();
+  m.querySelector('#shnew').onclick=async()=>{try{await api('POST',`/docs/${doc}/share`,{days:m.querySelector('#shd').value||null});paint()}catch(e){note(e.message,1)}};
+  m.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>{navigator.clipboard.writeText(`${location.origin}/?share=${b.dataset.cp}`).then(()=>note('Link disalin'))});
+  m.querySelectorAll('[data-rv]').forEach(b=>b.onclick=async()=>{if(confirm('Cabut link ini? Yang memegangnya tak bisa membuka lagi.')){try{await api('DELETE',`/share-links/${b.dataset.rv}`);paint()}catch(e){note(e.message,1)}}})};
+ m.onclick=e=>{if(e.target===m)m.remove()};
+ try{await paint()}catch(e){m.remove();note(e.message,1)}};
 async function openDoc(id){doc=id;$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div><button id=stog title="Daftar isi">📑</button>';
  $('#stog').onclick=()=>$('#side').classList.toggle('open');
- $('#side').addEventListener('click',e=>{if(innerWidth<=800&&e.target.closest('a'))$('#side').classList.remove('open')});$('#bexp').hidden=!hasPerm('doc_export');$('#bopt').hidden=!hasPerm('outline_manage');$('#bgal').hidden=view_restricted_client();
+ $('#side').addEventListener('click',e=>{if(innerWidth<=800&&e.target.closest('a'))$('#side').classList.remove('open')});$('#bexp').hidden=!hasPerm('doc_export');$('#bopt').hidden=!hasPerm('outline_manage');$('#bgal').hidden=view_restricted_client();$('#bshare').hidden=!hasPerm('doc_share');
  await loadOutline();subscribe();hb=setInterval(async()=>{for(const b of Object.keys(locks)){try{await api('POST',`/blocks/${b}/lock`)}catch(e){}}
   try{const p=await api('GET',`/docs/${doc}/presence`);$('#pres').textContent='● '+p.count+' online'}catch(e){}},60000)}
 async function loadOutline(){const r=await api('GET',`/docs/${doc}/outline?max_level=4`);outline=r.outline;
@@ -1011,7 +1050,7 @@ function bodyOf(b){
    ib.onclick=()=>{if(!activeCell)return note('Klik salah satu sel tabel dulu',1);insertInlineImage(activeCell,b.id)};
    w.append(ib)}
   w.append(t);return w}
- if(b.kind==='image'){const i=document.createElement('img');i.src=`/api/docs/${doc}/asset/${b.data.asset}`;i.alt=b.data.alt||'';return i}
+ if(b.kind==='image'){const i=document.createElement('img');i.src=assetUrl(b.data.asset);i.alt=b.data.alt||'';return i}
  if(b.kind==='page_break'){const d=document.createElement('div'),L=b.data.layout;
   d.textContent=L?`— ganti halaman: ${L.orientation==='landscape'?'Landscape':'Potrait'} ${typeof L.size==='object'?L.size.w_cm+'×'+L.size.h_cm+'cm':L.size} —`:'— pindah halaman —';
   d.style.color='var(--mut)';return d}

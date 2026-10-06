@@ -109,6 +109,10 @@ CREATE TABLE IF NOT EXISTS cms_user_project_roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, project_id INTEGER NOT NULL, title TEXT NOT NULL,
     external_name TEXT, external_contact TEXT, updated_at TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_upr_user_project ON cms_user_project_roles(user_id, project_id);
+CREATE TABLE IF NOT EXISTS cms_share_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL UNIQUE, doc_id INTEGER NOT NULL,
+    created_by TEXT, created_at TEXT, expires_at TEXT, revoked_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_share_doc ON cms_share_links(doc_id);
 """
 
 
@@ -209,6 +213,67 @@ class BlockStore:
         with self._tx() as c:
             rows = self._all(c, "SELECT DISTINCT doc_id FROM cms_assign WHERE user_id=?", (user_id,))
         return {r["doc_id"] for r in rows}
+
+    def visible_doc_ids(self, user_id: int, username: str = "") -> set[int]:
+        """Isolasi antar divisi (default-deny dokumen): himpunan dokumen yang boleh DILIHAT user tanpa
+        permission doc_view_all -- (1) ia pengunggahnya, (2) ia PIC di scope apapun (cms_assign), atau
+        (3) dokumen ditautkan ke proyek yang terlihat baginya (anggota Tim / PIC dokumen proyek itu).
+        Ditegakkan TERPUSAT di auth.require -> _doc_guard utk SEMUA rute ber-doc_id/bid/cid (termasuk
+        media & asset gambar), jadi dokumen divisi lain 404 total, bukan cuma hilang dari daftar."""
+        out: set[int] = set()
+        with self._tx() as c:
+            if username:
+                out |= {r["id"] for r in self._all(c, "SELECT id FROM cms_documents WHERE uploaded_by=?", (username,))}
+            try:
+                out |= {r["doc_id"] for r in self._all(c, "SELECT DISTINCT doc_id FROM cms_assign WHERE user_id=?", (user_id,))}
+            except Exception:                              # noqa: BLE001  (tabel bisa tak ada di SQLite CLI)
+                pass
+            try:
+                links = self._all(c, "SELECT project_id, doc_id FROM cms_project_documents")
+            except Exception:                              # noqa: BLE001
+                links = []
+        try:
+            vis = self.visible_project_ids(user_id)
+        except Exception:                                  # noqa: BLE001
+            vis = set()
+        out |= {r["doc_id"] for r in links if r["project_id"] in vis}
+        return out
+
+    # ------------------------------------------------------------ share link (akses baca lintas divisi/pihak luar)
+    def create_share_link(self, doc_id: int, user: str, days: Optional[int] = None) -> dict:
+        """Buat token share read-only utk satu dokumen. days kosong = tak kedaluwarsa (sampai dicabut)."""
+        self.load_document(doc_id)                          # KeyError bila dokumen tak ada
+        import secrets
+        token = secrets.token_urlsafe(24)
+        expires = None
+        if days:
+            from datetime import datetime, timedelta
+            expires = (datetime.now() + timedelta(days=int(days))).strftime("%Y-%m-%d %H:%M:%S")
+        with self._tx() as c:
+            self._x(c, "INSERT INTO cms_share_links(token,doc_id,created_by,created_at,expires_at) VALUES (?,?,?,?,?)",
+                    (token, doc_id, user, _now(), expires))
+        return {"token": token, "doc_id": doc_id, "expires_at": expires}
+
+    def list_share_links(self, doc_id: int) -> list[dict]:
+        with self._tx() as c:
+            return self._all(c, "SELECT id, token, created_by, created_at, expires_at, revoked_at "
+                                "FROM cms_share_links WHERE doc_id=? ORDER BY id DESC", (doc_id,))
+
+    def revoke_share_link(self, link_id: int, user: str):
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_share_links SET revoked_at=? WHERE id=? AND revoked_at IS NULL", (_now(), link_id))
+
+    def get_share(self, token: str) -> Optional[dict]:
+        """Row share yang MASIH berlaku (belum dicabut & belum kedaluwarsa); selain itu None."""
+        if not token or len(token) > 64:
+            return None
+        with self._tx() as c:
+            r = self._one(c, "SELECT id, token, doc_id, expires_at, revoked_at FROM cms_share_links WHERE token=?", (token,))
+        if not r or r["revoked_at"]:
+            return None
+        if r["expires_at"] and str(r["expires_at"]) < _now():
+            return None
+        return r
 
     # ------------------------------------------------------------ komentar
     def add_comment(self, block_id: int, author: str, text: str, parent_id: Optional[int] = None) -> dict:

@@ -39,6 +39,14 @@ PERMISSIONS = [
              "pengguna ybs -- bagian lain TIDAK terlihat sama sekali (bukan cuma tak bisa diedit). Cocok "
              "utk penulis dari luar yang hanya boleh melihat tanggung jawabnya sendiri. Diabaikan kalau "
              "\"Edit Semua Blok\" aktif (admin/reviewer tetap lihat semua)."},
+    {"key": "doc_view_all", "label": "Lihat Semua Dokumen",
+     "desc": "Melihat semua dokumen tanpa batasan tim/divisi. TANPA izin ini (default utk pengguna biasa), "
+             "dokumen hanya terlihat bila: ia pengunggahnya, ditandai PIC di dalamnya, atau dokumen milik "
+             "proyek yang ia ikuti (Tim) -- dokumen divisi/tim lain 404 total, termasuk gambar & medianya. "
+             "Berikan hanya ke grup pengawas lintas-divisi (mis. admin/QC pusat)."},
+    {"key": "doc_share", "label": "Bagikan Dokumen (Share Link)",
+     "desc": "Membuat & mencabut link baca-saja sebuah dokumen utk dibagikan lintas divisi/pihak luar "
+             "(dibuka tanpa login, bisa diberi masa kedaluwarsa)."},
     {"key": "project_view_all", "label": "Lihat Semua Proyek",
      "desc": "Melihat semua proyek tanpa batasan. Tanpa izin ini, pengguna hanya bisa melihat proyek yang "
              "dirinya masuk Tim-nya, atau yang salah satu dokumennya menandai dirinya sebagai PIC -- "
@@ -483,9 +491,46 @@ def require(*perm_keys):
             if perm_keys and not (u.get("is_super") or any(k in (u.get("perms") or ()) for k in perm_keys)):
                 return jsonify(error="tidak punya izin utk fitur ini"), 403
             g.user = u
+            blocked = _doc_guard()                      # isolasi antar divisi: default-deny dokumen
+            if blocked is not None:
+                return blocked
             return fn(*a, **kw)
         return wrapper
     return deco
+
+
+def can_view_doc(doc_id: int) -> bool:
+    """Default-deny dokumen (isolasi antar tim/divisi dlm satu instance): is_super / doc_view_all bebas;
+    selainnya hanya dokumen hasil unggahannya, yang menandainya PIC, atau milik proyek yang ia ikuti
+    (BlockStore.visible_doc_ids). Antar PERUSAHAAN tidak lewat sini -- pisahkan stack+DB per perusahaan."""
+    u = g.user
+    if u.get("is_super") or ("doc_view_all" in (u.get("perms") or ())):
+        return True
+    if not hasattr(g, "_visible_docs"):
+        g._visible_docs = store().visible_doc_ids(u["id"], u["username"])
+    return doc_id in g._visible_docs
+
+
+def _doc_guard():
+    """Dipanggil require() utk SETIAP rute terlindungi: sniff doc_id/bid/block_id/cid dari path rute,
+    resolve ke dokumen, tolak 404 (bukan 403 -- jangan bocorkan keberadaan dokumen) bila tak boleh lihat.
+    Satu titik ini mengunci SEMUA jalur baca/tulis dokumen sekaligus: blocks, outline, komentar, riwayat,
+    SSE, media & asset gambar, ekspor, dsb -- endpoint baru ber-doc_id otomatis ikut terkunci."""
+    va = request.view_args or {}
+    doc_id = va.get("doc_id")
+    if doc_id is None:
+        bid = va.get("bid") if "bid" in va else va.get("block_id")
+        cid = va.get("cid")
+        try:
+            if bid is not None:
+                doc_id = store().get_block(int(bid))["doc_id"]
+            elif cid is not None:
+                doc_id = store().get_comment(int(cid))["doc_id"]
+        except KeyError:
+            return None                                 # biar view-nya sendiri yang 404
+    if doc_id is not None and not can_view_doc(int(doc_id)):
+        return jsonify(error=f"dokumen {doc_id} tidak ada"), 404
+    return None
 
 
 def can_edit(doc_id: int, block_id: int) -> bool:

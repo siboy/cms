@@ -49,6 +49,30 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Isolasi antar divisi (default-deny dokumen) + share link baca-saja (2026-10-06)** — kebutuhan multi-
+  perusahaan/divisi. **Antar PERUSAHAAN: pisahkan stack+DB per perusahaan** (bukan kode — compose project,
+  volume media, Redis DB, subdomain sendiri per tenant; isolasi by construction, user & identitas tak
+  mungkin bocor lintas DB). **Antar DIVISI dlm satu instance**: default-deny dokumen —
+  - Permission baru `doc_view_all` & `doc_share` (katalog `auth.PERMISSIONS`, tampil otomatis di halaman
+    Privilege). TANPA doc_view_all, dokumen hanya terlihat bila: ia pengunggahnya / ditandai PIC (cms_assign
+    scope apapun) / dokumen milik proyek yang ia ikuti (`BlockStore.visible_doc_ids`).
+  - Ditegakkan TERPUSAT di `auth.require` -> `_doc_guard` (auth.py): sniff `doc_id`/`bid`/`block_id`/`cid`
+    dari path SEMUA rute terlindungi -> 404 (bukan 403, jangan bocorkan keberadaan) bila tak boleh —
+    otomatis mengunci blocks/outline/komentar/riwayat/SSE/**media & asset gambar**/ekspor + endpoint baru
+    ber-doc_id ke depannya. `/docs` & unduh/status ekspor (`jid`->doc) difilter terpisah.
+  - **Share link** (`cms_share_links`, init_schema.sql + SQLITE_DDL): token `secrets.token_urlsafe(24)`,
+    opsional kedaluwarsa, bisa dicabut. Kelola: `GET/POST /docs/<id>/share`, `DELETE /share-links/<id>`
+    (perm doc_share). Akses publik TANPA login: `GET /api/shared/<token>` (meta+outline) + `/blocks` +
+    `/asset/<sha1>` — read-only, rate-limit 240/IP/mnt, anchor chapter divalidasi milik doc token
+    (jangan bocor lintas token). UI: tombol "🔗 Bagikan" (dialog buat/salin/cabut) + mode baca
+    `?share=<token>` (`shareView`, tanpa login; `assetUrl()` helper utk gambar via jalur token).
+  - **PERHATIAN DEPLOY**: setelah ini pengguna non-super TANPA `doc_view_all` kehilangan akses dokumen yg
+    tak tertaut proyek/PIC-nya. Sebelum rilis: beri `doc_view_all` ke grup pengawas (QC/direksi) via halaman
+    Privilege, pastikan tiap dokumen tertaut proyek & tim terisi. Grup bawaan TIDAK diubah otomatis.
+  **Diuji**: suite end-to-end 41/41 (SQLite+FakeRedis): user divisi lain 404 utk outline/blocks/blok/asset/
+  SSE + daftar dokumen kosong; terbuka saat jadi PIC / masuk tim proyek, tertutup lagi saat dilepas; share
+  link anon bisa baca meta+blocks, token salah 404, tanpa token tetap 401, dicabut -> mati. `py_compile` +
+  `node --check` lolos. **Belum dicoba** browser/server sungguhan.
 - [x] **Tab Aktivitas di detail proyek utk anggota tim (2026-10-06)** — halaman Aktivitas lama tetap
   admin-only (`activity_view`); yang baru: tab ke-7 "Aktivitas" di `projectDetailView` (`tabAktivitas`,
   `ui/index.html`) bisa dilihat SEMUA yang lolos `_project_visible` (anggota tim/PIC proyek). Endpoint
