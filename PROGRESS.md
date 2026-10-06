@@ -49,6 +49,18 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **APK Android single multi-tenant + PWA (2026-10-06)** — `mobile/` = proyek Android lengkap
+  (Kotlin): `TenantActivity` layar pilih perusahaan (kode tenant -> https://<kode>.<BASE_DOMAIN>, atau
+  URL penuh termasuk http://IP:8879; tersimpan di SharedPreferences; ganti via app-shortcut tekan-tahan
+  ikon), `MainActivity` WebView (cookie sesi persisten, DOM storage, SSE jalan, file chooser upload,
+  DownloadManager utk ekspor DOCX + cookie, pull-to-refresh, back = riwayat web, link luar ke browser,
+  usesCleartextTraffic=true utk LAN/VPN — ketatkan saat produksi HTTPS). SATU APK utk semua perusahaan;
+  tenant tetap stack Docker terpisah. **`make apk`** = build headless via Docker gradle:8.7-jdk17 +
+  Android SDK cmdline (SDK & cache gradle di named volume cms-android-sdk/cms-gradle-cache — run pertama
+  ±5 mnt unduh, berikutnya cepat); SUDAH TERBUKTI build sukses -> mobile/app/build/outputs/apk/debug/
+  app-debug.apk (3.2MB, signing debug — rilis Play Store perlu keystore sendiri + BASE_DOMAIN diganti).
+  Webapp dapat manifest PWA + ikon SVG (/manifest.webmanifest, /app-icon.svg, theme-color) — alternatif
+  "Add to Home Screen" tanpa APK. Belum dicoba di HP Android sungguhan.
 - [x] **Gantt: drag&drop urutan/sub + grup laporan collapsible + salin susunan via template (2026-10-06)**
   — (1) baris manual/jadwal bisa DI-DRAG (handle ⠿): jatuhkan di area bar task lain = pindah urutan
   (sort_order titik-tengah, `BlockStore.reorder_project_task` + `POST /tasks/<id>/reorder`, boleh anggota
