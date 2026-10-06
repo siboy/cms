@@ -49,6 +49,18 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Mention @ di Diskusi -> notifikasi unread (2026-10-06)** — ketik `@` di chat memunculkan saran
+  (anggota tim / `@tim` = semua / `📁 @proyek` = tim proyek lain, sisip `@proyek:<id>`); yang disebut
+  dapat notifikasi badge 🔔 (type `chat_mention`, sistem cms_notifications yg sudah ada). Server
+  (`projects_api._notify_chat_mentions`): parse `@token` dari teks — @username hanya anggota tim proyek
+  itu; @tim/@semua/@proyek = seluruh tim; `@proyek:<id>` = tim proyek lain HANYA bila pengirim boleh
+  melihat proyek itu; diri sendiri dilewati; gagal notif tak menggagalkan kirim. Kolom BARU
+  `cms_notifications.project_id` (CREATE + migrasi procedure + SQLITE_DDL; SUDAH di MySQL live) —
+  klik notifikasi ber-project_id (tanpa doc_id) membuka projectDetailView tab laporan (chat). UI:
+  dropdown `.mbox` di atas field chat (mousedown supaya tak keburu blur), mention di bubble di-highlight
+  `.mn`. **Diuji**: 7 skenario end-to-end (unread @user, project_id+summary, @tim semua anggota,
+  pengirim tak dpt, @proyek:<id> lintas proyek, mark read). Live di :8879.
+  CATATAN: badge 🔔 dihitung saat boot()/buka panel (bukan realtime SSE) — konsisten dgn notifikasi lain.
 - [x] **Ketua Tim proyek: tim hanya bisa diubah admin ATAU ketua yang ditunjuk (2026-10-06)** — kolom
   `is_leader` di `cms_user_project_roles` (CREATE + migrasi procedure information_schema di
   init_schema.sql, SQLITE_DDL; SUDAH diterapkan ke MySQL live). Semua mutasi tim (`POST/PATCH/DELETE

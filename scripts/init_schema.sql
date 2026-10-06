@@ -485,9 +485,10 @@ CREATE TABLE IF NOT EXISTS cms_activity_log (
 CREATE TABLE IF NOT EXISTS cms_notifications (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     user_id     INT NOT NULL,
-    type        VARCHAR(30) NOT NULL,            -- pic_assign | comment | comment_reply
+    type        VARCHAR(30) NOT NULL,            -- pic_assign | comment | comment_reply | chat_mention
     doc_id      INT DEFAULT NULL,
     block_id    INT DEFAULT NULL,
+    project_id  INT DEFAULT NULL,                -- navigasi ke proyek (mention Diskusi)
     actor       VARCHAR(100) DEFAULT NULL,
     summary     VARCHAR(255) DEFAULT NULL,
     created_at  VARCHAR(19) DEFAULT NULL,
@@ -536,3 +537,16 @@ END$$
 DELIMITER ;
 CALL cms_tmp_migrate_team_leader();
 DROP PROCEDURE cms_tmp_migrate_team_leader;
+
+-- mention di Diskusi proyek (2026-10-06): notifikasi bisa menunjuk proyek (klien buka detail proyek)
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_notif_project;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_notif_project()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_notifications' AND COLUMN_NAME='project_id') THEN
+    ALTER TABLE cms_notifications ADD COLUMN project_id INT DEFAULT NULL AFTER block_id;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_notif_project();
+DROP PROCEDURE cms_tmp_migrate_notif_project;

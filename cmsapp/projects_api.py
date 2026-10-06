@@ -169,7 +169,45 @@ def chat_post(pid):
         if f["project_id"] != pid:
             raise ValueError("lampiran bukan milik proyek ini")
     msg = S().add_project_chat(pid, g.user["username"], text, int(file_id) if file_id else None)
+    _notify_chat_mentions(pid, text)
     return jsonify(message=msg), 201
+
+
+def _notify_chat_mentions(pid: int, text: str):
+    """Notifikasi unread (badge 🔔, cms_notifications type chat_mention) utk mention di Diskusi:
+    @username (anggota tim proyek ini) | @tim / @semua / @proyek (SELURUH anggota tim proyek ini) |
+    @proyek:<id> (seluruh tim proyek LAIN — hanya bila pengirim boleh melihat proyek itu).
+    Diri sendiri tak dinotifikasi; gagal notif tak menggagalkan kirim pesan."""
+    import re
+    toks = {t.lower() for t in re.findall(r"@([A-Za-z0-9_.\-]+(?::\d+)?)", text or "")}
+    if not toks:
+        return
+    try:
+        st = S()
+        team = [t for t in st.list_project_team(pid) if t.get("user_id")]
+        targets: set[int] = set()
+        if toks & {"tim", "semua", "proyek", "team", "all"}:
+            targets |= {t["user_id"] for t in team}
+        by_uname = {(t.get("username") or "").lower(): t["user_id"] for t in team}
+        for tok in toks:
+            if tok in by_uname:
+                targets.add(by_uname[tok])
+            m = re.fullmatch(r"proyek:(\d+)", tok)
+            if m:
+                opid = int(m.group(1))
+                if opid != pid and (auth.has_perm(g.user, "project_view_all")
+                                    or st.is_project_visible_to(g.user["id"], opid)):
+                    targets |= {t["user_id"] for t in st.list_project_team(opid) if t.get("user_id")}
+        if not targets:
+            return
+        pname = (st.get_project(pid).get("name") or f"#{pid}")
+        snippet = (text or "").strip().replace("\n", " ")[:120]
+        for uid in targets:
+            if uid != g.user["id"]:
+                st.add_notification(uid, "chat_mention", project_id=pid, actor=g.user["username"],
+                                    summary=f'{g.user["username"]} menyebutmu di Diskusi "{pname}": {snippet}')
+    except Exception:                                   # noqa: BLE001
+        pass
 
 
 @bp.post("/projects/<int:pid>/chat/image")

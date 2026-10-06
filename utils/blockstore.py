@@ -98,7 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_act_user ON cms_activity_log(username);
 CREATE INDEX IF NOT EXISTS idx_act_doc ON cms_activity_log(doc_id);
 CREATE TABLE IF NOT EXISTS cms_notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, type TEXT NOT NULL,
-    doc_id INTEGER, block_id INTEGER, actor TEXT, summary TEXT, created_at TEXT, read_at TEXT);
+    doc_id INTEGER, block_id INTEGER, project_id INTEGER, actor TEXT, summary TEXT, created_at TEXT, read_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_notif_user ON cms_notifications(user_id, read_at);
 CREATE TABLE IF NOT EXISTS cms_user_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, category TEXT NOT NULL DEFAULT 'lainnya',
@@ -2200,12 +2200,13 @@ class BlockStore:
         return None, scope
 
     def add_notification(self, user_id: int, type_: str, doc_id: Optional[int] = None, block_id: Optional[int] = None,
-                         actor: str = "", summary: str = "") -> None:
-        """Gagal mencatat tidak boleh menggagalkan aksi utamanya (sama spt log_activity)."""
+                         actor: str = "", summary: str = "", project_id: Optional[int] = None) -> None:
+        """Gagal mencatat tidak boleh menggagalkan aksi utamanya (sama spt log_activity). project_id:
+        notifikasi bernavigasi ke proyek (mis. mention di Diskusi) — klien membuka projectDetailView."""
         try:
             with self._tx() as c:
-                self._x(c, "INSERT INTO cms_notifications(user_id,type,doc_id,block_id,actor,summary,created_at) "
-                           "VALUES (?,?,?,?,?,?,?)", (user_id, type_, doc_id, block_id, actor, (summary or "")[:255], _now()))
+                self._x(c, "INSERT INTO cms_notifications(user_id,type,doc_id,block_id,project_id,actor,summary,created_at) "
+                           "VALUES (?,?,?,?,?,?,?,?)", (user_id, type_, doc_id, block_id, project_id, actor, (summary or "")[:255], _now()))
         except Exception:                                        # noqa: BLE001
             pass
 

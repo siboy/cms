@@ -120,6 +120,9 @@ header b{letter-spacing:.2px}
 .chatin textarea{flex:1;min-height:62px;max-height:130px;resize:none;line-height:1.45}
 .chatbox.drop{outline:2px dashed var(--acc);outline-offset:-5px}
 .chatday{align-self:center;font-size:10.5px;color:var(--mut);background:var(--card);border-radius:99px;padding:1px 10px;margin:4px 0}
+.mn{color:var(--acc);font-weight:600}
+.mbox{max-height:180px;overflow-y:auto;border-top:1px solid var(--line);background:var(--card);font-size:13px}
+.mbox .mi{padding:6px 12px;cursor:pointer}.mbox .mi:hover{background:var(--acc-soft);color:var(--acc)}
 .repmenu{display:none}
 /* polish section Manajemen Proyek (desktop & HP): tab pill berikon, kartu lega, baris laporan rapi */
 #docs{padding-top:12px}
@@ -297,7 +300,7 @@ function resetPasswordView(token){$('#app').innerHTML=`<form id=rp><h3>Atur pass
    note('Password berhasil diubah, silakan login');history.replaceState(null,'',location.pathname);boot()}
   catch(x){$('#rpe').textContent=x.message}}}
 function setNotif(n){const b=$('#bnotif');b.hidden=!n;b.textContent='🔔 '+n}
-const NOTIF_LABELS={pic_assign:'📌 PIC',comment:'💬 Komentar',comment_reply:'💬 Balasan'};
+const NOTIF_LABELS={pic_assign:'📌 PIC',comment:'💬 Komentar',comment_reply:'💬 Balasan',chat_mention:'🔔 Disebut di Diskusi'};
 async function notifPanel(){document.querySelector('.notifd')?.remove();
  let tags=[],notifs=[];
  try{tags=(await api('GET','/me/tags?unread=1')).tags}catch(e){}
@@ -316,7 +319,8 @@ async function notifPanel(){document.querySelector('.notifd')?.remove();
    projectDetailView(it.project_id,{tab:'gantt'})}
   else{try{await api('POST',`/me/notifications/${it.id}/read`)}catch(e){}
    me.unread_notifications=Math.max(0,(me.unread_notifications||1)-1);setNotif((me.unread_tags||0)+(me.unread_notifications||0));
-   if(it.doc_id){await openDoc(it.doc_id);if(it.block_id)jumpToBlock(it.block_id,it.chapter_id,it.section_id)}}});
+   if(it.project_id&&!it.doc_id)projectDetailView(it.project_id,{tab:'laporan'});   // mention Diskusi -> buka chatnya
+   else if(it.doc_id){await openDoc(it.doc_id);if(it.block_id)jumpToBlock(it.block_id,it.chapter_id,it.section_id)}}});
  setTimeout(()=>document.addEventListener('click',function h(e){if(!d.contains(e.target)&&e.target!==$('#bnotif')){d.remove();document.removeEventListener('click',h)}}),0)}
 function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder=username autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span>
  <p style="text-align:center;margin:0"><a href="#" id=lfp style="font-size:12px">Lupa password?</a></p></form>`;
@@ -591,6 +595,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  +`</div><div class=chatwrap><div class=chatbox id=cbox>
    <div class=chathead>💬 Diskusi Tim <small style="font-weight:400;color:var(--mut)">tempel (Ctrl+V) / seret gambar ke sini</small></div>
    <div class=chatlog id=clog></div>
+   <div class=mbox id=mbox hidden></div>
    <div class=chatin><button type=button id=cimg title="Kirim gambar">🖼</button>
     <textarea id=cin rows=2 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
     <button class=p type=button id=csend>➤</button></div>
@@ -617,7 +622,7 @@ let chatTimer=null,chatLast=0;
 function stopChat(){if(chatTimer){clearInterval(chatTimer);chatTimer=null}}
 function chatMsg(m){const mine=m.username===me.username;const el=document.createElement('div');el.className='msg'+(mine?' me':'');
  let h=`<div class=mh>${esc(m.username)}</div>`;
- if(m.text)h+=esc(m.text);
+ if(m.text)h+=esc(m.text).replace(/(^|\s)(@[A-Za-z0-9_.:\-]+)/g,'$1<span class=mn>$2</span>');
  if(m.file_id&&(m.file_mime||'').startsWith('image/'))
   h+=`<a href="/api/project-files/${m.file_id}/raw" target=_blank rel=noopener><img src="/api/project-files/${m.file_id}/raw" loading=lazy alt=""></a>`;
  else if(m.file_id)h+=`<a href="/api/project-files/${m.file_id}/raw">📎 ${esc(m.file_name||'lampiran')}</a>`;
@@ -656,7 +661,29 @@ async function initChat(){stopChat();chatLast=0;appendChat.day=null;
  box.ondragover=e=>{e.preventDefault();box.classList.add('drop')};
  box.ondragleave=()=>box.classList.remove('drop');
  box.ondrop=e=>{e.preventDefault();box.classList.remove('drop');[...((e.dataTransfer||{}).files||[])].forEach(sendImage)};
- $('#cimg').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=()=>sendImage(f.files[0]);f.click()}}
+ $('#cimg').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=()=>sendImage(f.files[0]);f.click()};
+ // mention @: ketik '@' -> saran anggota tim / @tim (semua) / tim proyek lain; yang disebut dapat notifikasi 🔔
+ let mopts=[];
+ try{const {team}=await api('GET',`/projects/${curProj}/team`);
+  mopts=[{v:'tim',l:'👥 @tim — sebut SEMUA anggota tim proyek ini'},
+   ...team.filter(t=>t.username).map(t=>({v:t.username,l:`@${t.username}${t.name?' — '+t.name:''}`}))];
+  const {projects}=await api('GET','/projects');
+  mopts.push(...projects.filter(p=>p.id!==curProj).map(p=>({v:'proyek:'+p.id,l:'📁 @proyek — tim '+p.name})))}catch(e){}
+ const mbox=$('#mbox');
+ const showMention=()=>{const pos=inp.selectionStart??inp.value.length;
+  const m=/(^|\s)@([A-Za-z0-9_.:\-]*)$/.exec(inp.value.slice(0,pos));
+  if(!m){mbox.hidden=true;return}
+  const q=m[2].toLowerCase();
+  const hits=mopts.filter(o=>o.v.toLowerCase().includes(q)||o.l.toLowerCase().includes(q)).slice(0,8);
+  if(!hits.length){mbox.hidden=true;return}
+  mbox.innerHTML=hits.map(o=>`<div class=mi data-v="${esc(o.v)}">${esc(o.l)}</div>`).join('');mbox.hidden=false;
+  mbox.querySelectorAll('.mi').forEach(x=>x.onmousedown=e=>{e.preventDefault();
+   const p2=inp.selectionStart??inp.value.length;
+   const before=inp.value.slice(0,p2).replace(/@[A-Za-z0-9_.:\-]*$/,'@'+x.dataset.v+' ');
+   inp.value=before+inp.value.slice(p2);mbox.hidden=true;inp.focus();
+   inp.selectionStart=inp.selectionEnd=before.length})};
+ inp.addEventListener('input',showMention);
+ inp.addEventListener('blur',()=>setTimeout(()=>{mbox.hidden=true},200))}
 
 async function tabPic(){const {documents}=await api('GET',`/projects/${curProj}/documents`);
  if(!documents.length){$('#ptab').innerHTML='<p style="color:var(--mut)">Tautkan laporan dulu di tab Laporan.</p>';return}
