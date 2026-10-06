@@ -109,6 +109,64 @@ def need(v, name):
     return v
 
 
+def throttle(bucket: str, limit: int, window_s: int):
+    """Rate limit sederhana (Redis INCR+EXPIRE): maks `limit` hit per `window_s` detik per bucket.
+    Dipakai di endpoint tanpa-login (login/lupa-password: rem brute-force & spam email) dan aksi
+    yang gampang di-spam (komentar). Gagal Redis = lolos (fail-open, jangan matikan layanan)."""
+    key = f"cms:rl:{bucket}"
+    try:
+        r = R()
+        n = r.incr(key)
+        if n == 1:
+            r.expire(key, window_s)
+    except Exception:                                   # noqa: BLE001
+        return
+    if n > limit:
+        abort(429, description="terlalu banyak percobaan, coba lagi nanti")
+
+
+@bp.errorhandler(429)
+def _too_many(e):
+    return jsonify(error=getattr(e, "description", "terlalu banyak permintaan")), 429
+
+
+INLINE_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"}
+
+
+def send_user_upload(path: str, filename: str):
+    """Sajikan berkas unggahan pengguna/proyek: hanya jenis aman (gambar raster/PDF) boleh tampil inline;
+    selainnya DIPAKSA unduh (Content-Disposition: attachment) -- .html/.svg/.xml bisa membawa script dan
+    kalau dirender inline berjalan di origin CMS = stored XSS lewat fitur upload."""
+    import mimetypes
+    mt = mimetypes.guess_type(filename or "")[0] or "application/octet-stream"
+    return send_file(path, download_name=filename, mimetype=mt, as_attachment=mt not in INLINE_MIME)
+
+
+def _doc_rev(doc_id: int) -> str:
+    """Revisi dokumen utk ETag: counter event Redis (naik tiap emit: edit/sisip/hapus/pindah/lock/komentar/pic)
+    + fingerprint isi (menangkap perubahan lewat CLI/worker yang tak lewat emit) + user id (payload endpoint
+    ini tergantung izin/penugasan user: mine/can_edit/view_restricted)."""
+    try:
+        seq = R().get(f"cms:doc:{doc_id}:seq") or 0
+    except Exception:                                   # noqa: BLE001
+        seq = 0
+    return f'W/"{seq}.{S().fingerprint(doc_id)}.{g.user["id"]}"'
+
+
+def etag_json(doc_id: int, build):
+    """Balas 304 (tanpa query berat/serialisasi) bila If-None-Match klien masih cocok; selain itu
+    bangun payload via build() + pasang ETag. Klien (api() di ui/index.html) menyimpan payload per-URL
+    dan memakai ulang saat 304."""
+    rev = _doc_rev(doc_id)
+    if request.headers.get("If-None-Match") == rev:
+        resp = Response(status=304)
+    else:
+        resp = jsonify(**build())
+    resp.headers["ETag"] = rev
+    resp.headers["Cache-Control"] = "private, no-cache"
+    return resp
+
+
 @bp.errorhandler(ConflictError)
 def _conflict(e):
     cur = None
@@ -145,6 +203,7 @@ def _forbidden(e):
 def login():
     d = body()
     ip = request.headers.get("X-Real-IP") or request.remote_addr or ""
+    throttle(f"login:{ip}", 30, 300)                     # lapisan per-IP di atas ban per-user milik auth.login
     u, err = auth.login(d.get("username", ""), d.get("password", ""), ip)
     if err:
         return jsonify(error=err), 429 if "banyak" in err else 401
@@ -160,6 +219,9 @@ def logout():
 @bp.post("/auth/forgot-password")
 def forgot_password():
     d = body()
+    ip = request.headers.get("X-Real-IP") or request.remote_addr or ""
+    throttle(f"forgot:{ip}", 5, 900)                     # cegah spam email reset / enumerasi
+    throttle(f"forgot:{(d.get('email') or '').strip().lower()[:80]}", 3, 3600)
     row = auth.request_password_reset(d.get("email", ""))
     if row:
         link = f'{current_app.config["BASE_URL"]}/?reset={row["reset_token"]}'
@@ -170,6 +232,7 @@ def forgot_password():
 @bp.post("/auth/reset-password")
 def reset_password():
     d = body()
+    throttle(f"reset:{request.headers.get('X-Real-IP') or request.remote_addr or ''}", 10, 900)
     auth.reset_password(d.get("token", ""), d.get("password", ""))
     return jsonify(ok=True)
 
@@ -251,30 +314,32 @@ def patch_doc_meta(doc_id):
 @bp.get("/docs/<int:doc_id>/outline")
 @auth.require()
 def outline(doc_id):
-    o = S().outline(doc_id, int(request.args.get("max_level", 3)))
-    pm = S().pic_map(doc_id)
-    for h in o:
-        node = pm.get(h["id"]) or {}
-        pics = node.get("pics") or []
-        h["pic"] = [{"user_id": p["user_id"], "username": p["username"], "status": p["status"]} for p in pics]
-        h["pic_direct"] = bool(node.get("direct"))
-        h["mine"] = g.user.get("is_super") or any(p["user_id"] == g.user["id"] for p in pics)
-    if view_restricted():
-        visible = S().visible_headings_for_user(doc_id, g.user["id"])
-        o = [h for h in o if h["id"] in visible]
-    return jsonify(outline=o, rev=S().fingerprint(doc_id))
+    def build():
+        o = S().outline(doc_id, int(request.args.get("max_level", 3)))
+        pm = S().pic_map(doc_id)
+        for h in o:
+            node = pm.get(h["id"]) or {}
+            pics = node.get("pics") or []
+            h["pic"] = [{"user_id": p["user_id"], "username": p["username"], "status": p["status"]} for p in pics]
+            h["pic_direct"] = bool(node.get("direct"))
+            h["mine"] = g.user.get("is_super") or any(p["user_id"] == g.user["id"] for p in pics)
+        if view_restricted():
+            visible = S().visible_headings_for_user(doc_id, g.user["id"])
+            o = [h for h in o if h["id"] in visible]
+        return dict(outline=o, rev=S().fingerprint(doc_id))
+    return etag_json(doc_id, build)
 
 
 @bp.get("/docs/<int:doc_id>/pic-map")
 @auth.require()
 def pic_map(doc_id):
-    return jsonify(map=S().pic_map(doc_id))
+    return etag_json(doc_id, lambda: dict(map=S().pic_map(doc_id)))
 
 
 @bp.get("/docs/<int:doc_id>/taggable")
 @auth.require()
 def taggable(doc_id):
-    return jsonify(items=S().list_taggable_blocks(doc_id))
+    return etag_json(doc_id, lambda: dict(items=S().list_taggable_blocks(doc_id)))
 
 
 @bp.get("/blocks/<int:block_id>/pic")
@@ -298,6 +363,8 @@ def set_block_pic_status(block_id):
         if done:
             raise ValueError("hanya bisa mengembalikan (done=false), bukan menandai selesai utk PIC lain")
     S().set_pic_status(b["doc_id"], block_id, target, done, note, by=g.user["username"])
+    # siarkan agar klien lain refresh badge PIC realtime + counter event naik -> ETag cache klien kedaluwarsa
+    emit(b["doc_id"], "pic", id=block_id, force_global=True)
     return jsonify(ok=True)
 
 
@@ -307,6 +374,10 @@ def blocks(doc_id):
     """?chapter=<id blok H1> memuat satu bab; ?heading=<id blok heading apa pun> memuat SEBAGIAN
     (hanya sampai heading berikutnya level berapa pun ketemu, tak termasuk sub-bagian di bawahnya);
     atau ?from_seq=&to_seq=; maks 500 blok per panggilan."""
+    return etag_json(doc_id, lambda: _blocks_payload(doc_id))
+
+
+def _blocks_payload(doc_id):
     s = S()
     fs, ts = request.args.get("from_seq", type=float), request.args.get("to_seq", type=float)
     ch = request.args.get("chapter", type=int)
@@ -363,7 +434,7 @@ def blocks(doc_id):
             elif not any(p["user_id"] == g.user["id"] for p in scope_pics):
                 continue
         res.append(o)
-    return jsonify(blocks=res, rev=s.fingerprint(doc_id))
+    return dict(blocks=res, rev=s.fingerprint(doc_id))
 
 
 @bp.get("/blocks/<int:bid>")
@@ -786,15 +857,17 @@ def _chapter_range(doc_id: int, ch: int):
 def comments(doc_id):
     """?chapter=<id H1> -> semua komentar dalam bab; ?block_id=<id> -> satu blok saja (mis. catatan outline
     di tab Proyek->PIC); tanpa parameter -> seluruh dokumen."""
-    ch = request.args.get("chapter", type=int)
-    fs, ts = _chapter_range(doc_id, ch) if ch else (None, None)
-    items = S().list_comments(doc_id, fs, ts, block_id=request.args.get("block_id", type=int))
-    if view_restricted():
-        visible_heads = S().visible_headings_for_user(doc_id, g.user["id"])
-        kinds = {}
-        items = [c for c in items if block_visible(doc_id, c["block_id"],
-                 kinds.setdefault(c["block_id"], S().get_block(c["block_id"])["kind"]), visible_heads)]
-    return jsonify(comments=items)
+    def build():
+        ch = request.args.get("chapter", type=int)
+        fs, ts = _chapter_range(doc_id, ch) if ch else (None, None)
+        items = S().list_comments(doc_id, fs, ts, block_id=request.args.get("block_id", type=int))
+        if view_restricted():
+            visible_heads = S().visible_headings_for_user(doc_id, g.user["id"])
+            kinds = {}
+            items = [c for c in items if block_visible(doc_id, c["block_id"],
+                     kinds.setdefault(c["block_id"], S().get_block(c["block_id"])["kind"]), visible_heads)]
+        return dict(comments=items)
+    return etag_json(doc_id, build)
 
 
 @bp.post("/blocks/<int:bid>/comments")
@@ -805,6 +878,9 @@ def add_comment(bid):
         abort(404)
     d = body()
     text = d.get("text", "")
+    if len(text) > 4000:                                 # samakan dgn maxlength UI; jangan percaya klien
+        raise ValueError("komentar maksimal 4000 karakter")
+    throttle(f"comment:{g.user['id']}", 30, 60)
     c = S().add_comment(bid, g.user["username"], text, d.get("parent_id"))
     emit(c["doc_id"], "comment", id=bid, cid=c["id"], log_action="comment.add", log_summary=snip(text, 120))
     _notify_comment(b["doc_id"], bid, d.get("parent_id"), text)
@@ -1032,6 +1108,12 @@ def admin_assign():
     (auth.unassign if removing else auth.assign)(doc_id, uid, scope)
     S().log_activity(g.user["username"], "pic.unassign" if removing else "pic.assign",
                      target_type="user", target_id=uid, doc_id=doc_id, summary=f'user #{uid}: {scope}')
+    # siarkan perubahan penugasan (dulu TIDAK disiarkan -> klien lain baru lihat setelah reload);
+    # juga menaikkan counter event -> ETag outline/pic-map/blocks kedaluwarsa (penugasan tak terdeteksi fingerprint)
+    try:
+        emit(doc_id, "pic", id=S().scope_target(scope)[0], user_id=uid, force_global=True)
+    except Exception:                                   # noqa: BLE001
+        pass
     if not removing and uid != g.user["id"]:
         st = S()
         block_id, fallback_label = st.scope_target(scope)
@@ -1332,7 +1414,7 @@ def user_file_raw(fid):
     p = os.path.realpath(r["path"])
     if not p.startswith(base + os.sep) or not os.path.isfile(p):
         abort(404)
-    return send_file(p, download_name=r["filename"])
+    return send_user_upload(p, r["filename"])
 
 
 @bp.get("/admin/users/<int:uid>/files")

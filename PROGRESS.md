@@ -49,6 +49,30 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Offload ke client (ETag+304, patch SSE) + polish UI/mobile + hardening keamanan (2026-10-06)**
+  - **ETag/304** (`cmsapp/api.py`): helper `_doc_rev` (counter event Redis `cms:doc:<id>:seq` + `fingerprint`
+    + user id) + `etag_json` dipasang di 5 GET berat: `/docs/<id>/outline|blocks|pic-map|taggable|comments`.
+    Klien (`api()` di `ui/index.html`) simpan payload per-URL (LRU 150, teks JSON bukan objek supaya mutasi
+    caller tak mencemari cache) + kirim `If-None-Match`; 304 = server tak bangun payload (hemat query+serialisasi).
+  - **Event SSE `pic` BARU**: `/admin/assign` & `/blocks/<id>/pic/status` sekarang disiarkan (dulu TIDAK —
+    klien lain baru lihat PIC setelah reload) — sekaligus WAJIB utk ETag krn penugasan tak terdeteksi
+    `fingerprint`. CATATAN: assign via CLI `cms_admin.py` tak menaikkan seq -> ETag bisa basi utk kasus itu
+    (jarang; reload manual tetap mengoreksi krn fingerprint ikut dihitung saat blok berubah).
+  - **Patch DOM dari SSE** (bukan muat ulang bab penuh): `delete`=cabut node, `insert`=`patchInsert` ambil
+    blok baru saja & sisip setelah anchor (fallback `reloadSoon` bila anchor tak terlihat/`g`/sedang edit);
+    `move`/`resync` tetap reload.
+  - **UI modern + mobile**: blok CSS "polish" di akhir `<style>` (token bayangan/radius, tombol/fokus/transisi,
+    header blur, scrollbar) — semua warna tetap via var (dark mode aman); outline jadi drawer geser di <=800px
+    + tombol bulat `#stog` (toggle, auto-tutup saat pilih bab) dipasang di `openDoc`.
+  - **Keamanan**: (1) stored-XSS upload DITUTUP — `send_user_upload` (dipakai `/user-files/<id>/raw` &
+    `/project-files/<id>/raw`): hanya gambar raster/PDF boleh inline, `.html`/`.svg`/dll dipaksa attachment;
+    (2) header global di `cmsapp/__init__.py` (CSP self+inline, nosniff, X-Frame-Options DENY, Referrer-Policy,
+    Permissions-Policy); (3) `throttle()` Redis (fail-open): login 30/IP/5mnt, lupa-password 5/IP/15mnt +
+    3/email/jam (anti spam email), reset 10/IP/15mnt, komentar 30/user/mnt + batas 4000 char server-side.
+  **Diuji**: 19/19 cek end-to-end Flask test client (SQLite + FakeRedis, skrip di scratchpad sesi): 304 saat
+  ETag sama utk 5 endpoint, ETag berubah setelah edit/komentar/assign, event `pic` tersiar, throttle 429 di
+  hit ke-6, html dipaksa attachment vs png inline; `py_compile` + `node --check` lolos. **Belum dicoba** di
+  browser/server sungguhan — rasakan drawer mobile & pastikan CSP tak memblokir sesuatu yg terlewat.
 - [x] **Tab PIC: kebab ⋮ per item + perbaikan overflow dialog di HP (2026-10-01)** — susulan entri di bawah
   (sama hari). Baris aksi tiap item (dulu 4-5 tombol ikon berjejer: 👤📝⇅🙈🗑) disederhanakan jadi SATU tombol
   "⋮" (`itemMenu`, mirip pola `projectMenu` yang sudah ada di kartu proyek) -> dialog berisi tombol teks

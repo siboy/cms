@@ -351,7 +351,8 @@ def raw_file(fid):
     p = os.path.realpath(r["path"])
     if not p.startswith(base + os.sep) or not os.path.isfile(p):
         abort(404)
-    return send_file(p, download_name=r["filename"])
+    from cmsapp.api import send_user_upload
+    return send_user_upload(p, r["filename"])
 
 
 @bp.delete("/project-files/<int:fid>")

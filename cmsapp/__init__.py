@@ -30,6 +30,20 @@ def create_app(cfg=Config) -> Flask:
     from cmsapp.projects_api import bp as projects_bp
     app.register_blueprint(projects_bp)
 
+    @app.after_request
+    def _security_headers(resp):
+        h = resp.headers
+        h.setdefault("X-Content-Type-Options", "nosniff")      # jangan tebak-tebak MIME (cegah sniffing upload jadi HTML)
+        h.setdefault("X-Frame-Options", "DENY")
+        h.setdefault("Referrer-Policy", "same-origin")
+        h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # SPA satu file dgn script/style inline -> 'unsafe-inline' memang perlu; selebihnya dikunci ke origin sendiri
+        h.setdefault("Content-Security-Policy",
+                     "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                     "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; "
+                     "form-action 'self'; frame-ancestors 'none'")
+        return resp
+
     @app.get("/")
     def ui():
         return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "index.html")
