@@ -130,6 +130,7 @@ header b{letter-spacing:.2px}
 .tagteam input{width:auto}
 .tki{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);border-radius:9px;font-size:13px}
 .tki:hover{border-color:var(--acc)}.tki input[type=checkbox]{margin-top:3px}
+.tknav:hover{color:var(--acc);text-decoration:underline;text-underline-offset:3px}
 .calhead{display:grid;grid-template-columns:repeat(7,1fr);font-size:10.5px;color:var(--mut);text-align:center;margin-bottom:2px}
 .calbody{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .cald{min-height:58px;border:1px solid var(--line);border-radius:6px;padding:2px 4px;font-size:11px;cursor:pointer;overflow:hidden}
@@ -689,11 +690,31 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
 /* ===== Task personal & Kalender proyek (tab Laporan) ===== */
 let calCur=null,calAll=localStorage.getItem('calAll')==='1',tkAll=false;
 const dstr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+/* klik item task -> navigasi sesuai jenis: bab laporan = buka dokumennya; jadwal = lompat ke Kalender
+   (bulan jadwalnya); task proyek lain = buka proyeknya; selain itu = dialog detail */
+async function tkNav(t){
+ if(t.gantt_doc_id&&t.gantt_chapter_id){await openDoc(t.gantt_doc_id);jumpToBlock(t.gantt_chapter_id,t.gantt_chapter_id,null);return}
+ if(t.project_id!==curProj)return projectDetailView(t.project_id,{tab:'laporan'});
+ if(t.gantt_task_id){if(t.gantt_start)calCur=new Date(t.gantt_start);
+  document.querySelector('#repmenu [data-m=kalender]')?.click();
+  await renderCal();$('#lrw [data-rt=kalender]')?.scrollIntoView({behavior:'smooth',block:'start'});return}
+ tkDetailDlg(t)}
+function tkDetailDlg(t){const m=document.createElement('div');m.className='mask';
+ const SRC={chat:'💬 dari Diskusi',manual:'✍ input manual',gantt:'📊 dari Gantt/Kalender'};
+ m.innerHTML=`<div class=dlg><b>✅ Detail Task</b>
+ <div style="white-space:pre-wrap;word-break:break-word">${esc(t.text)}</div>
+ <small style="color:var(--mut)">${t.topic?`<span class=badge style="background:#6b21a8">#${esc(t.topic)}</span> · `:''}${SRC[t.source]||esc(t.source||'')} · dari <b>${esc(t.created_by||'?')}</b> · ${esc((t.created_at||'').slice(0,16))}${t.project_name?` · 📁 ${esc(t.project_name)}`:''}${t.done_at?` · ✔ selesai ${esc((t.done_at||'').slice(0,16))}`:''}</small>
+ <div style="display:flex;gap:8px;justify-content:flex-end">${t.source==='chat'?'<button type=button id=gochat>💬 Buka Diskusi</button>':''}<button type=button id=x>Tutup</button></div></div>`;
+ document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
+ const gc=m.querySelector('#gochat');
+ if(gc)gc.onclick=()=>{m.remove();document.querySelector('#repmenu [data-m=chat]')?.click();
+  $('#cbox')?.scrollIntoView({behavior:'smooth',block:'start'})}}
 async function renderTasks(){const box=$('#tklist');if(!box)return;
  try{const {items}=await api('GET',`/projects/${curProj}/mytasks?all=${tkAll?1:0}&done=1`);
+  const byId={};items.forEach(t=>byId[t.id]=t);
   box.innerHTML=items.map(t=>`<div class=tki style="${t.done_at?'opacity:.55':''}">
    <input type=checkbox data-tk="${t.id}" ${t.done_at?'checked':''} title="Tandai selesai">
-   <div style="flex:1;min-width:0"><div style="word-break:break-word">${esc(t.text).replace(/(^|\s)([#@][A-Za-z0-9_.:\-]+)/g,'$1<span class=mn>$2</span>')}</div>
+   <div style="flex:1;min-width:0"><div class=tknav data-nav="${t.id}" title="${t.gantt_doc_id&&t.gantt_chapter_id?'Klik: buka bab laporannya':t.gantt_task_id?'Klik: lihat di Kalender':'Klik: lihat detail'}" style="word-break:break-word;cursor:pointer">${t.gantt_doc_id&&t.gantt_chapter_id?'📄 ':t.gantt_task_id?'📅 ':''}${esc(t.text).replace(/(^|\s)([#@][A-Za-z0-9_.:\-]+)/g,'$1<span class=mn>$2</span>')}</div>
     <small style="color:var(--mut)">${t.topic?`<span class=badge style="background:#6b21a8">#${esc(t.topic)}</span> `:''}dari ${esc(t.created_by||'?')} · ${esc((t.created_at||'').slice(0,16))}${tkAll&&t.project_name?` · 📁 ${esc(t.project_name)}`:''}</small>
     ${t.gantt_task_id?`<div style="display:flex;gap:6px;align-items:center;margin-top:5px;flex-wrap:wrap">
      <div class=pbar style="flex:1;min-width:80px;max-width:180px"><i style="width:${t.gantt_progress||0}%"></i></div>
@@ -709,7 +730,8 @@ async function renderTasks(){const box=$('#tklist');if(!box)return;
   box.querySelectorAll('[data-pset]').forEach(b=>b.onclick=async()=>{const v=+box.querySelector(`[data-pin="${b.dataset.pset}"]`).value;
    try{await api('POST',`/user-tasks/${b.dataset.pset}/progress`,{percent:v});note('Progres Gantt diperbarui');renderTasks()}catch(e){note(e.message,1)}});
   box.querySelectorAll('[data-pauto]').forEach(b=>b.onclick=async()=>{
-   try{const r=await api('POST',`/user-tasks/${b.dataset.pauto}/progress`,{auto:true});note(`Progres otomatis: ${r.percent}%`);renderTasks()}catch(e){note(e.message,1)}})}
+   try{const r=await api('POST',`/user-tasks/${b.dataset.pauto}/progress`,{auto:true});note(`Progres otomatis: ${r.percent}%`);renderTasks()}catch(e){note(e.message,1)}});
+  box.querySelectorAll('[data-nav]').forEach(el=>el.onclick=()=>tkNav(byId[+el.dataset.nav]))}
  catch(e){box.innerHTML=`<small style="color:var(--mut)">${esc(e.message)}</small>`}}
 async function taskAddDlg(){
  let parents=[];try{parents=(await api('GET',`/projects/${curProj}/tasks`)).tasks.filter(t=>!t.parent_task_id)}catch(e){}
