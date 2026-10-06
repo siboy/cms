@@ -132,6 +132,7 @@ header b{letter-spacing:.2px}
 .tki:hover{border-color:var(--acc)}.tki input[type=checkbox]{margin-top:3px}
 .tknav:hover{color:var(--acc);text-decoration:underline;text-underline-offset:3px}
 .gh{cursor:grab;color:var(--mut);user-select:none}
+.gmain{padding:0 5px;font-size:11px;border-radius:5px}
 .gdrag.gover{outline:2px dashed var(--acc);outline-offset:-2px;border-radius:6px}
 .ggrp:hover{filter:brightness(1.04)}
 .calhead{display:grid;grid-template-columns:repeat(7,1fr);font-size:10.5px;color:var(--mut);text-align:center;margin-bottom:2px}
@@ -913,7 +914,7 @@ async function tabGantt(){const [{project:p},tr,dr,scurve]=await Promise.all([ap
    ?`<div class=gtrack><div class=gbar data-idx="${i}" style="left:${pos(t.start_date)}%;width:${Math.max(pos(t.end_date)-pos(t.start_date),2)}%;${v._sub||v._doc?'opacity:.75':''}"><i style="width:${t.progress_percent||0}%"></i></div></div>`
    :`<div class=gtrack><div class="gbar unsched" data-idx="${i}">+ jadwalkan</div></div>`;
   return `<div class="grow${draggable?' gdrag':''}" ${draggable?`draggable=true data-tid="${t.id}" data-parent="${t.parent_task_id||''}" data-sub="${v._sub?1:0}"`:''}>
-   <div class=glabel title="${esc(t.title||'')}${draggable?' — seret utk atur urutan; jatuhkan di NAMA task lain = jadi sub-task':''}" style="${v._sub?'padding-left:20px;font-size:12px;color:var(--mut)':''}${v._doc?'padding-left:20px;font-size:12px':''}">${draggable?'<span class=gh title="seret">⠿</span> ':''}${v._sub?'↳ ':''}${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,32))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
+   <div class=glabel title="${esc(t.title||'')}${draggable?' — seret utk atur urutan; jatuhkan di NAMA task lain = jadi sub-task':''}" style="${v._sub?'padding-left:20px;font-size:12px;color:var(--mut)':''}${v._doc?'padding-left:20px;font-size:12px':''}">${draggable?'<span class=gh title="seret">⠿</span> ':''}${v._sub?`<button type=button class=gmain data-gm="${t.id}" data-gma="${t.parent_task_id}" title="Kembalikan jadi task utama (keluar dari sub)">↰</button> ↳ `:''}${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,32))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
  $('#ptab').innerHTML='<p style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
   +'<button id=gsub class=p>+ Sub-task / jadwal</button>'
   +(hasPerm('project_tasks_admin')?'<button id=ntask>+ Task manual (admin)</button>':'')
@@ -924,6 +925,10 @@ async function tabGantt(){const [{project:p},tr,dr,scurve]=await Promise.all([ap
  $('#ptab').querySelectorAll('.gbar[data-idx]').forEach(el=>el.onclick=e=>{e.stopPropagation();taskDlg(view[+el.dataset.idx].t)});
  $('#ptab').querySelectorAll('.ggrp').forEach(el=>el.onclick=()=>{const k=curProj+':'+el.dataset.grp;
   ganttOpen.has(k)?ganttOpen.delete(k):ganttOpen.add(k);tabGantt()});
+ // ↰ sub -> kembali jadi task utama (ditempatkan tepat setelah bekas induknya)
+ $('#ptab').querySelectorAll('.gmain').forEach(b=>b.onclick=async e=>{e.stopPropagation();
+  try{await api('POST',`/tasks/${b.dataset.gm}/reorder`,{after_id:+b.dataset.gma,parent_task_id:null});tabGantt()}
+  catch(x){note(x.message,1)}});
  $('#gsub').onclick=()=>calAddDlg(dstr(new Date()),()=>tabGantt(),true);
  if($('#ntask'))$('#ntask').onclick=()=>taskDlg({});
  // drag & drop: jatuhkan di NAMA (glabel) task utama = jadi sub-task-nya; selain itu = pindah urutan
