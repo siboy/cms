@@ -856,7 +856,8 @@ function expInput(f,onSet){const i=document.createElement('input');i.type='date'
  i.onchange=async()=>{try{await api('PATCH',`/me/files/${f.id}`,{expires_on:i.value||null});onSet()}catch(e){note(e.message,1)}};return i}
 const ROLE_DEFAULT='Tenaga Ahli';
 const ROLE_SUGGEST=['Tenaga Ahli','Tenaga Ahli Fisika','Tenaga Ahli Udara','Tenaga Ahli Laut','Tenaga Ahli Sungai',
- 'Tenaga Ahli Kehutanan','Tenaga Ahli Kimia','Tenaga Ahli GIS','QC','Data Analyst','Lead Proyek','Admin','Penulis','Surveyor']
+ 'Tenaga Ahli Kehutanan','Tenaga Ahli Kimia','Tenaga Ahli GIS','QC','Data Analyst','Lead Proyek','Admin','Penulis','Surveyor',
+ 'KTPA','ATPA']
  .sort((a,b)=>a.localeCompare(b,'id'));
 async function roleOptions(){let ex=[];try{ex=(await api('GET','/expertise-list')).expertise}catch(e){}
  return [...new Set([...ROLE_SUGGEST,...ex])].sort((a,b)=>a.localeCompare(b,'id'))}
