@@ -708,9 +708,9 @@ async function taskAddDlg(){
  <label>Untuk (username, pisah koma; kosong = saya sendiri)<input name=who placeholder="mis. siti, agus"></label>
  <label style="flex-direction:row;display:flex;gap:6px;align-items:center">Utk SEMUA anggota tim <input type=checkbox name=all style="width:auto"></label>
  <label>Masukkan juga ke Gantt chart (opsional)
-  <select name=gparent><option value="">— tidak dimasukkan ke Gantt —</option>
-  <option value="0">Masuk Gantt sebagai TASK UTAMA</option>
-  ${parents.map(t=>`<option value="${t.id}">↳ sub-task dari: ${esc((t.title||'(tanpa judul)').slice(0,55))}</option>`).join('')}</select></label>
+  <select name=gparent><option value="">— Tidak —</option>
+  <option value="0">Task utama</option>
+  ${parents.map(t=>`<option value="${t.id}">${esc((t.title||'(tanpa judul)').slice(0,60))}</option>`).join('')}</select></label>
  <div style="display:flex;gap:8px"><label style="flex:1">Mulai (utk Gantt)<input type=date name=gsd value="${today}"></label>
  <label style="flex:1">Selesai<input type=date name=ged value="${today}"></label></div>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
@@ -745,9 +745,9 @@ async function calAddDlg(day,onDone,defGantt){onDone=onDone||renderCal;
  <div style="display:flex;gap:8px"><label style="flex:1">Mulai<input type=date name=sd value="${day}" required></label>
  <label style="flex:1">Selesai<input type=date name=ed value="${day}" required></label></div>
  <label>Masukkan ke Gantt chart?
-  <select name=parent><option value="">— TIDAK (agenda kalender saja) —</option>
-  <option value="0">Ya, sebagai TASK UTAMA</option>
-  ${parents.map(t=>`<option value="${t.id}">Ya, ↳ sub-task dari: ${esc((t.title||'(tanpa judul)').slice(0,55))}</option>`).join('')}</select></label>
+  <select name=parent><option value="">— Tidak (agenda kalender saja) —</option>
+  <option value="0">Task utama</option>
+  ${parents.map(t=>`<option value="${t.id}">${esc((t.title||'(tanpa judul)').slice(0,60))}</option>`).join('')}</select></label>
  <small style="color:var(--mut)">Default: hanya tampil di kalender. Pilih "Ya" bila agenda ini bagian dari pekerjaan di Gantt chart.</small>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
