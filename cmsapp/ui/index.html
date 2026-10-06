@@ -642,7 +642,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
  <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
  <select id=lrt><option value=draft>Draft</option><option value=interim>Interim</option><option value=final>Final</option></select>
- <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div>`:'')
+ <button id=ltaut>Tautkan</button></div>`:'')
  +`<div id=bfilewrap></div></div>`
  +`<div class=rc data-rt=task><div class=rh><b>✅ Task</b>
    <label style="font-size:11.5px;color:var(--mut);display:flex;gap:4px;align-items:center;margin-left:auto"><input type=checkbox id=tkall> lintas proyek</label>
@@ -680,9 +680,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
   const m=q?docsFree.filter(d=>d.filename.toLowerCase().includes(q)):docsFree;
   $('#lex').innerHTML=`<option value="">— ${m.length} dokumen cocok —</option>`+m.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')};
  $('#ltaut').onclick=async()=>{if(!$('#lex').value)return note('Cari & pilih dokumen dulu',1);
-  try{await api('POST',`/projects/${curProj}/documents`,{doc_id:+$('#lex').value,report_type:$('#lrt').value});tabLaporan()}catch(e){note(e.message,1)}};
- $('#lup').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='.docx';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('report_type',$('#lrt').value);
-  note('Mengunggah & mengekstrak…');try{await api('POST',`/projects/${curProj}/documents`,fd,true);note('Selesai');tabLaporan()}catch(e){note(e.message,1)}};f.click()}}
+  try{await api('POST',`/projects/${curProj}/documents`,{doc_id:+$('#lex').value,report_type:$('#lrt').value});tabLaporan()}catch(e){note(e.message,1)}}}
 
 /* ===== Task personal & Kalender proyek (tab Laporan) ===== */
 let calCur=null,calAll=localStorage.getItem('calAll')==='1',tkAll=false;
@@ -923,18 +921,37 @@ async function renderBerkas(){const host=$('#bfilewrap');if(!host)return;
  host.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{curCat=b.dataset.c;renderBerkas()});
  host.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus berkas ini?')){try{await api('DELETE',`/project-files/${b.dataset.del}`);renderBerkas()}catch(e){note(e.message,1)}}});
  if($('#fup'))$('#fup').onclick=fileDlg}
+/* SATU dialog unggah utk semuanya: pilih Draft/Interim/Final = .docx masuk section Laporan (diekstrak
+   jadi dokumen CMS); pilih kategori lain = berkas arsip biasa (menggantikan tombol "atau Unggah baru"). */
+const REPORT_TYPES=[['draft','Laporan — Draft'],['interim','Laporan — Interim'],['final','Laporan — Final']];
 function fileDlg(){const m=document.createElement('div');m.className='mask';
- m.innerHTML=`<form class=dlg><b>📂 Unggah berkas</b>
- <label>Kategori<select name=category>${FILE_CATS.map(([k,l,ic])=>`<option value="${k}" ${k===curCat?'selected':''}>${ic} ${l}</option>`).join('')}</select></label>
+ const canDoc=hasPerm('project_manage');
+ m.innerHTML=`<form class=dlg><b>📂 Unggah berkas / dokumen</b>
+ <label>Kategori<select name=category>
+  ${canDoc?`<optgroup label="Dokumen laporan (.docx — masuk section Laporan & bisa diedit di CMS)">${REPORT_TYPES.map(([k,l])=>`<option value="rt:${k}">📄 ${l}</option>`).join('')}</optgroup>`:''}
+  <optgroup label="Berkas arsip proyek">${FILE_CATS.map(([k,l,ic])=>`<option value="${k}" ${k===curCat?'selected':''}>${ic} ${l}</option>`).join('')}</optgroup></select></label>
  <label>Berkas<input type=file name=file required></label>
+ <div id=fmeta style="display:grid;gap:8px">
  <label>Judul<input name=title></label>
  <label>Deskripsi<textarea name=description rows=2></textarea></label>
  <div style="display:flex;gap:8px"><label style="flex:1">Tanggal<input type=date name=doc_date></label><label style="flex:1">Status<input name=status placeholder="mis. Final / Diajukan"></label></div>
+ </div>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Unggah</button></div></form>`;
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
- f.onsubmit=async e=>{e.preventDefault();const fd=new FormData(f);   // kategori ikut dari dropdown dialog
-  try{await api('POST',`/projects/${curProj}/files`,fd,true);m.remove();
-   curCat=f.category.value;renderBerkas()}catch(x){note(x.message,1)}}}
+ const sync=()=>{const isDoc=f.category.value.startsWith('rt:');
+  m.querySelector('#fmeta').style.display=isDoc?'none':'grid';
+  f.file.accept=isDoc?'.docx':''};
+ f.category.onchange=sync;sync();
+ f.onsubmit=async e=>{e.preventDefault();const v=f.category.value;
+  try{
+   if(v.startsWith('rt:')){                         // dokumen laporan: unggah + ekstrak jadi dokumen CMS
+    if(!/\.docx$/i.test(f.file.files[0]?.name||''))return note('Dokumen laporan harus berkas .docx',1);
+    const fd=new FormData();fd.append('file',f.file.files[0]);fd.append('report_type',v.slice(3));
+    note('Mengunggah & mengekstrak dokumen…');
+    await api('POST',`/projects/${curProj}/documents`,fd,true);m.remove();note('Selesai — masuk section Laporan');tabLaporan()}
+   else{const fd=new FormData(f);fd.set('category',v);
+    await api('POST',`/projects/${curProj}/files`,fd,true);m.remove();curCat=v;renderBerkas()}}
+  catch(x){note(x.message,1)}}}
 // ===================== /Manajemen Proyek =====================
 
 // ===================== Aktivitas (admin) =====================
