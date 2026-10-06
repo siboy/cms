@@ -374,6 +374,13 @@ def set_printed(pid, link_id):
 
 
 # ---------------------------------------------------------------- tim proyek (siapa + role apa)
+@bp.get("/team-workload")
+@auth.require("project_view_all", "user_manage")
+def team_workload():
+    """Beban kerja semua pengguna (panel 'Beban Tim' daftar proyek) -- utk manajer/admin."""
+    return jsonify(items=S().team_workload())
+
+
 def _team_manage_guard(pid: int):
     """Mutasi tim HANYA oleh: admin (permission global project_team_manage) ATAU Ketua Tim yang
     ditunjuk admin utk proyek ini (cms_user_project_roles.is_leader). Author/anggota lain: 403."""

@@ -358,18 +358,49 @@ const FILE_CATS=[['surat','Surat','✉️'],['data_mentah','Data Mentah','🗂�
 const ID_BULAN=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 function idDate(s){if(!s)return '?';const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);if(!m)return s;return `${+m[3]} ${ID_BULAN[+m[2]-1]} ${m[1]}`}
 
+let projFilter='aktif';
 async function projectsView(){closeDoc();const {projects}=await api('GET','/projects');
- $('#app').innerHTML='<div id=docs>'+(hasPerm('project_manage')?'<p style="margin-top:0"><button id=npr>+ Proyek baru</button></p>':'')
- +'<div class=rg>'+(projects.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
+ const PSTAT=[['planning','Planning'],['ongoing','Ongoing'],['on_hold','On hold'],['completed','Done']];
+ const cnt=s=>projects.filter(p=>p.status===s).length;
+ const shown=projects.filter(p=>projFilter==='semua'?true:projFilter==='aktif'?p.status!=='completed':p.status===projFilter);
+ $('#app').innerHTML='<div id=docs>'
+ +`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
+   ${hasPerm('project_manage')?'<button id=npr class=p>+ Proyek baru</button>':''}
+   <div class=cattabs style="padding:0;margin:0;flex:1;min-width:200px">
+    <button data-pf=aktif class="${projFilter==='aktif'?'cur':''}" title="Semua yang belum Done">Aktif (${projects.filter(p=>p.status!=='completed').length})</button>
+    ${PSTAT.map(([k,l])=>`<button data-pf="${k}" class="${projFilter===k?'cur':''}">${l} (${cnt(k)})</button>`).join('')}
+    <button data-pf=semua class="${projFilter==='semua'?'cur':''}">Semua (${projects.length})</button>
+   </div>
+   ${hasPerm('project_view_all')||hasPerm('user_manage')?'<button id=bwork title="Profil beban kerja tiap orang">📊 Beban Tim</button>':''}
+  </div>`
+ +'<div class=rg>'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
   return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${hasPerm('project_manage')?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
   <div style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
   <div style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
   <div style="font-size:11px;color:var(--mut)">${idDate(p.start_date)} → ${idDate(p.end_date)}</div>
   <div style="margin-top:6px">${['draft','interim','final'].map(t=>rc[t]?`<span class=badge style="background:var(--mut)">${t}: ${rc[t]}</span> `:'').join('')}</div></div>`}).join('')
-  ||'<p>Belum ada proyek.</p>')+'</div></div>';
+  ||'<p style="color:var(--mut)">Tidak ada proyek dengan status ini.</p>')+'</div></div>';
+ document.querySelectorAll('[data-pf]').forEach(b=>b.onclick=()=>{projFilter=b.dataset.pf;projectsView()});
+ if($('#bwork'))$('#bwork').onclick=workloadDlg;
  document.querySelectorAll('#docs .rc[data-id]').forEach(c=>c.onclick=()=>projectDetailView(+c.dataset.id));
  document.querySelectorAll('[data-menu]').forEach(b=>b.onclick=e=>{e.stopPropagation();projectMenu(projects.find(x=>x.id===+b.dataset.menu),projects)});
  if($('#npr'))$('#npr').onclick=()=>projectDlg(projects)}
+/* panel Beban Tim: profil beban per orang + deteksi overload/kelelahan (kerja malam & akhir pekan) */
+async function workloadDlg(){let items=[];try{items=(await api('GET','/team-workload')).items}catch(e){return note(e.message,1)}
+ const LV={merah:['#d1242f','🔴 Overload'],kuning:['#b45309','🟡 Padat'],hijau:['#2da44e','🟢 Normal']};
+ const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<div class=dlg style="width:min(680px,94vw)"><b>📊 Beban Tim</b>
+ <p style="color:var(--mut);font-size:12px;margin:0">Skor gabungan: proyek aktif yang diikuti + PIC yang belum selesai + task berjalan + intensitas aktivitas 14 hari terakhir. 🌙 = aksi di luar jam kerja (sebelum 07.00 / setelah 18.00), 📅 = aksi Sabtu/Minggu — keduanya menaikkan indikasi kelelahan.</p>
+ <div style="display:grid;gap:8px">${items.map(u=>{const [col,lbl]=LV[u.level];const w=Math.min(100,u.score/15*100);
+  return `<div style="border:1px solid var(--line);border-radius:10px;padding:8px 11px;${u.level==='merah'?'border-color:#d1242f;background:#d1242f14':''}">
+   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(u.name||u.username)}</b>
+    <span class=badge style="background:${col}">${lbl} · ${u.score}</span>
+    ${u.fatigued?'<span class=badge style="background:#d1242f" title="Sering bekerja malam / akhir pekan dlm 14 hari terakhir">🔥 Indikasi kelelahan</span>':''}</div>
+   <div class=pbar style="margin:6px 0"><i style="width:${w}%;background:${col}"></i></div>
+   <small style="color:var(--mut)">📁 ${u.projects_active} proyek aktif · 📌 ${u.pic_open} PIC belum selesai · 🗓 ${u.tasks_active} task berjalan · ⚡ ${u.actions_14d} aksi/14h ${u.late_actions?`· 🌙 ${u.late_actions} malam`:''} ${u.weekend_actions?`· 📅 ${u.weekend_actions} akhir pekan`:''}</small>
+  </div>`}).join('')||'<p style="color:var(--mut)">Belum ada data pengguna.</p>'}</div>
+ <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
+ document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()}}
 
 function projectMenu(p,projects){const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>${esc(p.name)}</b>

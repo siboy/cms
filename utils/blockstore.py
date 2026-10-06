@@ -683,6 +683,63 @@ class BlockStore:
         with self._tx() as c:
             self._x(c, "UPDATE cms_project_chat SET deleted_at=? WHERE id=?", (_now(), chat_id))
 
+    def team_workload(self) -> list[dict]:
+        """Profil beban kerja per pengguna aktif (panel 'Beban Tim' di daftar proyek): proyek aktif yang
+        diikuti, penugasan PIC yang belum selesai, task gantt aktif yang menandainya, intensitas aktivitas
+        14 hari terakhir dari cms_activity_log — termasuk kerja MALAM (sebelum 07:00 / >=18:00) dan AKHIR
+        PEKAN (Sabtu/Minggu, dihitung dari created_at). Skor gabungan -> level hijau/kuning/merah +
+        flag indikasi kelelahan. Semua sumber best-effort (tabel bisa tak ada di SQLite CLI)."""
+        from datetime import datetime, timedelta
+        since = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d %H:%M:%S")
+        def safe(fn, default):
+            try:
+                return fn()
+            except Exception:                           # noqa: BLE001
+                return default
+        with self._tx() as c:
+            users = safe(lambda: self._all(c, "SELECT u.id, u.username, u.name FROM cms_users u "
+                                              "JOIN cms_groups g ON g.id=u.group_id WHERE u.active=1 AND g.is_super=0 "
+                                              "ORDER BY u.username"), [])
+            proj = {r["user_id"]: r["n"] for r in safe(lambda: self._all(
+                c, "SELECT r.user_id, COUNT(*) AS n FROM cms_user_project_roles r "
+                   "JOIN cms_projects p ON p.id=r.project_id AND p.deleted_at IS NULL AND p.status<>'completed' "
+                   "WHERE r.user_id IS NOT NULL GROUP BY r.user_id"), [])}
+            pic_open = {r["user_id"]: r["n"] for r in safe(lambda: self._all(
+                c, "SELECT a.user_id, COUNT(*) AS n FROM cms_assign a "
+                   "LEFT JOIN cms_assign_status s ON s.doc_id=a.doc_id AND s.user_id=a.user_id AND s.scope=a.scope "
+                   "WHERE COALESCE(s.status,'in_progress')<>'done' GROUP BY a.user_id"), [])}
+            tasks = {r["user_id"]: r["n"] for r in safe(lambda: self._all(
+                c, "SELECT tg.user_id, COUNT(DISTINCT t.id) AS n FROM cms_project_task_tags tg "
+                   "JOIN cms_project_tasks t ON t.id=tg.task_id AND t.deleted_at IS NULL "
+                   "AND COALESCE(t.progress_percent,0)<100 GROUP BY tg.user_id"), [])}
+            acts = safe(lambda: self._all(c, "SELECT username, created_at FROM cms_activity_log "
+                                             "WHERE created_at>=?", (since,)), [])
+        per: dict[str, dict] = {}
+        for a in acts:
+            s = per.setdefault(a["username"] or "", {"n": 0, "late": 0, "weekend": 0})
+            s["n"] += 1
+            try:
+                dt = datetime.strptime(str(a["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
+                if dt.hour < 7 or dt.hour >= 18:
+                    s["late"] += 1
+                if dt.weekday() >= 5:
+                    s["weekend"] += 1
+            except Exception:                           # noqa: BLE001
+                pass
+        out = []
+        for u in users:
+            st = per.get(u["username"], {"n": 0, "late": 0, "weekend": 0})
+            p, po, tk = proj.get(u["id"], 0), pic_open.get(u["id"], 0), tasks.get(u["id"], 0)
+            score = round(p * 1.5 + po * 2 + tk * 2 + st["n"] / 25 + st["late"] / 8 + st["weekend"] / 6, 1)
+            fatigued = st["weekend"] >= 8 or st["late"] >= 12   # sering kerja akhir pekan / di luar jam kerja
+            level = "merah" if (score >= 12 or (fatigued and score >= 6)) else ("kuning" if score >= 6 else "hijau")
+            out.append({"user_id": u["id"], "username": u["username"], "name": u["name"],
+                        "projects_active": p, "pic_open": po, "tasks_active": tk,
+                        "actions_14d": st["n"], "late_actions": st["late"], "weekend_actions": st["weekend"],
+                        "score": score, "level": level, "fatigued": fatigued})
+        out.sort(key=lambda x: -x["score"])
+        return out
+
     ACTION_LABELS = {
         "block.edit": "blok diedit", "block.insert": "blok ditambahkan", "block.delete": "blok dihapus",
         "block.move": "blok dipindahkan", "block.restore": "blok dipulihkan", "block.revert": "blok dikembalikan ke versi lama",

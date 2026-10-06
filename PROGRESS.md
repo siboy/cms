@@ -49,6 +49,19 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Filter status daftar proyek + panel Beban Tim / deteksi overload (2026-10-06)** — daftar proyek:
+  pil filter "Aktif (n)" (default, = status!=completed) / Planning / Ongoing / On hold / Done / Semua,
+  jumlah di tiap label (`projFilter` global, render ulang projectsView). Tombol "📊 Beban Tim"
+  (project_view_all/user_manage) -> dialog profil beban per pengguna aktif non-super:
+  `BlockStore.team_workload()` + `GET /team-workload` — metrik per orang: proyek aktif diikuti
+  (cms_user_project_roles x status proyek), PIC belum selesai (cms_assign x cms_assign_status),
+  task gantt berjalan (tags x progress<100), intensitas aktivitas 14 hari dari cms_activity_log
+  TERMASUK aksi malam (<07/>=18) & akhir pekan (weekday Sabtu/Minggu dihitung Python dari created_at).
+  Skor tertimbang -> level hijau/kuning/merah (🔴 Overload, kartu bertepi merah) + flag "🔥 Indikasi
+  kelelahan" bila weekend>=8 atau malam>=12 dlm 14 hari. Semua query best-effort (tabel bisa absen
+  di SQLite CLI). CATATAN: "meeting/scheduler" belum ada fiturnya di sistem — proxy beban memakai task
+  gantt + aktivitas; kalau nanti ada fitur agenda, tambahkan ke skor. **Diuji**: 3 cek (200 utk admin,
+  metrik lengkap utk anggota 2 proyek, 403 user biasa) + seluruh suite lolos. Live di :8879.
 - [x] **Mention @ di Diskusi -> notifikasi unread (2026-10-06)** — ketik `@` di chat memunculkan saran
   (anggota tim / `@tim` = semua / `📁 @proyek` = tim proyek lain, sisip `@proyek:<id>`); yang disebut
   dapat notifikasi badge 🔔 (type `chat_mention`, sistem cms_notifications yg sudah ada). Server
