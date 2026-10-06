@@ -969,12 +969,18 @@ function renderSCurve(el,{points,today}){
 
 async function taskDlg(t){const m=document.createElement('div');m.className='mask';const isChapter=!!t.chapter_block_id;
  let users=[];if(hasPerm('project_tasks_admin')&&t.id&&!isChapter){try{users=(await api('GET','/admin/users')).users.filter(u=>u.active)}catch(e){}}
+ let parents=[];
+ if(t.id&&!isChapter){try{parents=(await api('GET',`/projects/${curProj}/tasks`)).tasks
+  .filter(x=>!x.parent_task_id&&!x.chapter_block_id&&x.id!==t.id&&!x.calendar_only)}catch(e){}}
  const tagged=new Set((t.tags||[]).map(u=>u.user_id));
  m.innerHTML=`<form class=dlg><b>${isChapter?(t.id?'Ubah jadwal bab':'Jadwalkan bab'):(t.id?'Ubah task':'Task baru')}</b>
  ${isChapter?`<div><small>${esc(t.title||'')}</small></div>`:`<label>Judul<input name=title value="${esc(t.title||'')}" required></label>`}
  <div style="display:flex;gap:8px"><label style="flex:1">Mulai<input name=start_date type=date value="${t.start_date||''}"></label><label style="flex:1">Selesai<input name=end_date type=date value="${t.end_date||''}"></label></div>
  <label>Progress % <input name=progress_percent type=number min=0 max=100 value="${t.progress_percent||0}"></label>
  <label>Status<select name=status>${['belum_mulai','berjalan','selesai','terlambat'].map(s=>`<option value=${s} ${s===t.status?'selected':''}>${s}</option>`).join('')}</select></label>
+ ${t.id&&!isChapter?`<label>Induk di Gantt<select name=gparent>
+  <option value="">— Task utama (tanpa induk) —</option>
+  ${parents.map(x=>`<option value="${x.id}" ${x.id===t.parent_task_id?'selected':''}>${esc((x.title||'(tanpa judul)').slice(0,60))}</option>`).join('')}</select></label>`:''}
  ${users.length?`<label>Tag PIC (notifikasi)<select name=pics multiple size=4>${users.map(u=>`<option value=${u.id} ${tagged.has(u.id)?'selected':''}>${esc(u.username)}</option>`).join('')}</select></label>`:''}
  <div style="display:flex;gap:8px;justify-content:flex-end">
  ${isChapter?'<button type=button id=pic>👤 Kelola PIC…</button>':''}
@@ -988,7 +994,11 @@ async function taskDlg(t){const m=document.createElement('div');m.className='mas
  f.onsubmit=async e=>{e.preventDefault();const b={start_date:f.start_date.value||null,end_date:f.end_date.value||null,
   progress_percent:+f.progress_percent.value,status:f.status.value};
   try{
-   if(t.id){await api('PATCH',`/tasks/${t.id}`,b);if(f.pics)await api('POST',`/tasks/${t.id}/tag`,{user_ids:[...f.pics.selectedOptions].map(o=>+o.value)})}
+   if(t.id){await api('PATCH',`/tasks/${t.id}`,b);
+    if(f.gparent&&(+f.gparent.value||null)!==(t.parent_task_id||null))
+     await api('POST',`/tasks/${t.id}/reorder`,{parent_task_id:f.gparent.value?+f.gparent.value:null,
+      after_id:f.gparent.value?null:(t.parent_task_id||null)});
+    if(f.pics)await api('POST',`/tasks/${t.id}/tag`,{user_ids:[...f.pics.selectedOptions].map(o=>+o.value)})}
    else{b.title=isChapter?t.title:f.title.value;if(isChapter){b.doc_id=+t.doc_id;b.chapter_block_id=+t.chapter_block_id}
     await api('POST',`/projects/${curProj}/tasks`,b)}
    m.remove();tabGantt()
