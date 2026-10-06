@@ -328,9 +328,13 @@ def project_calendar_add(pid):
         pt = _task_row(int(parent))
         if pt["project_id"] != pid:
             raise ValueError("task induk bukan milik proyek ini")
+    # default: agenda kalender MURNI (tak tampil di Gantt/kurva S); masuk Gantt hanya bila diminta
+    # eksplisit (to_gantt) atau diberi induk (sub-task pasti bagian Gantt)
+    to_gantt = bool(d.get("to_gantt")) or bool(parent)
     tid = S().upsert_project_task(pid, title=title[:200], start_date=d["start_date"], end_date=d["end_date"],
                                   status=d.get("status") or "belum_mulai",
-                                  parent_task_id=int(parent) if parent else None, user=g.user["username"])
+                                  parent_task_id=int(parent) if parent else None,
+                                  calendar_only=not to_gantt, user=g.user["username"])
     S().log_activity(g.user["username"], "task.create", target_type="task", target_id=tid, project_id=pid,
                      summary=f'[kalender] {title}')
     return jsonify(id=tid), 201

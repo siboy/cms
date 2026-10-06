@@ -720,7 +720,7 @@ async function taskAddDlg(){
    usernames:f.who.value.split(',').map(s=>s.trim()).filter(Boolean),all:f.all.checked});
    if(f.gparent.value!==''){await api('POST',`/projects/${curProj}/calendar`,{title:f.text.value.slice(0,120),
     start_date:f.gsd.value||today,end_date:f.ged.value||f.gsd.value||today,
-    parent_task_id:+f.gparent.value||null});note('Task tersimpan + masuk Gantt/Kalender')}
+    parent_task_id:+f.gparent.value||null,to_gantt:true});note('Task tersimpan + masuk Gantt/Kalender')}
    m.remove();renderTasks();renderCal()}catch(x){note(x.message,1)}}}
 async function renderCal(){const grid=$('#calgrid');if(!grid||!calCur)return;
  const y=calCur.getFullYear(),mo=calCur.getMonth();
@@ -737,23 +737,25 @@ async function renderCal(){const grid=$('#calgrid');if(!grid||!calCur)return;
    <b>${d.getDate()}</b>${evs.slice(0,3).map(t=>`<span class=cev title="${esc(t.title)} — ${esc(t.project_name)} (${esc(t.start_date)} → ${esc(t.end_date)})" style="${t.project_id!==curProj?'border-left:3px solid var(--warn);opacity:.85':''}">${esc((t.title||'').slice(0,16))}</span>`).join('')}${evs.length>3?`<small style="color:var(--mut)">+${evs.length-3} lagi</small>`:''}</div>`}
  grid.innerHTML=html+'</div>';
  grid.querySelectorAll('.cald').forEach(c=>c.onclick=()=>calAddDlg(c.dataset.d))}
-async function calAddDlg(day,onDone){onDone=onDone||renderCal;
+async function calAddDlg(day,onDone,defGantt){onDone=onDone||renderCal;
  let parents=[];try{parents=(await api('GET',`/projects/${curProj}/tasks`)).tasks.filter(t=>!t.parent_task_id)}catch(e){}
  const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<form class=dlg><b>📅 Jadwal / sub-task baru — ${esc(idDate(day))}</b>
  <label>Agenda / task<input name=title required placeholder="mis. Survei lapangan / Uji laboratorium / Rapat pemrakarsa"></label>
  <div style="display:flex;gap:8px"><label style="flex:1">Mulai<input type=date name=sd value="${day}" required></label>
  <label style="flex:1">Selesai<input type=date name=ed value="${day}" required></label></div>
- <label>Bagian dari task utama di Gantt (boleh dikosongkan)
-  <select name=parent><option value="">— berdiri sendiri (task utama) —</option>
-  ${parents.map(t=>`<option value="${t.id}">${esc((t.title||'(tanpa judul)').slice(0,60))}</option>`).join('')}</select></label>
- <small style="color:var(--mut)">Masuk ke Gantt chart & Kalender sekaligus (satu data, dua tampilan); sub-task tampil menjorok di bawah induknya.</small>
+ <label>Masukkan ke Gantt chart?
+  <select name=parent><option value="">— TIDAK (agenda kalender saja) —</option>
+  <option value="0">Ya, sebagai TASK UTAMA</option>
+  ${parents.map(t=>`<option value="${t.id}">Ya, ↳ sub-task dari: ${esc((t.title||'(tanpa judul)').slice(0,55))}</option>`).join('')}</select></label>
+ <small style="color:var(--mut)">Default: hanya tampil di kalender. Pilih "Ya" bila agenda ini bagian dari pekerjaan di Gantt chart.</small>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
- m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target;
+ if(defGantt)m.querySelector('[name=parent]').value='0';   // dibuka dari Gantt: default masuk Gantt
+ m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target;const pv=f.parent.value;
   try{await api('POST',`/projects/${curProj}/calendar`,{title:f.title.value,start_date:f.sd.value,end_date:f.ed.value,
-   parent_task_id:f.parent.value?+f.parent.value:null});
-   m.remove();note('Tersimpan (muncul di Gantt & Kalender)');onDone()}catch(x){note(x.message,1)}}}
+   parent_task_id:(pv&&pv!=='0')?+pv:null,to_gantt:pv!==''});
+   m.remove();note(pv===''?'Agenda kalender tersimpan':'Tersimpan (muncul di Gantt & Kalender)');onDone()}catch(x){note(x.message,1)}}}
 /* ===== diskusi tim (chat) di tab Laporan: polling 4 dtk, kirim teks/gambar (Ctrl+V / drag-drop) ===== */
 let chatTimer=null,chatLast=0;
 function stopChat(){if(chatTimer){clearInterval(chatTimer);chatTimer=null}}
@@ -832,8 +834,9 @@ async function tabPic(){const {documents}=await api('GET',`/projects/${curProj}/
  if($('#goadm'))$('#goadm').onclick=()=>projectDetailView(curProj,{tab:'tim'});
  $('#ad').onchange=()=>assignView(users);assignView(users)}
 
-async function tabGantt(){const [{project:p},{tasks},scurve]=await Promise.all([api('GET',`/projects/${curProj}`),
+async function tabGantt(){const [{project:p},tr,scurve]=await Promise.all([api('GET',`/projects/${curProj}`),
   api('GET',`/projects/${curProj}/tasks`),api('GET',`/projects/${curProj}/scurve`).catch(()=>({points:[]}))]);
+ const tasks=tr.tasks.filter(t=>!t.calendar_only);     // agenda kalender murni tak tampil di Gantt
  const dates=tasks.flatMap(t=>[t.start_date,t.end_date]).filter(Boolean).concat([p.start_date,p.end_date].filter(Boolean)).map(d=>+new Date(d));
  const lo=dates.length?Math.min(...dates):+new Date(),hi=dates.length?Math.max(...dates):+new Date()+7*86400000;
  const span=Math.max(hi-lo,86400000),pos=d=>(+new Date(d)-lo)/span*100;
@@ -854,7 +857,7 @@ async function tabGantt(){const [{project:p},{tasks},scurve]=await Promise.all([
   +ordered.map(row).join('')+'</div>'
   +'<div class=rc style="margin-top:14px"><div class=rh><b>Kurva S — rencana vs realisasi</b></div><div id=scurve></div></div>';
  $('#ptab').querySelectorAll('.gbar').forEach(el=>el.onclick=()=>taskDlg(ordered[+el.dataset.idx]));
- $('#gsub').onclick=()=>calAddDlg(dstr(new Date()),()=>tabGantt());
+ $('#gsub').onclick=()=>calAddDlg(dstr(new Date()),()=>tabGantt(),true);
  if($('#ntask'))$('#ntask').onclick=()=>taskDlg({});
  renderSCurve($('#scurve'),scurve)}
 
@@ -921,15 +924,17 @@ async function renderBerkas(){const host=$('#bfilewrap');if(!host)return;
  host.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus berkas ini?')){try{await api('DELETE',`/project-files/${b.dataset.del}`);renderBerkas()}catch(e){note(e.message,1)}}});
  if($('#fup'))$('#fup').onclick=fileDlg}
 function fileDlg(){const m=document.createElement('div');m.className='mask';
- m.innerHTML=`<form class=dlg><b>${FILE_CATS.find(c=>c[0]===curCat)[2]} Unggah berkas — ${FILE_CATS.find(c=>c[0]===curCat)[1]}</b>
+ m.innerHTML=`<form class=dlg><b>📂 Unggah berkas</b>
+ <label>Kategori<select name=category>${FILE_CATS.map(([k,l,ic])=>`<option value="${k}" ${k===curCat?'selected':''}>${ic} ${l}</option>`).join('')}</select></label>
  <label>Berkas<input type=file name=file required></label>
  <label>Judul<input name=title></label>
  <label>Deskripsi<textarea name=description rows=2></textarea></label>
  <div style="display:flex;gap:8px"><label style="flex:1">Tanggal<input type=date name=doc_date></label><label style="flex:1">Status<input name=status placeholder="mis. Final / Diajukan"></label></div>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Unggah</button></div></form>`;
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
- f.onsubmit=async e=>{e.preventDefault();const fd=new FormData(f);fd.append('category',curCat);
-  try{await api('POST',`/projects/${curProj}/files`,fd,true);m.remove();renderBerkas()}catch(x){note(x.message,1)}}}
+ f.onsubmit=async e=>{e.preventDefault();const fd=new FormData(f);   // kategori ikut dari dropdown dialog
+  try{await api('POST',`/projects/${curProj}/files`,fd,true);m.remove();
+   curCat=f.category.value;renderBerkas()}catch(x){note(x.message,1)}}}
 // ===================== /Manajemen Proyek =====================
 
 // ===================== Aktivitas (admin) =====================

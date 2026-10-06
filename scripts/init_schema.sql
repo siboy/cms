@@ -435,6 +435,7 @@ CREATE TABLE IF NOT EXISTS cms_project_tasks (
     end_date         DATE DEFAULT NULL,
     progress_percent TINYINT NOT NULL DEFAULT 0,
     status           ENUM('belum_mulai','berjalan','selesai','terlambat') NOT NULL DEFAULT 'belum_mulai',
+    calendar_only    TINYINT NOT NULL DEFAULT 0,      -- 1 = agenda kalender murni, tak tampil di Gantt/kurva S
     sort_order       DOUBLE NOT NULL DEFAULT 0,
     created_by       VARCHAR(100) DEFAULT NULL,
     created_at       VARCHAR(19) DEFAULT NULL,
@@ -577,3 +578,17 @@ CREATE TABLE IF NOT EXISTS cms_settings (
     v          TEXT,
     updated_at VARCHAR(19) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- agenda kalender murni (2026-10-06): calendar_only=1 -> TIDAK tampil di Gantt/kurva S (default jadwal
+-- dari Kalender; dicentang "masukkan ke Gantt" / punya induk -> 0 spt task biasa)
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_calonly;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_calonly()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_project_tasks' AND COLUMN_NAME='calendar_only') THEN
+    ALTER TABLE cms_project_tasks ADD COLUMN calendar_only TINYINT NOT NULL DEFAULT 0 AFTER status;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_calonly();
+DROP PROCEDURE cms_tmp_migrate_calonly;

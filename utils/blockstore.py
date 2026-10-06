@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS cms_project_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, doc_id INTEGER, chapter_block_id INTEGER,
     parent_task_id INTEGER, title TEXT NOT NULL, start_date TEXT, end_date TEXT,
     progress_percent INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'belum_mulai',
+    calendar_only INTEGER NOT NULL DEFAULT 0,
     sort_order REAL NOT NULL DEFAULT 0, created_by TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_pt_project ON cms_project_tasks(project_id);
 CREATE TABLE IF NOT EXISTS cms_project_task_tags (
@@ -1545,7 +1546,8 @@ class BlockStore:
             if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
                 raise KeyError(f"proyek {project_id} tidak ada")
             tasks = self._all(c, "SELECT start_date, end_date, progress_percent FROM cms_project_tasks "
-                                 "WHERE project_id=? AND deleted_at IS NULL AND start_date IS NOT NULL AND end_date IS NOT NULL",
+                                 "WHERE project_id=? AND deleted_at IS NULL AND COALESCE(calendar_only,0)=0 "
+                                 "AND start_date IS NOT NULL AND end_date IS NOT NULL",
                               (project_id,))
         pd = lambda s: datetime.strptime(s[:10], "%Y-%m-%d")
         tasks = [t for t in tasks if pd(t["end_date"]) >= pd(t["start_date"])]
@@ -2267,7 +2269,8 @@ class BlockStore:
     def upsert_project_task(self, project_id: int, title: str = "", doc_id: Optional[int] = None,
                             chapter_block_id: Optional[int] = None, start_date=None, end_date=None,
                             progress_percent: Optional[int] = None, status: Optional[str] = None,
-                            parent_task_id: Optional[int] = None, user: str = "") -> int:
+                            parent_task_id: Optional[int] = None, user: str = "",
+                            calendar_only: bool = False) -> int:
         """Bikin/ubah baris gantt. chapter_block_id+doc_id terisi = materialisasi baris bab (idempoten, UNIQUE(doc_id,chapter_block_id))."""
         with self._tx() as c:
             if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
@@ -2290,11 +2293,11 @@ class BlockStore:
             else:
                 row = self._one(c, "SELECT COALESCE(MAX(sort_order),0) AS m FROM cms_project_tasks WHERE project_id=?", (project_id,))
                 cur = self._x(c, "INSERT INTO cms_project_tasks(project_id,doc_id,chapter_block_id,parent_task_id,title,"
-                                 "start_date,end_date,progress_percent,status,sort_order,created_by,created_at,updated_at) "
-                                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                 "start_date,end_date,progress_percent,status,calendar_only,sort_order,created_by,created_at,updated_at) "
+                                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                               (project_id, doc_id, chapter_block_id, parent_task_id, title or "(tanpa judul)", start_date,
-                               end_date, progress_percent or 0, status or "belum_mulai", (row["m"] if row else 0) + 1,
-                               user, _now(), _now()))
+                               end_date, progress_percent or 0, status or "belum_mulai", 1 if calendar_only else 0,
+                               (row["m"] if row else 0) + 1, user, _now(), _now()))
                 tid = cur.lastrowid
         if doc_id and chapter_block_id:
             self.sync_task_pic_from_assign(tid)
