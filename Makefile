@@ -188,7 +188,7 @@ ccms:
 # ---- APK Android (tanpa Android Studio: build headless via Docker, image di-cache setelah run pertama) ----
 apk:
 	docker rm -f cms-apk-build 2>/dev/null || true
-	docker run --rm --name cms-apk-build --network host -v $(CURDIR)/mobile:/work -w /work gradle:8.7-jdk17 bash -c '\
+	docker run --rm --name cms-apk-build --network host -v cms-android-sdk:/opt/android-sdk -v cms-gradle-cache:/home/gradle/.gradle -v $(CURDIR)/mobile:/work -w /work gradle:8.7-jdk17 bash -c '\
 	set -e; export ANDROID_HOME=/opt/android-sdk; \
 	if [ ! -d $$ANDROID_HOME/cmdline-tools/latest ]; then \
 	  mkdir -p $$ANDROID_HOME/cmdline-tools && cd /tmp && \
