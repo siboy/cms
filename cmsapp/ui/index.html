@@ -492,17 +492,18 @@ async function tabAktivitas(){
  const io=new IntersectionObserver(en=>{if(en[0].isIntersecting)load()},{rootMargin:'300px'});
  io.observe($('#actsent'));
  await load()}
-async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`);
- const canManage=hasPerm('project_team_manage');
+async function tabTim(){const {team,can_manage,can_appoint}=await api('GET',`/projects/${curProj}/team`);
+ const canManage=!!can_manage;                       // admin ATAU Ketua Tim proyek ini (diputuskan server)
  let avail=[],opts=ROLE_SUGGEST;if(canManage){try{const inTeam=new Set(team.filter(t=>t.user_id).map(t=>t.user_id));
-  avail=(await api('GET','/admin/users')).users.filter(u=>u.active&&!u.is_super&&!inTeam.has(u.id))}catch(e){}
+  avail=(await api('GET',`/projects/${curProj}/team/candidates`)).users.filter(u=>!inTeam.has(u.id))}catch(e){}
   opts=await roleOptions()}
- const nameOf=t=>t.is_external?`${esc(t.external_name)} <span class=badge style="background:var(--mut)">Eksternal</span>`:esc(t.name||t.username);
+ const nameOf=t=>(t.is_external?`${esc(t.external_name)} <span class=badge style="background:var(--mut)">Eksternal</span>`:esc(t.name||t.username))
+  +(t.is_leader?' <span class=badge style="background:#b8860b" title="Ketua Tim — boleh kelola tim proyek ini">👑 Ketua Tim</span>':'');
  $('#ptab').innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b>${canManage?'<button type=button id=timport>📥 Impor dari proyek lain…</button>':''}</div>
- <p style="color:var(--mut);font-size:12px">Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC (anggota eksternal tanpa akun CMS tak bisa jadi PIC). Role yang diisi dipakai juga di rekap pengalaman proyek (CV) orang tersebut. Default role: "${ROLE_DEFAULT}" kalau belum ada yang lebih spesifik.</p>
+ <p style="color:var(--mut);font-size:12px">Tim hanya bisa diubah oleh <b>admin</b> atau <b>👑 Ketua Tim</b> yang ditunjuk admin utk proyek ini. Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC (anggota eksternal tanpa akun CMS tak bisa jadi PIC). Role dipakai juga di rekap pengalaman proyek (CV).</p>
  <div class="otable timwrap"><table><tr><th>Nama</th><th>Role</th>${canManage?'<th></th>':''}</tr>
  ${team.map(t=>`<tr><td>${nameOf(t)}${t.external_contact?`<br><small style="color:var(--mut)">${esc(t.external_contact)}</small>`:''}</td><td>${canManage?`<span data-title="${t.row_id}"></span>`:esc(t.title||ROLE_DEFAULT)}</td>
- ${canManage?`<td><button type=button data-rm="${t.row_id}">Keluarkan</button></td>`:''}</tr>`).join('')
+ ${canManage?`<td>${can_appoint&&!t.is_external?`<button type=button data-ldr="${t.row_id}" data-v="${t.is_leader?0:1}" title="${t.is_leader?'Lepas status Ketua Tim':'Jadikan Ketua Tim proyek ini'}">${t.is_leader?'👑 Lepas':'👑 Jadikan ketua'}</button> `:''}<button type=button data-rm="${t.row_id}">Keluarkan</button></td>`:''}</tr>`).join('')
  ||`<tr><td colspan=${canManage?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table></div>
  ${canManage?`<h4 style="margin-top:14px">Tambah anggota</h4>
  <form id=fteam style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -525,6 +526,8 @@ async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`
    el.append(s)});
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(!confirm('Keluarkan dari tim?'))return;
    try{await api('DELETE',`/projects/${curProj}/team/${b.dataset.rm}`);tabTim()}catch(e){note(e.message,1)}});
+  document.querySelectorAll('[data-ldr]').forEach(b=>b.onclick=async()=>{
+   try{await api('PATCH',`/projects/${curProj}/team/${b.dataset.ldr}`,{is_leader:!!+b.dataset.v});tabTim()}catch(e){note(e.message,1)}});
   const f=$('#fteam');
   f.kind.onchange=()=>{const ext=f.kind.value==='eksternal';f.user_id.hidden=ext;f.user_id.required=!ext;
    f.external_name.hidden=!ext;f.external_name.required=ext;f.external_contact.hidden=!ext};

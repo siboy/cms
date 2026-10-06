@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS cms_user_files (
 CREATE INDEX IF NOT EXISTS idx_uf_user ON cms_user_files(user_id);
 CREATE TABLE IF NOT EXISTS cms_user_project_roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, project_id INTEGER NOT NULL, title TEXT NOT NULL,
-    external_name TEXT, external_contact TEXT, updated_at TEXT);
+    is_leader INTEGER NOT NULL DEFAULT 0, external_name TEXT, external_contact TEXT, updated_at TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_upr_user_project ON cms_user_project_roles(user_id, project_id);
 CREATE TABLE IF NOT EXISTS cms_share_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL UNIQUE, doc_id INTEGER NOT NULL,
@@ -1607,15 +1607,36 @@ class BlockStore:
         = id baris cms_user_project_roles, dipakai hapus/ubah (beda dari `user_id` yg bisa NULL)."""
         with self._tx() as c:
             rows = self._all(c, "SELECT r.id AS row_id, r.user_id, u.username, u.name, g.name AS role, "
-                                 "g.is_super, u.active, r.external_name, r.external_contact, r.title, r.updated_at "
+                                 "g.is_super, u.active, r.external_name, r.external_contact, r.title, r.is_leader, r.updated_at "
                                  "FROM cms_user_project_roles r LEFT JOIN cms_users u ON u.id=r.user_id "
                                  "LEFT JOIN cms_groups g ON g.id=u.group_id "
                                  "WHERE r.project_id=? AND (r.user_id IS NULL OR u.active=1) "
-                                 "ORDER BY COALESCE(u.username, r.external_name)", (project_id,))
+                                 "ORDER BY r.is_leader DESC, COALESCE(u.username, r.external_name)", (project_id,))
         for r in rows:
             r["is_super"] = bool(r["is_super"])
             r["is_external"] = r["user_id"] is None
+            r["is_leader"] = bool(r["is_leader"])
         return rows
+
+    def is_project_leader(self, user_id: int, project_id: int) -> bool:
+        """Ketua Tim proyek (ditunjuk admin di tab Tim): boleh kelola tim proyek ITU saja tanpa
+        permission global project_team_manage. Best-effort False bila kolom/tabel belum ada."""
+        try:
+            with self._tx() as c:
+                return bool(self._one(c, "SELECT 1 AS x FROM cms_user_project_roles "
+                                         "WHERE user_id=? AND project_id=? AND is_leader=1", (user_id, project_id)))
+        except Exception:                               # noqa: BLE001
+            return False
+
+    def set_team_leader(self, row_id: int, is_leader: bool):
+        with self._tx() as c:
+            row = self._one(c, "SELECT id, user_id FROM cms_user_project_roles WHERE id=?", (row_id,))
+            if not row:
+                raise KeyError(f"anggota tim {row_id} tidak ada")
+            if row["user_id"] is None:
+                raise ValueError("anggota eksternal (tanpa akun CMS) tidak bisa jadi Ketua Tim")
+            self._x(c, "UPDATE cms_user_project_roles SET is_leader=?, updated_at=? WHERE id=?",
+                    (1 if is_leader else 0, _now(), row_id))
 
     def add_project_team_member(self, project_id: int, title: str, user_id: Optional[int] = None,
                                 external_name: str = "", external_contact: str = "") -> int:

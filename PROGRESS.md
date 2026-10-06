@@ -49,6 +49,20 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Ketua Tim proyek: tim hanya bisa diubah admin ATAU ketua yang ditunjuk (2026-10-06)** — kolom
+  `is_leader` di `cms_user_project_roles` (CREATE + migrasi procedure information_schema di
+  init_schema.sql, SQLITE_DDL; SUDAH diterapkan ke MySQL live). Semua mutasi tim (`POST/PATCH/DELETE
+  /projects/<id>/team*`, import, candidates) diganti dari `@require("project_team_manage")` menjadi
+  `@require()` + `_team_manage_guard`: lolos bila punya permission GLOBAL project_team_manage (admin)
+  ATAU `BlockStore.is_project_leader` utk proyek itu. Angkat/lepas ketua (PATCH `{is_leader}`) KHUSUS
+  admin — ketua tak bisa mengangkat ketua lain (cegah eskalasi); anggota eksternal tak bisa jadi ketua
+  (set_team_leader menolak); `import_project_team` sengaja TIDAK menyalin is_leader. Endpoint baru
+  `GET /projects/<id>/team/candidates` (akun aktif non-super, utk dropdown tambah anggota milik ketua
+  yg tak punya akses /admin/users); `GET /team` kini balas `can_manage`/`can_appoint` — UI tabTim pakai
+  itu (bukan hasPerm lokal), badge "👑 Ketua Tim", tombol admin "👑 Jadikan ketua"/"👑 Lepas".
+  **Diuji**: 18 skenario end-to-end baru semua lolos (author biasa 403; anggota biasa 403; angkat-diri
+  403; ketua bisa tambah/ubah/keluarkan/candidates tapi tak bisa angkat ketua; eksternal 400;
+  dilepas -> 403 lagi). Live di :8879 (hot-deploy + restart + image rebuild).
 - [x] **Iterasi UI dari uji pakai nyata di :8879 (2026-10-06, susulan)** — semua SUDAH di-hot-deploy ke
   container live (docker cp + build ulang image `cms-collab:dev`, krn `make stack` user belum rebuild):
   (1) layout Laporan diperbaiki: flex-wrap+min-width:0 (tanpa scroll horizontal), chatbox `min(70vh,620px)`

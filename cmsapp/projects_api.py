@@ -336,19 +336,45 @@ def set_printed(pid, link_id):
 
 
 # ---------------------------------------------------------------- tim proyek (siapa + role apa)
+def _team_manage_guard(pid: int):
+    """Mutasi tim HANYA oleh: admin (permission global project_team_manage) ATAU Ketua Tim yang
+    ditunjuk admin utk proyek ini (cms_user_project_roles.is_leader). Author/anggota lain: 403."""
+    if auth.has_perm(g.user, "project_team_manage"):
+        return
+    if not S().is_project_leader(g.user["id"], pid):
+        abort(403, description="hanya admin atau Ketua Tim proyek ini yang boleh mengubah tim")
+
+
 @bp.get("/projects/<int:pid>/team")
 @auth.require()
 def project_team(pid):
     _project_visible(pid)
-    return jsonify(team=S().list_project_team(pid))
+    return jsonify(team=S().list_project_team(pid),
+                   can_manage=auth.has_perm(g.user, "project_team_manage") or S().is_project_leader(g.user["id"], pid),
+                   can_appoint=auth.has_perm(g.user, "project_team_manage"))
+
+
+@bp.get("/projects/<int:pid>/team/candidates")
+@auth.require()
+def project_team_candidates(pid):
+    """Daftar akun CMS aktif (id+nama saja) utk dropdown tambah anggota — bisa diakses Ketua Tim yang
+    TIDAK punya user_manage (GET /admin/users tertutup baginya)."""
+    _project_visible(pid)
+    _team_manage_guard(pid)
+    st = S()
+    with st._tx() as c:
+        rows = st._all(c, "SELECT u.id, u.username, u.name FROM cms_users u JOIN cms_groups g ON g.id=u.group_id "
+                          "WHERE u.active=1 AND g.is_super=0 ORDER BY COALESCE(NULLIF(u.name,''), u.username)")
+    return jsonify(users=rows)
 
 
 @bp.post("/projects/<int:pid>/team")
-@auth.require("project_team_manage")
+@auth.require()
 def project_team_add(pid):
     """JSON {user_id, title} utk akun CMS yg sudah ada, ATAU {external_name, external_contact?, title}
     utk anggota eksternal (tanpa akun CMS, tak bisa ditandai PIC)."""
     _project_visible(pid)
+    _team_manage_guard(pid)
     d = body()
     uid = int(d["user_id"]) if d.get("user_id") else None
     row_id = S().add_project_team_member(pid, d.get("title", ""), user_id=uid,
@@ -360,10 +386,17 @@ def project_team_add(pid):
 
 
 @bp.patch("/projects/<int:pid>/team/<int:row_id>")
-@auth.require("project_team_manage")
+@auth.require()
 def project_team_update(pid, row_id):
     _project_visible(pid)
+    _team_manage_guard(pid)
     d = body()
+    if "is_leader" in d:                              # angkat/lepas Ketua Tim: KHUSUS admin, bukan sesama ketua
+        if not auth.has_perm(g.user, "project_team_manage"):
+            abort(403, description="hanya admin yang bisa mengangkat/melepas Ketua Tim")
+        S().set_team_leader(row_id, bool(d["is_leader"]))
+        S().log_activity(g.user["username"], "project.team_leader", target_type="user", target_id=row_id,
+                         project_id=pid, summary="angkat Ketua Tim" if d["is_leader"] else "lepas Ketua Tim")
     S().update_project_team_member(row_id, title=d.get("title"), external_name=d.get("external_name"),
                                    external_contact=d.get("external_contact"))
     S().log_activity(g.user["username"], "project.team_update", target_type="user", target_id=row_id, project_id=pid,
@@ -372,20 +405,22 @@ def project_team_update(pid, row_id):
 
 
 @bp.delete("/projects/<int:pid>/team/<int:row_id>")
-@auth.require("project_team_manage")
+@auth.require()
 def project_team_remove(pid, row_id):
     _project_visible(pid)
+    _team_manage_guard(pid)
     S().remove_project_team_member(row_id)
     S().log_activity(g.user["username"], "project.team_remove", target_type="user", target_id=row_id, project_id=pid)
     return jsonify(ok=True)
 
 
 @bp.post("/projects/<int:pid>/team/import")
-@auth.require("project_team_manage")
+@auth.require()
 def project_team_import(pid):
     """Bulk-import semua anggota tim (akun CMS + eksternal) dari proyek lain (`src_project_id`) ke proyek
     ini -- yang sudah ada dilewati, aman dipanggil berkali-kali."""
     _project_visible(pid)
+    _team_manage_guard(pid)
     d = body()
     if not d.get("src_project_id"):
         raise ValueError("src_project_id wajib diisi")

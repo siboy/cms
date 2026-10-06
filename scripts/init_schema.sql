@@ -275,6 +275,7 @@ CREATE TABLE IF NOT EXISTS cms_user_project_roles (
     user_id          INT DEFAULT NULL,
     project_id       INT NOT NULL,
     title            VARCHAR(255) NOT NULL,
+    is_leader        TINYINT NOT NULL DEFAULT 0,      -- Ketua Tim proyek: boleh kelola tim tanpa izin global
     external_name    VARCHAR(255) DEFAULT NULL,
     external_contact VARCHAR(255) DEFAULT NULL,
     updated_at       VARCHAR(19) DEFAULT NULL,
@@ -522,3 +523,16 @@ CREATE TABLE IF NOT EXISTS cms_project_chat (
     INDEX idx_pchat (project_id, id),
     CONSTRAINT fk_pchat_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Ketua Tim proyek (2026-10-06): kolom is_leader utk server yang tabelnya sudah ada
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_team_leader;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_team_leader()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_project_roles' AND COLUMN_NAME='is_leader') THEN
+    ALTER TABLE cms_user_project_roles ADD COLUMN is_leader TINYINT NOT NULL DEFAULT 0 AFTER title;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_team_leader();
+DROP PROCEDURE cms_tmp_migrate_team_leader;
