@@ -505,11 +505,11 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
- const tabs=[['ringkasan','Ringkasan','📋'],['laporan','Laporan','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['berkas','Berkas','📁'],['aktivitas','Aktivitas','🕑']];
+ const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['aktivitas','Aktivitas','🕑']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
-async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,berkas:tabBerkas,aktivitas:tabAktivitas};
+async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,aktivitas:tabAktivitas};
  stopChat();try{await fns[curTab]()}catch(e){note(e.message,1)}}
 const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blok','block.delete':'🗑 hapus blok','block.move':'🔀 pindah blok',
  'block.restore':'♻️ pulihkan blok','block.revert':'⏪ kembalikan versi','block.hidden':'🙈 sembunyikan/tampilkan',
@@ -637,12 +637,13 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  $('#ptab').innerHTML=`<div class=lrwrap id=lrw><div class=lleft>`
  +`<div class=rc data-rt=laporan><div class=rh><b>📄 Laporan</b></div>
    ${['draft','interim','final'].map(t=>`<div style="margin:8px 0 4px;font-weight:600;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">${t} (${grp(t).length})</div>${grp(t).map(row).join('')||'<small style="color:var(--mut)">— belum ada —</small>'}`).join('')}</div>`
- +(canManage?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
- <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+ +`<div class=rc data-rt=dokumen><div class=rh><b>📂 Tambah Dokumen</b></div>`
+ +(canManage?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
  <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
  <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
  <select id=lrt><option value=draft>Draft</option><option value=interim>Interim</option><option value=final>Final</option></select>
- <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div></div>`:'')
+ <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div>`:'')
+ +`<div id=bfilewrap></div></div>`
  +`<div class=rc data-rt=task><div class=rh><b>✅ Task</b>
    <label style="font-size:11.5px;color:var(--mut);display:flex;gap:4px;align-items:center;margin-left:auto"><input type=checkbox id=tkall> lintas proyek</label>
    <button type=button id=tkadd>+ Task</button></div>
@@ -661,8 +662,8 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
     <textarea id=cin rows=2 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
     <button class=p type=button id=csend>➤</button></div>
   </div></div></div>
- <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=task>✅ Task</button><button data-m=kalender>📅 Kal</button></div>`;
- initChat();renderTasks();calCur=calCur||new Date();renderCal();
+ <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=dokumen>📂 Dok</button><button data-m=task>✅ Task</button><button data-m=kalender>📅 Kal</button></div>`;
+ initChat();renderTasks();renderBerkas();calCur=calCur||new Date();renderCal();
  $('#tkall').onchange=e=>{tkAll=e.target.checked;renderTasks()};
  $('#tkadd').onclick=taskAddDlg;
  $('#calprev').onclick=()=>{calCur=new Date(calCur.getFullYear(),calCur.getMonth()-1,1);renderCal()};
@@ -878,16 +879,18 @@ async function taskDlg(t){const m=document.createElement('div');m.className='mas
    m.remove();tabGantt()
   }catch(x){note(x.message,1)}}}
 
-async function tabBerkas(){const {files}=await api('GET',`/projects/${curProj}/files?category=${curCat}`);
- $('#ptab').innerHTML='<div class=cattabs>'+FILE_CATS.map(([k,l,ic])=>`<button data-c="${k}" class="${k===curCat?'cur':''}"><span class=ti>${ic}</span>${l}</button>`).join('')+'</div>'
- +(hasPerm('project_files_manage')?'<p><button id=fup>+ Unggah</button></p>':'')
+/* repository berkas proyek — kini bagian dari kartu "Tambah Dokumen" di tab MyTask (tab Berkas dibuang) */
+async function renderBerkas(){const host=$('#bfilewrap');if(!host)return;
+ let files=[];try{files=(await api('GET',`/projects/${curProj}/files?category=${curCat}`)).files}catch(e){host.innerHTML=esc(e.message);return}
+ host.innerHTML='<div class=cattabs>'+FILE_CATS.map(([k,l,ic])=>`<button type=button data-c="${k}" class="${k===curCat?'cur':''}"><span class=ti>${ic}</span>${l}</button>`).join('')+'</div>'
+ +(hasPerm('project_files_manage')?'<p style="margin:4px 0 8px"><button type=button id=fup>+ Unggah berkas</button></p>':'')
  +'<div class=rg>'+(files.map(f=>`<div class=rc>${curCat==='galeri'?`<a href="/api/project-files/${f.id}/raw" target=_blank><img src="/api/project-files/${f.id}/raw" style="max-width:100%;border-radius:6px"></a>`:''}
   <b>${esc(f.title||f.filename)}</b><br><small style="color:var(--mut)">${esc(f.doc_date||'')} ${f.status?'· '+esc(f.status):''} · ${esc(f.uploaded_by||'')}</small>
   ${f.description?`<div style="font-size:12px;margin-top:4px">${esc(f.description)}</div>`:''}
   <div style="margin-top:6px"><a href="/api/project-files/${f.id}/raw" download>Unduh</a> ${hasPerm('project_files_manage')?`<button data-del="${f.id}">Hapus</button>`:''}</div></div>`).join('')
-  ||'<p style="color:var(--mut)">Belum ada berkas.</p>')+'</div>';
- $('#ptab').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{curCat=b.dataset.c;tabBerkas()});
- $('#ptab').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus berkas ini?')){try{await api('DELETE',`/project-files/${b.dataset.del}`);tabBerkas()}catch(e){note(e.message,1)}}});
+  ||'<p style="color:var(--mut)">Belum ada berkas di kategori ini.</p>')+'</div>';
+ host.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{curCat=b.dataset.c;renderBerkas()});
+ host.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus berkas ini?')){try{await api('DELETE',`/project-files/${b.dataset.del}`);renderBerkas()}catch(e){note(e.message,1)}}});
  if($('#fup'))$('#fup').onclick=fileDlg}
 function fileDlg(){const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<form class=dlg><b>${FILE_CATS.find(c=>c[0]===curCat)[2]} Unggah berkas — ${FILE_CATS.find(c=>c[0]===curCat)[1]}</b>
@@ -898,7 +901,7 @@ function fileDlg(){const m=document.createElement('div');m.className='mask';
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Unggah</button></div></form>`;
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
  f.onsubmit=async e=>{e.preventDefault();const fd=new FormData(f);fd.append('category',curCat);
-  try{await api('POST',`/projects/${curProj}/files`,fd,true);m.remove();tabBerkas()}catch(x){note(x.message,1)}}}
+  try{await api('POST',`/projects/${curProj}/files`,fd,true);m.remove();renderBerkas()}catch(x){note(x.message,1)}}}
 // ===================== /Manajemen Proyek =====================
 
 // ===================== Aktivitas (admin) =====================
