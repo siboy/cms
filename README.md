@@ -16,6 +16,16 @@ komentar per blok/bab), lalu diekspor lagi menjadi DOCX rapi. Detail arsitektur,
 | `make dev` | gunicorn hot-reload di :8880, memakai MySQL/Redis stack (`make tunnel` bila dari PC) |
 | `make pull / cmd m="..." / cal m="..."` | git via token TOS |
 
+## Aplikasi Android (satu APK, multi perusahaan)
+`mobile/` = proyek Android Studio siap build: WebView wrapper (cookie sesi, SSE, unggah/unduh,
+pull-to-refresh) + layar **pilih perusahaan** saat pertama buka — masukkan kode tenant (→
+`https://<kode>.<BASE_DOMAIN>`, set BASE_DOMAIN di `TenantActivity.kt`) atau URL lengkap
+(`http://IP:8879` utk LAN/VPN). SATU APK utk semua perusahaan; tiap pengguna masuk ke server
+tenantnya sendiri (stack Docker terpisah per perusahaan — lihat bagian Multi-tenant di bawah).
+Ganti perusahaan: tekan-tahan ikon app → "Ganti Perusahaan". Build: buka `mobile/` di Android
+Studio → Build APK. Webapp juga ber-manifest PWA (`/manifest.webmanifest`) — bisa "Add to Home
+Screen" tanpa APK. Detail: `mobile/README.md`.
+
 ## Multi-tenant: banyak perusahaan, banyak divisi (sejak 2026-10-06)
 
 Kebutuhan: CMS dipakai banyak perusahaan, tiap perusahaan punya divisi-divisi; laporan, pengguna,

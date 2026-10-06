@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- usesCleartextTraffic: izinkan http:// utk akses LAN/VPN (mis. http://10.x:8879). Kalau semua
+         tenant sudah HTTPS di belakang nginx+certbot, set false supaya lebih ketat. -->
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.CMS"
+        android:supportsRtl="true">
+        <activity android:name=".TenantActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
+        </activity>
+        <activity android:name=".MainActivity" android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"/>
+    </application>
+</manifest>

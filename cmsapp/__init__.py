@@ -52,6 +52,16 @@ def create_app(cfg=Config) -> Flask:
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
+    @app.get("/manifest.webmanifest")
+    def pwa_manifest():
+        return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "manifest.webmanifest")
+
+    @app.get("/app-icon.svg")
+    def app_icon():
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "app-icon.svg")
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
+
     @app.get("/health")
     def health():
         try:

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tekan-tahan ikon aplikasi -> "Ganti Perusahaan" (reset pilihan tenant) -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="ganti" android:enabled="true"
+        android:icon="@drawable/ic_cms"
+        android:shortcutShortLabel="@string/ganti_perusahaan">
+        <intent android:action="android.intent.action.VIEW"
+            android:targetPackage="id.databoks.cms"
+            android:targetClass="id.databoks.cms.TenantActivity">
+            <extra android:name="reset" android:value="true"/>
+        </intent>
+    </shortcut>
+</shortcuts>

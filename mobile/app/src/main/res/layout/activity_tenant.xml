@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:gravity="center"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:padding="28dp">
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="CMS Kolaborasi" android:textSize="24sp" android:textStyle="bold"/>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" android:textSize="13sp"
+        android:text="Masukkan kode perusahaan Anda (mis. agro)\natau alamat lengkap server (mis. https://cms.perusahaan.id\natau http://10.100.10.29:8879)"/>
+    <EditText android:id="@+id/inp" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="18dp" android:hint="kode perusahaan / URL"
+        android:inputType="textUri" android:imeOptions="actionGo" android:maxLines="1"/>
+    <Button android:id="@+id/go" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="12dp" android:text="Masuk"/>
+    <TextView android:id="@+id/err" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="10dp" android:textColor="#d1242f"/>
+</LinearLayout>
