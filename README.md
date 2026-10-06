@@ -74,8 +74,9 @@ simpan setelan MinIO per tenant (endpoint/access/secret/bucket/kuota — **baru 
 
 ```
 make rx7           # start panel; kalau sudah jalan -> restart (background, log ~/.cms_panel.log;
-                   # password dibuat otomatis sekali -> cat ~/.cms_panel_pass; port 127.0.0.1:8890)
-make panel         # varian foreground; make panel-tunnel = SSH tunnel 8890 dari PC
+                   # password dibuat otomatis sekali -> cat ~/.cms_panel_pass; port 127.0.0.1:8895)
+make panel         # varian foreground; make panel-tunnel = SSH tunnel 8895 dari PC
+                   # port 8895 (BUKAN 8890 — itu dipakai newflask; 8901+ = jatah tenant)
 make panel-adopt   # daftarkan stack lama :8879 (cmscollab, container cms-app dst) sbg tenant 'utama'
 ```
 (`rx7` dulu alias `make stack`; sejak 2026-10-06 dialihkan ke panel.) Stack lama yang diadopsi

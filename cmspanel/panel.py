@@ -7,7 +7,8 @@ MinIO (endpoint+token) & SMTP per tenant. Metadata panel di <tenant>/panel.json;
 ditulis ke <tenant>/.env lalu `docker compose up -d` (tenant.yml membacanya).
 
 JALANKAN DI HOST yang sama dgn Docker (butuh docker CLI + folder tenant):
-    PANEL_PASSWORD=rahasia python -m cmspanel.panel          # bind 127.0.0.1:8890 SAJA
+    PANEL_PASSWORD=rahasia python -m cmspanel.panel          # bind 127.0.0.1:8895 SAJA
+    (8890 SENGAJA dihindari: dipakai container newflask di server ini)
 Akses dari luar lewat SSH tunnel/VPN -- panel ini memegang kendali docker, JANGAN diekspos publik.
 
 Catatan MinIO: setelan per tenant DISIMPAN & divalidasi di sini (dipakai kelak saat media CMS
@@ -447,4 +448,4 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if not PASSWORD:
         raise SystemExit("set env PANEL_PASSWORD dulu (wajib)")
-    app.run(host="127.0.0.1", port=int(os.environ.get("PANEL_PORT", 8890)))
+    app.run(host="127.0.0.1", port=int(os.environ.get("PANEL_PORT", 8895)))

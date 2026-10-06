@@ -44,15 +44,15 @@ dev:
 tunnel:
 	ssh -N -L 3307:127.0.0.1:3307 -L 6380:127.0.0.1:6380 dbscraping
 
-# ---- Control panel super-admin multi-tenant (cmspanel, 127.0.0.1:8890) ----
+# ---- Control panel super-admin multi-tenant (cmspanel, 127.0.0.1:8895) ----
 # Password dibuat otomatis sekali di ~/.cms_panel_pass (chmod 600). Akses dari PC: make panel-tunnel.
 panel:
 	@test -f $(HOME)/.cms_panel_pass || { umask 077; openssl rand -hex 16 > $(HOME)/.cms_panel_pass; echo "[OK] password panel baru: $(HOME)/.cms_panel_pass"; }
-	@echo "Panel: http://127.0.0.1:8890  (password: cat ~/.cms_panel_pass)"
+	@echo "Panel: http://127.0.0.1:8895  (password: cat ~/.cms_panel_pass)"
 	@PANEL_PASSWORD=$$(cat $(HOME)/.cms_panel_pass) PYTHONPATH=$(CURDIR) python3 -m cmspanel.panel
 
 panel-tunnel:
-	ssh -N -L 8890:127.0.0.1:8890 dbscraping
+	ssh -N -L 8895:127.0.0.1:8895 dbscraping
 
 # daftarkan stack lama :8879 sbg tenant pertama di panel (tanpa mengubah stacknya)
 panel-adopt:
@@ -65,8 +65,8 @@ rx7:
 	@PANEL_PASSWORD=$$(cat $(HOME)/.cms_panel_pass) PYTHONPATH=$(CURDIR) \
 	nohup python3 -m cmspanel.panel > $(HOME)/.cms_panel.log 2>&1 & \
 	sleep 2; \
-	if curl -sf -o /dev/null http://127.0.0.1:8890/login; then \
-	  echo "[OK] panel jalan: http://127.0.0.1:8890  (password: cat ~/.cms_panel_pass | log: ~/.cms_panel.log)"; \
+	if curl -sf -o /dev/null http://127.0.0.1:8895/login; then \
+	  echo "[OK] panel jalan: http://127.0.0.1:8895  (password: cat ~/.cms_panel_pass | log: ~/.cms_panel.log)"; \
 	else echo "[FATAL] panel gagal start:"; tail -5 $(HOME)/.cms_panel.log; exit 1; fi
 
 # ---- DB Schema ----
