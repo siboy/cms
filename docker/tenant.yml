@@ -88,7 +88,7 @@ services:
     depends_on:
       mysql: {condition: service_healthy}
       redis: {condition: service_healthy}
-    mem_limit: 2g
+    mem_limit: ${APP_MEM:-2g}                       # diatur dari control panel (cmspanel) via .env
     networks: [net]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8879/health',timeout=3)\""]
@@ -108,7 +108,7 @@ services:
     depends_on:
       mysql: {condition: service_healthy}
       redis: {condition: service_healthy}
-    mem_limit: 1500m
+    mem_limit: ${WORKER_MEM:-1500m}
     networks: [net]
 
 networks:

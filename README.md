@@ -60,3 +60,22 @@ Dalam satu instance, dokumen itu **default-deny**: pengguna biasa hanya melihat 
   tak tertaut proyek/PIC-nya — isi dulu Tim proyek / beri `doc_view_all` ke grup pengawas via Privilege.
 
 Divisi TIDAK butuh stack sendiri; perusahaan JANGAN cuma dipisah pakai lapis 2.
+
+### Control panel super-admin (`cmspanel/panel.py`) — kelola semua tenant dari satu dashboard
+Utk operasional berlangganan: buat tenant baru dari form (nama perusahaan+slug+domain+email+admin —
+memanggil `add-tenant.sh` lalu auto-buat akun admin via `docker exec ... cms_admin.py`), tombol
+▶ Nyalakan / ⏻ Stop / ↻ Restart per tenant, rename perusahaan, 📊 monitor per container (CPU, RAM,
+Net I/O kumulatif, health dot), storage (du DB+media di dalam container, dibanding kuota GB),
+⚙ setting limit RAM app/worker/MySQL + jumlah worker gunicorn (ditulis ke `.env` tenant →
+`compose up -d`; `tenant.yml` membaca `APP_MEM`/`WORKER_MEM`/`MYSQL_MEM`/`REDIS_MEM`/`CMS_WORKERS`),
+simpan setelan MinIO per tenant (endpoint/access/secret/bucket/kuota — **baru disimpan di
+`panel.json`, media CMS masih di volume /data; integrasi object storage = pekerjaan terpisah**),
+👤 tambah admin tenant.
+
+```
+PANEL_PASSWORD=<rahasia> python -m cmspanel.panel     # 127.0.0.1:8890 SAJA
+```
+Jalankan DI HOST Docker (butuh docker CLI + `~/cms-tenants`). Panel memegang kendali penuh docker —
+JANGAN diekspos publik; akses lewat SSH tunnel/VPN. Login = PANEL_PASSWORD; semua POST wajib header
+`X-PANEL: 1`. Metadata per tenant: `~/cms-tenants/<slug>/panel.json`; kuota storage saat ini
+tampilan/peringatan (soft limit), belum memblokir upload.

@@ -27,7 +27,7 @@ def uid_of(username):
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("user"); p.add_argument("username"); p.add_argument("password"); p.add_argument("--name", default=""); p.add_argument("--role", default="editor")
+    p = sub.add_parser("user"); p.add_argument("username"); p.add_argument("password"); p.add_argument("--name", default=""); p.add_argument("--role", default="editor"); p.add_argument("--email", default="")
     p = sub.add_parser("users-csv"); p.add_argument("file")
     p = sub.add_parser("assign"); p.add_argument("doc_id", type=int); p.add_argument("username"); p.add_argument("scope")
     p = sub.add_parser("chapters"); p.add_argument("doc_id", type=int)
@@ -36,7 +36,7 @@ def main():
     app = create_app()
     with app.app_context():
         if a.cmd == "user":
-            print("id =", auth.create_user(a.username, a.password, a.name, a.role))
+            print("id =", auth.create_user(a.username, a.password, a.name, a.role, a.email))
         elif a.cmd == "users-csv":
             n = 0
             with open(a.file, newline="", encoding="utf-8-sig") as f:

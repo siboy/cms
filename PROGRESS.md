@@ -49,6 +49,22 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Control panel super-admin multi-tenant (2026-10-06)** — `cmspanel/panel.py` (Flask mandiri,
+  TIDAK impor cmsapp; jalan di host Docker, bind 127.0.0.1:8890, login PANEL_PASSWORD + CSRF header
+  X-PANEL, akses via SSH tunnel/VPN SAJA). Fitur: buat tenant dari form (panggil `add-tenant.sh` via
+  subprocess tanpa shell → aman injeksi; tunggu app healthy lalu auto-buat admin `docker exec
+  cms_admin.py user --email` — flag --email BARU diteruskan ke auth.create_user), start/stop/restart
+  per klik (compose), rename perusahaan & email (panel.json per tenant), monitor CPU/RAM/NetIO
+  (docker stats) + health dot (docker inspect) + storage du DI DALAM container (tanpa root host) vs
+  kuota GB (SOFT limit: tampilan/bar merah, belum memblokir upload), setting limit RAM/worker
+  (APP_MEM/WORKER_MEM/MYSQL_MEM/REDIS_MEM/CMS_WORKERS → update_env merge .env tanpa sentuh sandi →
+  compose up -d; tenant.yml mem_limit app/worker kini ${APP_MEM}/${WORKER_MEM}), simpan setelan MinIO
+  per tenant (endpoint/access/secret/bucket/kuota di panel.json — media CMS MASIH filesystem /data,
+  integrasi object storage = next job terpisah), tambah admin tenant (password acak bila kosong).
+  **Diuji**: 21/21 (Flask test client + add-tenant.sh asli + docker CLI di-stub): auth/CSRF, buat
+  tenant end-to-end (admin via exec, panel.json), slug dobel/jahat ditolak, status/stats/du terbaca,
+  power, settings menulis .env tanpa menghapus sandi, format limit salah ditolak, rename+MinIO
+  tersimpan, tambah admin. **Belum dicoba** dgn Docker sungguhan.
 - [x] **Multi-tenant per perusahaan: template compose + nginx + add-tenant.sh (2026-10-06)** — pelengkap
   entri isolasi di bawah. `docker/tenant.yml` (4 service mysql/redis/app/worker; network TANPA `name:` +
   volume diprefix COMPOSE_PROJECT_NAME -> privat per tenant; DNS antar-container pakai nama service, BUKAN
