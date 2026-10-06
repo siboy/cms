@@ -17,6 +17,12 @@ DC = docker compose -f $(COLLAB_DIR)/collab.yml --env-file $(COLLAB_DIR)/.env
 stack:
 	bash scripts/collab_deploy.sh
 
+# restart cepat app+worker (:8879) tanpa build/skema; mysql & redis TIDAK disentuh.
+# ganti kode perlu image baru -> tetap 'make stack'.
+stack-restart:
+	$(DC) restart app worker
+	@sleep 2; curl -s http://127.0.0.1:8879/health || echo "app belum menjawab (cek: make stack-logs)"; echo
+
 stack-down:
 	$(DC) down
 
@@ -177,4 +183,4 @@ ccms:
 %:
 	@:
 
-.PHONY: push stack rx7 stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
+.PHONY: push stack stack-restart rx7 stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
