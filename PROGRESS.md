@@ -49,6 +49,13 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Draft lokal editor blok (2026-10-06)** — susulan entri di bawah: ketikan di editor blok (`edit()` di
+  `ui/index.html`) di-autosave ke `localStorage` tiap 3 dtk (`cmsdraft:<doc>:<blok>`, isi {t,v,ts}) — TIDAK
+  ada call server selama mengetik; server tetap baru dihubungi saat Simpan (perilaku lama). Buka edit lagi
+  setelah crash/tab tertutup -> confirm "Pulihkan?" (plus peringatan bila versi blok sudah berubah = diedit
+  orang lain). Draft dihapus saat Simpan sukses atau Batal; gagal simpan (termasuk 409) draft DIPERTAHANKAN
+  ("Ketikanmu aman di draft lokal"). Draft >7 hari dibersihkan saat `boot()` (`pruneDrafts`). **Diuji**:
+  `node --check` lolos; **belum dicoba di browser sungguhan** (skenario crash/pulihkan/409 perlu dirasakan manual).
 - [x] **Offload ke client (ETag+304, patch SSE) + polish UI/mobile + hardening keamanan (2026-10-06)**
   - **ETag/304** (`cmsapp/api.py`): helper `_doc_rev` (counter event Redis `cms:doc:<id>:seq` + `fingerprint`
     + user id) + `etag_json` dipasang di 5 GET berat: `/docs/<id>/outline|blocks|pic-map|taggable|comments`.

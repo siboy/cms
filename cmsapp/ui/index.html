@@ -188,6 +188,7 @@ function note(t,err){const b=$('#bar');b.hidden=!t;b.className=err?'err':'';b.te
 async function boot(){const qp=new URLSearchParams(location.search);const rtok=qp.get('reset');
  if(rtok)return resetPasswordView(rtok);
  try{me=(await api('GET','/me')).user}catch(e){return loginView()}
+ pruneDrafts();
  $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0));
  const dq=qp.get('doc');
@@ -1235,18 +1236,36 @@ function toolbar(ed,rawToggle,lists,blockId){const d=document.createElement('div
   mk('1.','Daftar bernomor, gaya 1. 2. 3. (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(true,'.')}catch(e){note(e.message,1)}});
   mk('•','Daftar bullet (sorot baris di sel; klik lagi = lepas)',()=>{try{listMark(false)}catch(e){note(e.message,1)}})}
  const r=mk('&lt;/&gt;','Lihat/ubah kode markup',rawToggle);r.style.marginLeft='auto';return d}
+/* Draft lokal: ketikan di-autosave ke localStorage tiap 3 dtk SELAMA edit (tak ada call server);
+   server baru dihubungi saat Simpan. Crash/tab tertutup -> saat blok dibuka lagi ditawarkan pulihkan.
+   Draft dihapus saat tersimpan sukses atau Batal (buang sengaja); draft >7 hari dibersihkan saat boot. */
+const draftKey=(bid)=>`cmsdraft:${doc}:${bid}`;
+function pruneDrafts(){try{const now=Date.now();
+ for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(!k||!k.startsWith('cmsdraft:'))continue;
+  let d={};try{d=JSON.parse(localStorage.getItem(k)||'{}')}catch(e){}
+  if(!d.ts||now-d.ts>7*864e5)localStorage.removeItem(k)}}catch(e){}}
 async function edit(el,b){try{await api('POST',`/blocks/${b.id}/lock`);locks[b.id]=1}catch(e){return note(e.message,1)}
  el.classList.add('edit');const old=el.querySelector('.txt');let ed=document.createElement('div');ed.className='wys';ed.contentEditable=true;ed.append(mk2dom(b.text));
  let raw=null;old.replaceWith(ed);document.execCommand('styleWithCSS',false,false);
  const bar=()=>toolbar(ed,toggle,false,b.id);let tb=bar();ed.before(tb);ed.focus();
+ const dk=draftKey(b.id);
+ try{const d0=JSON.parse(localStorage.getItem(dk)||'null');
+  if(d0&&d0.t!==b.text&&confirm(`Ada draft lokal belum tersimpan (${new Date(d0.ts).toLocaleString('id')}${d0.v!==b.version?'; PERHATIAN: blok sudah diubah orang lain sesudahnya':''}). Pulihkan?`)){
+   ed.innerHTML='';ed.append(mk2dom(d0.t))}}catch(e){}
+ let lastDraft=null;
+ const dsave=()=>{try{const t=val();if(t===lastDraft)return;lastDraft=t;
+  t===b.text?localStorage.removeItem(dk):localStorage.setItem(dk,JSON.stringify({t,v:b.version,ts:Date.now()}))}catch(e){}};
+ const dtimer=setInterval(dsave,3000);
  const setup=e=>{e.onkeydown=k=>{if(k.key==='Enter'&&!k.ctrlKey){k.preventDefault();document.execCommand('insertLineBreak')}else if(k.key==='Enter'&&k.ctrlKey){k.preventDefault();save()}};e.onpaste=plainPaste};setup(ed);
  function toggle(){if(!raw){raw=document.createElement('textarea');raw.value=dom2mk(ed);ed.replaceWith(raw);raw.focus()}
   else{const n=document.createElement('div');n.className='wys';n.contentEditable=true;n.append(mk2dom(raw.value));raw.replaceWith(n);ed=n;raw=null;setup(ed);ed.focus()}
   tb.remove();tb=bar();(raw||ed).before(tb)}
- const acts=el.querySelector('.acts');acts.innerHTML='';const done=async()=>{delete locks[b.id];try{await api('DELETE',`/blocks/${b.id}/lock`)}catch(e){}};
+ const acts=el.querySelector('.acts');acts.innerHTML='';
+ const done=async(keepDraft)=>{clearInterval(dtimer);if(!keepDraft)try{localStorage.removeItem(dk)}catch(e){}
+  delete locks[b.id];try{await api('DELETE',`/blocks/${b.id}/lock`)}catch(e){}};
  const val=()=>raw?raw.value:dom2mk(ed);
  async function save(){try{await api('PATCH',`/blocks/${b.id}`,{text:val(),version:b.version});await done();refreshBlock(b.id)}
-  catch(e){note(e.status===409?'Konflik: blok diubah orang lain, muat ulang.':e.message,1)}}
+  catch(e){dsave();note(e.status===409?'Konflik: blok diubah orang lain, muat ulang. (Ketikanmu aman di draft lokal)':e.message,1)}}
  const s=document.createElement('button');s.className='p';s.textContent='Simpan (Ctrl+Enter)';s.onclick=save;
  const c=document.createElement('button');c.textContent='Batal';c.onclick=async()=>{await done();refreshBlock(b.id)};acts.append(s,c)}
 async function hist(el,b){const {history}=await api('GET',`/blocks/${b.id}/history`);let p=el.querySelector('.hist');if(p){p.remove();return}
