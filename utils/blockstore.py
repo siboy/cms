@@ -553,6 +553,32 @@ class BlockStore:
                              [*p, limit, offset])
         return rows, total
 
+    def list_project_activity(self, project_id: int, limit: int = 50, offset: int = 0,
+                              only_doc_ids: Optional[set] = None) -> tuple[list[dict], int]:
+        """Aktivitas SATU proyek utk tab Aktivitas di detail proyek (anggota tim, bukan cuma admin
+        activity_view): baris ber-project_id ini DIGABUNG baris ber-doc_id dokumen proyek ini — log
+        edit blok/komentar hanya mencatat doc_id (emit di api.py), tanpa project_id. only_doc_ids
+        (bukan None) = pengguna doc_view_assigned_only: baris dokumen dibatasi dokumen yg boleh ia
+        lihat; baris proyek murni (berkas/task/tim, doc_id NULL) tetap tampil."""
+        with self._tx() as c:
+            docs = [r["doc_id"] for r in self._all(
+                c, "SELECT doc_id FROM cms_project_documents WHERE project_id=?", (project_id,))]
+        if only_doc_ids is not None:
+            docs = [d for d in docs if d in only_doc_ids]
+        in_docs = f"l.doc_id IN ({','.join(['?'] * len(docs))})" if docs else "1=0"
+        if only_doc_ids is not None:
+            w = f"((l.project_id=? AND l.doc_id IS NULL) OR {in_docs})"
+        else:
+            w = f"(l.project_id=? OR {in_docs})"
+        p = [project_id, *docs]
+        with self._tx() as c:
+            total = self._one(c, f"SELECT COUNT(*) AS n FROM cms_activity_log l WHERE {w}", p)["n"]
+            rows = self._all(c, f"SELECT l.id, l.username, l.action, l.target_type, l.target_id, l.doc_id, "
+                                f"l.summary, l.created_at, d.filename AS doc_name "
+                                f"FROM cms_activity_log l LEFT JOIN cms_documents d ON d.id=l.doc_id "
+                                f"WHERE {w} ORDER BY l.id DESC LIMIT ? OFFSET ?", [*p, limit, offset])
+        return rows, total
+
     ACTION_LABELS = {
         "block.edit": "blok diedit", "block.insert": "blok ditambahkan", "block.delete": "blok dihapus",
         "block.move": "blok dipindahkan", "block.restore": "blok dipulihkan", "block.revert": "blok dikembalikan ke versi lama",

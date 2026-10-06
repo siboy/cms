@@ -49,6 +49,17 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Tab Aktivitas di detail proyek utk anggota tim (2026-10-06)** — halaman Aktivitas lama tetap
+  admin-only (`activity_view`); yang baru: tab ke-7 "Aktivitas" di `projectDetailView` (`tabAktivitas`,
+  `ui/index.html`) bisa dilihat SEMUA yang lolos `_project_visible` (anggota tim/PIC proyek). Endpoint
+  `GET /projects/<id>/activity` (`projects_api.py`) -> `BlockStore.list_project_activity` (baru):
+  baris ber-`project_id` DIGABUNG baris ber-`doc_id` dokumen proyek (log edit blok/komentar cuma punya
+  doc_id, tanpa project_id — kalau filter project_id saja, semua edit dokumen TAK muncul). Pengguna
+  `doc_view_assigned_only` hanya melihat baris dokumen yg ditugaskan padanya (baris proyek murni tetap).
+  UI: tabel Waktu/Siapa/Aksi(label emoji `ACT_LABELS`)/Dokumen/Ringkasan + tombol "Muat lagi" (50/halaman).
+  **Diuji**: end-to-end Flask test client SQLite (25/25 total dgn suite ETag): edit blok & komentar
+  (doc_id-only) muncul di feed proyek, aksi project.* ikut; `node --check` lolos. **Belum dicoba** di
+  browser/server sungguhan.
 - [x] **Draft lokal editor blok (2026-10-06)** — susulan entri di bawah: ketikan di editor blok (`edit()` di
   `ui/index.html`) di-autosave ke `localStorage` tiap 3 dtk (`cmsdraft:<doc>:<blok>`, isi {t,v,ts}) — TIDAK
   ada call server selama mengetik; server tetap baru dihubungi saat Simpan (perilaku lama). Buka edit lagi

@@ -360,12 +360,31 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><p><a href="#" id=pback>← Proyek</a></p><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  $('#pback').onclick=e=>{e.preventDefault();projectsView()};
- const tabs=[['ringkasan','Ringkasan'],['laporan','Laporan'],['gantt','Gantt'],['tim','Tim'],['pic','PIC'],['berkas','Berkas']];
+ const tabs=[['ringkasan','Ringkasan'],['laporan','Laporan'],['gantt','Gantt'],['tim','Tim'],['pic','PIC'],['berkas','Berkas'],['aktivitas','Aktivitas']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l])=>`<button data-k="${k}" class="${k===curTab?'cur':''}">${l}</button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
-async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,berkas:tabBerkas};
+async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,berkas:tabBerkas,aktivitas:tabAktivitas};
  try{await fns[curTab]()}catch(e){note(e.message,1)}}
+const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blok','block.delete':'🗑 hapus blok','block.move':'🔀 pindah blok',
+ 'block.restore':'♻️ pulihkan blok','block.revert':'⏪ kembalikan versi','block.hidden':'🙈 sembunyikan/tampilkan',
+ 'comment.add':'💬 komentar','comment.resolve':'✔ komentar selesai/dibuka','comment.delete':'💬 hapus komentar',
+ 'doc.upload':'📄 unggah dokumen','doc.export':'📤 ekspor DOCX','pic.assign':'📌 tandai PIC','pic.unassign':'📌 lepas PIC',
+ 'project.create':'🆕 proyek dibuat','project.update':'⚙ proyek diubah','project.file_upload':'📁 unggah berkas',
+ 'user.file_upload':'📁 unggah berkas pribadi'};
+async function tabAktivitas(off){off=off||0;
+ const {items,total}=await api('GET',`/projects/${curProj}/activity?limit=50&offset=${off}`);
+ const row=it=>`<tr><td style="white-space:nowrap">${esc(it.created_at||'')}</td><td>${esc(it.username)}</td>
+  <td>${esc(ACT_LABELS[it.action]||it.action)}</td><td>${it.doc_name?esc(it.doc_name):'—'}</td><td>${esc(it.summary||'')}</td></tr>`;
+ const tbl=`<table><tr><th>Waktu</th><th>Siapa</th><th>Aksi</th><th>Dokumen</th><th>Ringkasan</th></tr>`;
+ if(off===0)$('#ptab').innerHTML=`<div class=rc><div class=rh><b>Aktivitas Proyek</b></div>
+  <p style="color:var(--mut);font-size:12px">Semua kejadian di proyek ini (edit dokumen, komentar, berkas, PIC) — terlihat oleh seluruh anggota tim proyek. Terbaru di atas.</p>
+  <div class=otable id=actp>${tbl}</table></div><p id=actmore style="margin:8px 0 0"></p></div>`;
+ const t=$('#actp table');for(const it of items)t.insertAdjacentHTML('beforeend',row(it));
+ const shown=t.rows.length-1;
+ $('#actmore').innerHTML=shown<total?`<button type=button id=actnext>Muat lagi (${shown} dari ${total})</button>`
+  :`<span style="color:var(--mut);font-size:12px">${total?`${shown} dari ${total}`:'Belum ada aktivitas.'}</span>`;
+ if($('#actnext'))$('#actnext').onclick=()=>tabAktivitas(shown)}
 async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`);
  const canManage=hasPerm('project_team_manage');
  let avail=[],opts=ROLE_SUGGEST;if(canManage){try{const inTeam=new Set(team.filter(t=>t.user_id).map(t=>t.user_id));

@@ -123,6 +123,22 @@ def get_project(pid):
     return jsonify(project=S().get_project(pid))
 
 
+@bp.get("/projects/<int:pid>/activity")
+@auth.require()
+def project_activity(pid):
+    """Feed aktivitas proyek ini utk SEMUA yang boleh melihat proyeknya (anggota tim/PIC — lewat
+    _project_visible), BUKAN cuma pemegang activity_view spt halaman Aktivitas admin. Pengguna
+    doc_view_assigned_only hanya melihat baris dokumen yang ditugaskan padanya."""
+    _project_visible(pid)
+    only = None
+    if auth.has_perm(g.user, "doc_view_assigned_only") and not auth.has_perm(g.user, "block_edit_all"):
+        only = set(S().assigned_doc_ids(g.user["id"]))
+    items, total = S().list_project_activity(
+        pid, limit=min(request.args.get("limit", 50, type=int), 200),
+        offset=request.args.get("offset", 0, type=int), only_doc_ids=only)
+    return jsonify(items=items, total=total)
+
+
 @bp.patch("/projects/<int:pid>")
 @auth.require("project_manage")
 def update_project(pid):
