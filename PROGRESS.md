@@ -49,6 +49,18 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Gantt: drag&drop urutan/sub + grup laporan collapsible + salin susunan via template (2026-10-06)**
+  — (1) baris manual/jadwal bisa DI-DRAG (handle ⠿): jatuhkan di area bar task lain = pindah urutan
+  (sort_order titik-tengah, `BlockStore.reorder_project_task` + `POST /tasks/<id>/reorder`, boleh anggota
+  tim); jatuhkan di NAMA (glabel) task utama = jadi SUB-TASK-nya. Aturan server: maks 2 tingkat, task
+  ber-anak tak bisa jadi sub, baris BAB dokumen tak bisa di-drag (urut mengikuti outline). (2) Baris bab
+  laporan DIKELOMPOKKAN per dokumen: satu baris grup "▸ 📄 <nama> (n bab)" ber-bar agregat (min..max
+  tanggal, rata2 progres), DEFAULT COLLAPSED (`ganttOpen` Set per proyek+dok) — klik utk expand; Gantt
+  tak lagi ramai oleh puluhan bab/daftar tabel/gambar. (3) `apply_project_template` ("Salin outline & tim
+  dari proyek…" saat buat proyek baru) kini juga MENYALIN susunan Gantt manual/jadwal: judul, hirarki
+  induk-sub (tmap), sort_order & tanggal — progres di-reset 0; baris bab tak disalin krn termaterialisasi
+  ulang dari outline klon (urutan sama). **Diuji**: 11 skenario (reorder urutan persis, jadi sub, tolak
+  3 kasus invalid, template menyalin hirarki+urutan+reset progres). Live di :8879.
 - [x] **Tag tim di jadwal/Gantt -> auto Task + progres + auto-% isi heading (2026-10-06)** —
   (1) dialog Kalender/sub-task Gantt punya checklist "Tag tim" (@all / per orang): yang ditag di-`tag_task`
   + OTOMATIS dapat entri di section Task (kolom BARU `cms_user_tasks.gantt_task_id`, idempoten per task)

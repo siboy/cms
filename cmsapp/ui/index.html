@@ -131,6 +131,9 @@ header b{letter-spacing:.2px}
 .tki{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);border-radius:9px;font-size:13px}
 .tki:hover{border-color:var(--acc)}.tki input[type=checkbox]{margin-top:3px}
 .tknav:hover{color:var(--acc);text-decoration:underline;text-underline-offset:3px}
+.gh{cursor:grab;color:var(--mut);user-select:none}
+.gdrag.gover{outline:2px dashed var(--acc);outline-offset:-2px;border-radius:6px}
+.ggrp:hover{filter:brightness(1.04)}
 .calhead{display:grid;grid-template-columns:repeat(7,1fr);font-size:10.5px;color:var(--mut);text-align:center;margin-bottom:2px}
 .calbody{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .cald{min-height:58px;border:1px solid var(--line);border-radius:6px;padding:2px 4px;font-size:11px;cursor:pointer;overflow:hidden}
@@ -876,31 +879,66 @@ async function tabPic(){const {documents}=await api('GET',`/projects/${curProj}/
  if($('#goadm'))$('#goadm').onclick=()=>projectDetailView(curProj,{tab:'tim'});
  $('#ad').onchange=()=>assignView(users);assignView(users)}
 
-async function tabGantt(){const [{project:p},tr,scurve]=await Promise.all([api('GET',`/projects/${curProj}`),
-  api('GET',`/projects/${curProj}/tasks`),api('GET',`/projects/${curProj}/scurve`).catch(()=>({points:[]}))]);
+let ganttOpen=new Set();                               // grup laporan yang di-expand (default: collapsed)
+async function tabGantt(){const [{project:p},tr,dr,scurve]=await Promise.all([api('GET',`/projects/${curProj}`),
+  api('GET',`/projects/${curProj}/tasks`),api('GET',`/projects/${curProj}/documents`).catch(()=>({documents:[]})),
+  api('GET',`/projects/${curProj}/scurve`).catch(()=>({points:[]}))]);
  const tasks=tr.tasks.filter(t=>!t.calendar_only);     // agenda kalender murni tak tampil di Gantt
  const dates=tasks.flatMap(t=>[t.start_date,t.end_date]).filter(Boolean).concat([p.start_date,p.end_date].filter(Boolean)).map(d=>+new Date(d));
  const lo=dates.length?Math.min(...dates):+new Date(),hi=dates.length?Math.max(...dates):+new Date()+7*86400000;
  const span=Math.max(hi-lo,86400000),pos=d=>(+new Date(d)-lo)/span*100;
- // susun hirarki: sub-task (parent_task_id) tampil menjorok di bawah induknya
- const kids={};tasks.forEach(t=>{if(t.parent_task_id)(kids[t.parent_task_id]=kids[t.parent_task_id]||[]).push(t)});
- const ordered=[];
- tasks.filter(t=>!t.parent_task_id).forEach(t=>{ordered.push(t);(kids[t.id]||[]).forEach(c=>ordered.push(Object.assign({_sub:1},c)))});
- tasks.filter(t=>t.parent_task_id&&!tasks.some(x=>x.id===t.parent_task_id)).forEach(t=>ordered.push(t));
- const row=(t,i)=>{const pics=[...new Set([...(t.pic||[]),...(t.tags||[])].map(u=>u.username))];
+ // pisahkan: baris bab laporan (doc_id+chapter) dikelompokkan per dokumen; sisanya pohon manual/jadwal
+ const docMeta={};(dr.documents||[]).forEach(d=>docMeta[d.doc_id]={label:d.label||d.filename});
+ const docRows={},manual=[];
+ tasks.forEach(t=>{if(t.doc_id&&t.chapter_block_id)(docRows[t.doc_id]=docRows[t.doc_id]||[]).push(t);else manual.push(t)});
+ const kids={};manual.forEach(t=>{if(t.parent_task_id)(kids[t.parent_task_id]=kids[t.parent_task_id]||[]).push(t)});
+ const view=[];                                        // campuran {grp} | {t,_sub?,_doc?} urut tampil
+ Object.keys(docRows).forEach(did=>{const rowsD=docRows[did];
+  view.push({grp:{doc_id:+did,rows:rowsD,label:(docMeta[did]||{}).label||('Dokumen #'+did)}});
+  if(ganttOpen.has(curProj+':'+did))rowsD.forEach(t=>view.push({t,_doc:1}))});
+ manual.filter(t=>!t.parent_task_id).forEach(t=>{view.push({t});(kids[t.id]||[]).forEach(c=>view.push({t:c,_sub:1}))});
+ manual.filter(t=>t.parent_task_id&&!manual.some(x=>x.id===t.parent_task_id)).forEach(t=>view.push({t}));
+ const grpRow=(g0,i)=>{const sch=g0.rows.filter(t=>t.start_date&&t.end_date);
+  const s0=sch.length?sch.map(t=>t.start_date).sort()[0]:null,e0=sch.length?sch.map(t=>t.end_date).sort().slice(-1)[0]:null;
+  const avg=sch.length?Math.round(sch.reduce((a,t)=>a+(t.progress_percent||0),0)/sch.length):0;
+  const open=ganttOpen.has(curProj+':'+g0.doc_id);
+  const bar=s0?`<div class=gtrack><div class=gbar data-grp2="${g0.doc_id}" style="left:${pos(s0)}%;width:${Math.max(pos(e0)-pos(s0),2)}%;background:var(--mut)"><i style="width:${avg}%"></i></div></div>`
+   :'<div class=gtrack></div>';
+  return `<div class="grow ggrp" data-grp="${g0.doc_id}" style="cursor:pointer;background:var(--acc-soft)">
+   <div class=glabel style="font-weight:600">${open?'▾':'▸'} 📄 ${esc(g0.label.slice(0,30))} <span class=badge style="background:var(--mut)">${g0.rows.length} bab</span></div>${bar}</div>`};
+ const row=(v,i)=>{if(v.grp)return grpRow(v.grp,i);const t=v.t;
+  const pics=[...new Set([...(t.pic||[]),...(t.tags||[])].map(u=>u.username))];
+  const draggable=!v._doc;                             // baris bab mengikuti outline, tak bisa di-drag
   const bar=t.start_date&&t.end_date
-   ?`<div class=gtrack><div class=gbar data-idx="${i}" style="left:${pos(t.start_date)}%;width:${Math.max(pos(t.end_date)-pos(t.start_date),2)}%;${t._sub?'opacity:.75':''}"><i style="width:${t.progress_percent||0}%"></i></div></div>`
+   ?`<div class=gtrack><div class=gbar data-idx="${i}" style="left:${pos(t.start_date)}%;width:${Math.max(pos(t.end_date)-pos(t.start_date),2)}%;${v._sub||v._doc?'opacity:.75':''}"><i style="width:${t.progress_percent||0}%"></i></div></div>`
    :`<div class=gtrack><div class="gbar unsched" data-idx="${i}">+ jadwalkan</div></div>`;
-  return `<div class=grow><div class=glabel title="${esc(t.title||'')}" style="${t._sub?'padding-left:20px;font-size:12px;color:var(--mut)':''}">${t._sub?'↳ ':''}${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,34))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
- $('#ptab').innerHTML='<p style="display:flex;gap:6px;flex-wrap:wrap">'
+  return `<div class="grow${draggable?' gdrag':''}" ${draggable?`draggable=true data-tid="${t.id}" data-parent="${t.parent_task_id||''}" data-sub="${v._sub?1:0}"`:''}>
+   <div class=glabel title="${esc(t.title||'')}${draggable?' — seret utk atur urutan; jatuhkan di NAMA task lain = jadi sub-task':''}" style="${v._sub?'padding-left:20px;font-size:12px;color:var(--mut)':''}${v._doc?'padding-left:20px;font-size:12px':''}">${draggable?'<span class=gh title="seret">⠿</span> ':''}${v._sub?'↳ ':''}${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,32))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
+ $('#ptab').innerHTML='<p style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
   +'<button id=gsub class=p>+ Sub-task / jadwal</button>'
-  +(hasPerm('project_tasks_admin')?'<button id=ntask>+ Task manual (admin)</button>':'')+'</p>'
+  +(hasPerm('project_tasks_admin')?'<button id=ntask>+ Task manual (admin)</button>':'')
+  +'<small style="color:var(--mut)">⠿ seret utk urutan · jatuhkan di nama task = jadi sub · 📄 klik utk expand bab laporan</small></p>'
   +'<div class=gantt><div class=ghead><span></span><span>'+new Date(lo).toLocaleDateString()+' → '+new Date(hi).toLocaleDateString()+'</span></div>'
-  +ordered.map(row).join('')+'</div>'
+  +view.map(row).join('')+'</div>'
   +'<div class=rc style="margin-top:14px"><div class=rh><b>Kurva S — rencana vs realisasi</b></div><div id=scurve></div></div>';
- $('#ptab').querySelectorAll('.gbar').forEach(el=>el.onclick=()=>taskDlg(ordered[+el.dataset.idx]));
+ $('#ptab').querySelectorAll('.gbar[data-idx]').forEach(el=>el.onclick=e=>{e.stopPropagation();taskDlg(view[+el.dataset.idx].t)});
+ $('#ptab').querySelectorAll('.ggrp').forEach(el=>el.onclick=()=>{const k=curProj+':'+el.dataset.grp;
+  ganttOpen.has(k)?ganttOpen.delete(k):ganttOpen.add(k);tabGantt()});
  $('#gsub').onclick=()=>calAddDlg(dstr(new Date()),()=>tabGantt(),true);
  if($('#ntask'))$('#ntask').onclick=()=>taskDlg({});
+ // drag & drop: jatuhkan di NAMA (glabel) task utama = jadi sub-task-nya; selain itu = pindah urutan
+ let dragT=null;
+ $('#ptab').querySelectorAll('.gdrag').forEach(el=>{
+  el.ondragstart=e=>{dragT=el;e.dataTransfer.effectAllowed='move'};
+  el.ondragover=e=>{if(dragT&&dragT!==el){e.preventDefault();el.classList.add('gover')}};
+  el.ondragleave=()=>el.classList.remove('gover');
+  el.ondrop=async e=>{e.preventDefault();el.classList.remove('gover');if(!dragT||dragT===el)return;
+   const tid=+dragT.dataset.tid,tgt=+el.dataset.tid;
+   const asSub=!!e.target.closest('.glabel')&&el.dataset.sub!=='1';
+   try{
+    if(asSub)await api('POST',`/tasks/${tid}/reorder`,{parent_task_id:tgt});
+    else await api('POST',`/tasks/${tid}/reorder`,{after_id:tgt,parent_task_id:el.dataset.parent?+el.dataset.parent:null});
+    tabGantt()}catch(x){note(x.message,1)}};});
  renderSCurve($('#scurve'),scurve)}
 
 function renderSCurve(el,{points,today}){

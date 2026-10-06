@@ -1686,6 +1686,21 @@ class BlockStore:
             new_doc_id, idmap = self._clone_outline(d["doc_id"], user)
             self._copy_assign_mapped(new_doc_id, d["doc_id"], idmap)
             self.link_document(new_project_id, new_doc_id, d.get("report_type") or "draft", d.get("label") or "")
+        # salin juga SUSUNAN GANTT manual/jadwal (doc_id NULL): judul, hirarki induk-sub, urutan sort_order
+        # & tanggal — progres di-reset (proyek baru mulai dari 0). Baris BAB tidak perlu disalin: mereka
+        # ter-materialisasi ulang dari outline dokumen hasil klon di atas, urutan mengikuti outline.
+        with self._tx() as c:
+            rows = self._all(c, "SELECT * FROM cms_project_tasks WHERE project_id=? AND doc_id IS NULL "
+                                "AND deleted_at IS NULL ORDER BY sort_order, id", (template_project_id,))
+            tmap: dict[int, int] = {}
+            for r in [x for x in rows if not x["parent_task_id"]] + [x for x in rows if x["parent_task_id"]]:
+                cur = self._x(c, "INSERT INTO cms_project_tasks(project_id,parent_task_id,title,start_date,end_date,"
+                                 "progress_percent,status,calendar_only,sort_order,created_by,created_at,updated_at) "
+                                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                              (new_project_id, tmap.get(r["parent_task_id"]), r["title"], r["start_date"],
+                               r["end_date"], 0, "belum_mulai", r["calendar_only"] or 0, r["sort_order"],
+                               user, _now(), _now()))
+                tmap[r["id"]] = cur.lastrowid
         return len(docs)
 
     def list_documents_with_project(self) -> list[dict]:
@@ -2365,6 +2380,44 @@ class BlockStore:
         if doc_id and chapter_block_id:
             self.sync_task_pic_from_assign(tid)
         return tid
+
+    def reorder_project_task(self, task_id: int, after_id: Optional[int] = None,
+                             parent_task_id: Optional[int] = None) -> None:
+        """Drag & drop Gantt: pindah urutan (sort_order titik-tengah, spt seq blok) dan/atau jadikan
+        sub-task (parent_task_id; None = task utama). Aturan: maks 2 tingkat (induk harus task utama,
+        task yang punya anak tak bisa jadi sub); baris BAB dokumen tidak di-reorder (urutannya
+        mengikuti outline dokumen)."""
+        with self._tx() as c:
+            t = self._one(c, "SELECT * FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (task_id,))
+            if not t:
+                raise KeyError(f"task {task_id} tidak ada")
+            if t["doc_id"] and t["chapter_block_id"]:
+                raise ValueError("baris bab dokumen mengikuti urutan outline, tidak bisa di-drag")
+            if parent_task_id:
+                if int(parent_task_id) == task_id:
+                    raise ValueError("task tidak bisa jadi sub dari dirinya sendiri")
+                pr = self._one(c, "SELECT * FROM cms_project_tasks WHERE id=? AND deleted_at IS NULL", (parent_task_id,))
+                if not pr or pr["project_id"] != t["project_id"]:
+                    raise ValueError("task induk tidak valid")
+                if pr["parent_task_id"]:
+                    raise ValueError("maksimal 2 tingkat: induk harus task utama")
+                if self._one(c, "SELECT id FROM cms_project_tasks WHERE parent_task_id=? AND deleted_at IS NULL LIMIT 1",
+                             (task_id,)):
+                    raise ValueError("task yang punya sub-task tidak bisa dijadikan sub")
+            sibs = self._all(c, "SELECT id, sort_order FROM cms_project_tasks WHERE project_id=? AND deleted_at IS NULL "
+                                "AND COALESCE(parent_task_id,0)=? AND id<>? ORDER BY sort_order, id",
+                             (t["project_id"], int(parent_task_id or 0), task_id))
+            if after_id:
+                idx = next((i for i, s0 in enumerate(sibs) if s0["id"] == int(after_id)), None)
+                if idx is None:
+                    raise ValueError("posisi tujuan tidak valid")
+                lo = sibs[idx]["sort_order"]
+                hi = sibs[idx + 1]["sort_order"] if idx + 1 < len(sibs) else lo + 2
+            else:
+                hi = sibs[0]["sort_order"] if sibs else 2
+                lo = hi - 2
+            self._x(c, "UPDATE cms_project_tasks SET parent_task_id=?, sort_order=?, updated_at=? WHERE id=?",
+                    (int(parent_task_id) if parent_task_id else None, (lo + hi) / 2.0, _now(), task_id))
 
     def update_project_task(self, task_id: int, **fields) -> None:
         allowed = {"title", "start_date", "end_date", "progress_percent", "status", "parent_task_id"}

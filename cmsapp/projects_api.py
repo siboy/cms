@@ -813,6 +813,21 @@ def delete_task(tid):
     return jsonify(ok=True)
 
 
+@bp.post("/tasks/<int:tid>/reorder")
+@auth.require()
+def task_reorder(tid):
+    """Drag & drop Gantt: {after_id?, parent_task_id?} — urutan baru dan/atau jadikan sub-task.
+    Boleh anggota tim proyek (menyusun rencana = kerja tim), bukan hanya admin task."""
+    t = _task_row(tid)
+    _project_visible(t["project_id"])
+    if not (auth.has_perm(g.user, "project_tasks_admin") or auth.has_perm(g.user, "project_tasks_manage")
+            or S().is_project_visible_to(g.user["id"], t["project_id"])):
+        abort(403, description="hanya anggota tim proyek")
+    d = body()
+    S().reorder_project_task(tid, after_id=d.get("after_id"), parent_task_id=d.get("parent_task_id"))
+    return jsonify(ok=True)
+
+
 @bp.post("/tasks/<int:tid>/tag")
 @auth.require("project_tasks_admin")
 def tag_task(tid):
