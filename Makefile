@@ -105,6 +105,8 @@ ovpn-status:
 # ---- Claude CLI di container (lintas repo: flask, cms, sekda, newflask, diskusidata) ----
 # File dibuat dgn uid/gid host (bukan root). Login tersimpan di volume claude-home.
 CLAUDEDOCKER ?= cms-claude
+# Env terminal diteruskan ke container: TERM asli host + locale UTF-8 (tanpa ini karakter aneh/escape bocor saat scroll)
+TTYENV = -e TERM=$${TERM:-xterm-256color} -e COLORTERM=truecolor -e LANG=C.UTF-8 -e LC_ALL=C.UTF-8
 CLAUDE_DC = HOST_HOME=$(HOME) HOST_UID=$(shell id -u) HOST_GID=$(shell id -g) docker compose -f docker/claude.yml -p cms-claude
 
 cbuild:
@@ -120,13 +122,13 @@ clog:
 	docker logs -f --tail=100 $(CLAUDEDOCKER)
 
 csh:
-	docker exec -it -w $(HOME)/$(d) -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) $(CLAUDEDOCKER) bash -l
+	docker exec -it -w $(HOME)/$(d) -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) $(TTYENV) $(CLAUDEDOCKER) bash -l
 
 # clogin: jalankan Claude di container. Folder kerja = repo yg dipilih (memori Claude per folder!):
 #   make clogin            → ~/cms        make clogin d=flask|sekda|newflask|diskusidata
 d ?= cms
 clogin:
-	docker exec -it -w $(HOME)/$(d) -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) -e CLAUDE_CONFIG_DIR=/claude-home/.claude $(CLAUDEDOCKER) claude
+	docker exec -it -w $(HOME)/$(d) -u $(shell id -u):$(shell id -g) -e HOME=$(HOME) -e CLAUDE_CONFIG_DIR=/claude-home/.claude $(TTYENV) $(CLAUDEDOCKER) claude --dangerously-skip-permissions
 
 # Pintasan per repo: make csekda · cflask · cnewflask · cdiskusidata · ccms
 csekda:
