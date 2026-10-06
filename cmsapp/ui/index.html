@@ -132,7 +132,17 @@ header b{letter-spacing:.2px}
 .rc[data-rt]>p+p{margin-top:6px}
 .rc[data-rt]>p a[data-open]{flex:1;min-width:140px;font-weight:600;color:var(--acc);text-decoration:none;word-break:break-word}
 .rc[data-rt]>p:hover{border-color:var(--acc)}
+/* tab kategori Berkas: pil berikon, satu baris bisa digeser (ramah HP), aktif = solid aksen */
+.cattabs{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;padding:2px 2px 10px;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.cattabs button{flex:0 0 auto;border-radius:999px;padding:6px 13px;border:1px solid var(--line);background:var(--card);font-size:13px;color:var(--mut)}
+.cattabs button:hover{color:var(--acc);border-color:var(--acc)}
+.cattabs button.cur{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600;box-shadow:var(--sh)}
+.cattabs .ti{margin-right:5px}
 @media(max-width:800px){
+ /* konten tab apapun DILARANG melebarkan halaman: lebar halaman > viewport membuat elemen
+    position:fixed (bottom-nav) lepas dari visual viewport di browser HP (kasus tab Tim) */
+ #docs{overflow-x:clip}
+ #ptab table{width:100%}
  /* nav tab proyek jadi bottom bar berikon ala aplikasi HP */
  #ptabs{position:fixed;left:0;right:0;bottom:0;z-index:16;display:grid;grid-auto-flow:column;gap:0;margin:0;
   background:var(--card);border-top:1px solid var(--line);box-shadow:var(--sh2)}
@@ -316,8 +326,8 @@ function uploadDoc(){const f=document.createElement('input');f.type='file';f.acc
 
 // ===================== Manajemen Proyek =====================
 let curProj=null,curTab='ringkasan',curCat='surat';
-const FILE_CATS=[['surat','Surat'],['data_mentah','Data Mentah'],['dokumen_pendukung','Dokumen Pendukung'],['galeri','Galeri'],
- ['tender','Tender'],['pitching','Pitching'],['lab','Permohonan Lab'],['mom','Minutes of Meeting']];
+const FILE_CATS=[['surat','Surat','✉️'],['data_mentah','Data Mentah','🗂️'],['dokumen_pendukung','Dok. Pendukung','📎'],['galeri','Galeri','🖼️'],
+ ['tender','Tender','📑'],['pitching','Pitching','🎤'],['lab','Permohonan Lab','🧪'],['mom','Minutes of Meeting','📝']];
 
 const ID_BULAN=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 function idDate(s){if(!s)return '?';const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);if(!m)return s;return `${+m[3]} ${ID_BULAN[+m[2]-1]} ${m[1]}`}
@@ -461,10 +471,10 @@ async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`
  const nameOf=t=>t.is_external?`${esc(t.external_name)} <span class=badge style="background:var(--mut)">Eksternal</span>`:esc(t.name||t.username);
  $('#ptab').innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b>${canManage?'<button type=button id=timport>📥 Impor dari proyek lain…</button>':''}</div>
  <p style="color:var(--mut);font-size:12px">Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC (anggota eksternal tanpa akun CMS tak bisa jadi PIC). Role yang diisi dipakai juga di rekap pengalaman proyek (CV) orang tersebut. Default role: "${ROLE_DEFAULT}" kalau belum ada yang lebih spesifik.</p>
- <table><tr><th>Nama</th><th>Role</th>${canManage?'<th></th>':''}</tr>
+ <div class=otable><table><tr><th>Nama</th><th>Role</th>${canManage?'<th></th>':''}</tr>
  ${team.map(t=>`<tr><td>${nameOf(t)}${t.external_contact?`<br><small style="color:var(--mut)">${esc(t.external_contact)}</small>`:''}</td><td>${canManage?`<span data-title="${t.row_id}"></span>`:esc(t.title||ROLE_DEFAULT)}</td>
  ${canManage?`<td><button type=button data-rm="${t.row_id}">Keluarkan</button></td>`:''}</tr>`).join('')
- ||`<tr><td colspan=${canManage?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table>
+ ||`<tr><td colspan=${canManage?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table></div>
  ${canManage?`<h4 style="margin-top:14px">Tambah anggota</h4>
  <form id=fteam style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
  <select name=kind><option value=akun>Akun CMS</option><option value=eksternal>Eksternal (tanpa akun)</option></select>
@@ -688,7 +698,7 @@ async function taskDlg(t){const m=document.createElement('div');m.className='mas
   }catch(x){note(x.message,1)}}}
 
 async function tabBerkas(){const {files}=await api('GET',`/projects/${curProj}/files?category=${curCat}`);
- $('#ptab').innerHTML='<div class=tabs style="border-bottom:none">'+FILE_CATS.map(([k,l])=>`<button data-c="${k}" class="${k===curCat?'cur':''}">${l}</button>`).join('')+'</div>'
+ $('#ptab').innerHTML='<div class=cattabs>'+FILE_CATS.map(([k,l,ic])=>`<button data-c="${k}" class="${k===curCat?'cur':''}"><span class=ti>${ic}</span>${l}</button>`).join('')+'</div>'
  +(hasPerm('project_files_manage')?'<p><button id=fup>+ Unggah</button></p>':'')
  +'<div class=rg>'+(files.map(f=>`<div class=rc>${curCat==='galeri'?`<a href="/api/project-files/${f.id}/raw" target=_blank><img src="/api/project-files/${f.id}/raw" style="max-width:100%;border-radius:6px"></a>`:''}
   <b>${esc(f.title||f.filename)}</b><br><small style="color:var(--mut)">${esc(f.doc_date||'')} ${f.status?'· '+esc(f.status):''} · ${esc(f.uploaded_by||'')}</small>
@@ -699,7 +709,7 @@ async function tabBerkas(){const {files}=await api('GET',`/projects/${curProj}/f
  $('#ptab').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus berkas ini?')){try{await api('DELETE',`/project-files/${b.dataset.del}`);tabBerkas()}catch(e){note(e.message,1)}}});
  if($('#fup'))$('#fup').onclick=fileDlg}
 function fileDlg(){const m=document.createElement('div');m.className='mask';
- m.innerHTML=`<form class=dlg><b>Unggah berkas — ${FILE_CATS.find(c=>c[0]===curCat)[1]}</b>
+ m.innerHTML=`<form class=dlg><b>${FILE_CATS.find(c=>c[0]===curCat)[2]} Unggah berkas — ${FILE_CATS.find(c=>c[0]===curCat)[1]}</b>
  <label>Berkas<input type=file name=file required></label>
  <label>Judul<input name=title></label>
  <label>Deskripsi<textarea name=description rows=2></textarea></label>
