@@ -809,22 +809,24 @@ class BlockStore:
 
         def bucket(username, created_at, points):
             s = per.setdefault(username or "", {"n": 0, "pts": 0.0, "pts_out": 0.0, "edit_pts": 0.0,
-                                                "rework_in": 0.0,
-                                                "late": 0, "weekend": 0, "days": set(), "out_days": set()})
+                                                "pts_late": 0.0, "pts_wkd": 0.0,
+                                                "rework_edit": 0.0, "rework_cmt": 0.0,
+                                                "late": 0, "weekend": 0, "days": set(), "out_days": set(),
+                                                "late_days": set(), "wkd_days": set()})
             s["pts"] += points
             try:
                 dt = datetime.strptime(str(created_at)[:19], "%Y-%m-%d %H:%M:%S")
             except Exception:                           # noqa: BLE001
                 return s
             s["days"].add(dt.date())
-            outside = dt.hour < 7 or dt.hour >= 18 or dt.weekday() >= 5
-            if outside:
+            late, wkd = (dt.hour < 7 or dt.hour >= 18), dt.weekday() >= 5
+            if late or wkd:
                 s["pts_out"] += points
                 s["out_days"].add(dt.date())
-            if dt.hour < 7 or dt.hour >= 18:
-                s["late"] += 1
-            if dt.weekday() >= 5:
-                s["weekend"] += 1
+            if late:
+                s["late"] += 1; s["pts_late"] += points; s["late_days"].add(dt.date())
+            if wkd:
+                s["weekend"] += 1; s["pts_wkd"] += points; s["wkd_days"].add(dt.date())
             return s
 
         for a in acts:
@@ -848,17 +850,20 @@ class BlockStore:
             s["edit_pts"] += pts
             if e["prev_author"] and e["author"] and e["prev_author"] != e["author"]:
                 rp = bucket(e["prev_author"], None, 0.0)
-                rp["rework_in"] += pts
+                rp["rework_edit"] += pts                 # blok karyanya DIROMBAK/DIREPLACE pihak lain
         # komentar dari orang lain di blok tulisan user = koreksi/revisi (0.4 poin per komentar induk);
         # si KOMENTATOR sendiri dapat poin usaha via ACTION_EFFORT comment.add (dialah yang lelah mengoreksi)
         for cm in cmts:
             if cm["author"] and cm["commenter"] and cm["author"] != cm["commenter"]:
                 rp = bucket(cm["author"], None, 0.0)
-                rp["rework_in"] += 0.4
+                rp["rework_cmt"] += 0.4                  # karyanya DIKOMENTARI revisi/koreksi pihak lain
         out = []
+        empty = {"n": 0, "pts": 0.0, "pts_out": 0.0, "edit_pts": 0.0, "pts_late": 0.0, "pts_wkd": 0.0,
+                 "rework_edit": 0.0, "rework_cmt": 0.0, "late": 0, "weekend": 0,
+                 "days": set(), "out_days": set(), "late_days": set(), "wkd_days": set()}
         for u in users:
-            st = per.get(u["username"], {"n": 0, "pts": 0.0, "pts_out": 0.0, "edit_pts": 0.0,
-                                         "rework_in": 0.0, "late": 0, "weekend": 0, "days": set(), "out_days": set()})
+            st = per.get(u["username"]) or dict(empty)
+            st["rework_in"] = st["rework_edit"] + st["rework_cmt"]
             p, po, tk = proj.get(u["id"], 0), pic_open.get(u["id"], 0), tasks.get(u["id"], 0)
             pts_raw, pts_out_raw = st["pts"], st["pts_out"]
             # DISKON koreksi: karya yang dirombak pihak lain mengurangi poin usaha penulisnya
@@ -879,7 +884,10 @@ class BlockStore:
                         "projects_active": p, "pic_open": po, "tasks_active": tk,
                         "actions_14d": st["n"], "effort_14d": pts, "effort_raw": round(pts_raw, 1),
                         "effort_out": pts_out, "out_ratio": out_ratio,
+                        "effort_late": round(st["pts_late"], 1), "effort_weekend": round(st["pts_wkd"], 1),
+                        "late_days": len(st["late_days"]), "weekend_days": len(st["wkd_days"]),
                         "rework_in": rework_in, "rework_ratio": rework_ratio,
+                        "rework_edit": round(st["rework_edit"], 1), "rework_cmt": round(st["rework_cmt"], 1),
                         "days_active": len(st["days"]), "out_days": len(st["out_days"]),
                         "late_actions": st["late"], "weekend_actions": st["weekend"],
                         "score": score, "level": level, "fatigued": fatigued})
