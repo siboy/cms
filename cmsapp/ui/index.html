@@ -637,6 +637,12 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  $('#ptab').innerHTML=`<div class=lrwrap id=lrw><div class=lleft>`
  +`<div class=rc data-rt=laporan><div class=rh><b>📄 Laporan</b></div>
    ${['draft','interim','final'].map(t=>`<div style="margin:8px 0 4px;font-weight:600;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">${t} (${grp(t).length})</div>${grp(t).map(row).join('')||'<small style="color:var(--mut)">— belum ada —</small>'}`).join('')}</div>`
+ +(canManage?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
+ <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+ <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
+ <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
+ <select id=lrt><option value=draft>Draft</option><option value=interim>Interim</option><option value=final>Final</option></select>
+ <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div></div>`:'')
  +`<div class=rc data-rt=task><div class=rh><b>✅ Task</b>
    <label style="font-size:11.5px;color:var(--mut);display:flex;gap:4px;align-items:center;margin-left:auto"><input type=checkbox id=tkall> lintas proyek</label>
    <button type=button id=tkadd>+ Task</button></div>
@@ -647,12 +653,6 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
    <label style="font-size:11.5px;color:var(--mut);display:flex;gap:4px;align-items:center;margin-left:auto"><input type=checkbox id=callall ${calAll?'checked':''}> semua proyek saya</label></div>
    <p style="color:var(--mut)!important;font-size:12px;margin:2px 0 8px">Klik tanggal utk menjadwalkan (survei, uji lab, rapat, dll). Jadwal = baris Gantt chart proyek — satu data, dua tampilan. Jadwal proyek lain bergaris oranye.</p>
    <div id=calgrid></div></div>`
- +(canManage?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
- <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
- <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
- <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
- <select id=lrt><option value=draft>Draft</option><option value=interim>Interim</option><option value=final>Final</option></select>
- <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div></div>`:'')
  +`</div><div class=chatwrap><div class=chatbox id=cbox>
    <div class=chathead>💬 Diskusi Tim <small style="font-weight:400;color:var(--mut)">tempel (Ctrl+V) / seret gambar ke sini</small></div>
    <div class=chatlog id=clog></div>
