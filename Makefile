@@ -54,8 +54,10 @@ panel:
 	@echo "Panel: http://127.0.0.1:8895  (password: cat ~/.cms_panel_pass)"
 	@PANEL_PASSWORD=$$(cat $(HOME)/.cms_panel_pass) PYTHONPATH=$(CURDIR) python3 -m cmspanel.panel
 
+# PANEL_HOST = alias/IP ssh mesin tempat panel jalan (mis. databoks MiniPC); default dbscraping
+PANEL_HOST ?= dbscraping
 panel-tunnel:
-	ssh -N -L 8895:127.0.0.1:8895 dbscraping
+	ssh -N -L 8895:127.0.0.1:8895 $(PANEL_HOST)
 
 # daftarkan stack lama :8879 sbg tenant pertama di panel (tanpa mengubah stacknya)
 panel-adopt:
