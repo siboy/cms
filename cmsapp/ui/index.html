@@ -431,19 +431,28 @@ const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blo
  'doc.upload':'📄 unggah dokumen','doc.export':'📤 ekspor DOCX','pic.assign':'📌 tandai PIC','pic.unassign':'📌 lepas PIC',
  'project.create':'🆕 proyek dibuat','project.update':'⚙ proyek diubah','project.file_upload':'📁 unggah berkas',
  'user.file_upload':'📁 unggah berkas pribadi'};
-async function tabAktivitas(off){off=off||0;
- const {items,total}=await api('GET',`/projects/${curProj}/activity?limit=50&offset=${off}`);
+async function tabAktivitas(){
  const row=it=>`<tr><td style="white-space:nowrap">${esc(it.created_at||'')}</td><td>${esc(it.username)}</td>
-  <td>${esc(ACT_LABELS[it.action]||it.action)}</td><td>${it.doc_name?esc(it.doc_name):'—'}</td><td>${esc(it.summary||'')}</td></tr>`;
- const tbl=`<table><tr><th>Waktu</th><th>Siapa</th><th>Aksi</th><th>Dokumen</th><th>Ringkasan</th></tr>`;
- if(off===0)$('#ptab').innerHTML=`<div class=rc><div class=rh><b>Aktivitas Proyek</b></div>
-  <p style="color:var(--mut);font-size:12px">Semua kejadian di proyek ini (edit dokumen, komentar, berkas, PIC) — terlihat oleh seluruh anggota tim proyek. Terbaru di atas.</p>
-  <div class=otable id=actp>${tbl}</table></div><p id=actmore style="margin:8px 0 0"></p></div>`;
- const t=$('#actp table');for(const it of items)t.insertAdjacentHTML('beforeend',row(it));
- const shown=t.rows.length-1;
- $('#actmore').innerHTML=shown<total?`<button type=button id=actnext>Muat lagi (${shown} dari ${total})</button>`
-  :`<span style="color:var(--mut);font-size:12px">${total?`${shown} dari ${total}`:'Belum ada aktivitas.'}</span>`;
- if($('#actnext'))$('#actnext').onclick=()=>tabAktivitas(shown)}
+  <td style="white-space:nowrap">${esc(ACT_LABELS[it.action]||it.action)}</td><td>${it.doc_name?esc(it.doc_name):'—'}</td><td>${esc(it.summary||'')}</td></tr>`;
+ $('#ptab').innerHTML=`<div class=rc><div class=rh style="gap:10px"><b>Aktivitas Proyek</b>
+  <input id=actq placeholder="🔍 Cari siapa / aksi / ringkasan / dokumen…" style="margin-left:auto;flex:1;min-width:170px;max-width:340px"></div>
+  <p style="color:var(--mut);font-size:12px;margin:4px 0 8px">Semua kejadian di proyek ini — terbaru di atas; gulir ke bawah untuk memuat yang lebih lama.</p>
+  <div class=otable><table id=acttbl><tr><th>Waktu</th><th>Siapa</th><th>Aksi</th><th>Dokumen</th><th>Ringkasan</th></tr></table></div>
+  <p id=actinfo style="color:var(--mut);font-size:12px;margin:8px 0 0">memuat…</p><div id=actsent style="height:1px"></div></div>`;
+ const st={off:0,q:'',busy:false,done:false};
+ const load=async()=>{if(st.busy||st.done||!$('#acttbl'))return;st.busy=true;
+  try{const {items,total}=await api('GET',`/projects/${curProj}/activity?limit=30&offset=${st.off}&q=${encodeURIComponent(st.q)}`);
+   if(!$('#acttbl'))return;                       // tab sudah ditinggal selagi fetch
+   st.off+=items.length;if(!items.length||st.off>=total)st.done=true;
+   for(const it of items)$('#acttbl').insertAdjacentHTML('beforeend',row(it));
+   $('#actinfo').textContent=total?`${st.off} dari ${total}${st.done?'':' — gulir utk memuat lagi…'}`
+    :(st.q?'Tidak ada yang cocok dgn pencarian.':'Belum ada aktivitas.')}
+  catch(e){note(e.message,1)}finally{st.busy=false}};
+ const reset=()=>{st.off=0;st.done=false;$('#acttbl').querySelectorAll('tr:not(:first-child)').forEach(r=>r.remove());load()};
+ let qt=null;$('#actq').oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{st.q=$('#actq').value.trim();reset()},350)};
+ const io=new IntersectionObserver(en=>{if(en[0].isIntersecting)load()},{rootMargin:'300px'});
+ io.observe($('#actsent'));
+ await load()}
 async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`);
  const canManage=hasPerm('project_team_manage');
  let avail=[],opts=ROLE_SUGGEST;if(canManage){try{const inTeam=new Set(team.filter(t=>t.user_id).map(t=>t.user_id));

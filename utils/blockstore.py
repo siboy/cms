@@ -623,7 +623,7 @@ class BlockStore:
         return rows, total
 
     def list_project_activity(self, project_id: int, limit: int = 50, offset: int = 0,
-                              only_doc_ids: Optional[set] = None) -> tuple[list[dict], int]:
+                              only_doc_ids: Optional[set] = None, q: Optional[str] = None) -> tuple[list[dict], int]:
         """Aktivitas SATU proyek utk tab Aktivitas di detail proyek (anggota tim, bukan cuma admin
         activity_view): baris ber-project_id ini DIGABUNG baris ber-doc_id dokumen proyek ini — log
         edit blok/komentar hanya mencatat doc_id (emit di api.py), tanpa project_id. only_doc_ids
@@ -640,12 +640,16 @@ class BlockStore:
         else:
             w = f"(l.project_id=? OR {in_docs})"
         p = [project_id, *docs]
+        if q:                                           # pencarian bebas: siapa/aksi/ringkasan/nama dokumen
+            like = f"%{q}%"
+            w += " AND (l.username LIKE ? OR l.action LIKE ? OR l.summary LIKE ? OR COALESCE(d.filename,'') LIKE ?)"
+            p += [like, like, like, like]
+        frm = "cms_activity_log l LEFT JOIN cms_documents d ON d.id=l.doc_id"
         with self._tx() as c:
-            total = self._one(c, f"SELECT COUNT(*) AS n FROM cms_activity_log l WHERE {w}", p)["n"]
+            total = self._one(c, f"SELECT COUNT(*) AS n FROM {frm} WHERE {w}", p)["n"]
             rows = self._all(c, f"SELECT l.id, l.username, l.action, l.target_type, l.target_id, l.doc_id, "
                                 f"l.summary, l.created_at, d.filename AS doc_name "
-                                f"FROM cms_activity_log l LEFT JOIN cms_documents d ON d.id=l.doc_id "
-                                f"WHERE {w} ORDER BY l.id DESC LIMIT ? OFFSET ?", [*p, limit, offset])
+                                f"FROM {frm} WHERE {w} ORDER BY l.id DESC LIMIT ? OFFSET ?", [*p, limit, offset])
         return rows, total
 
     # ------------------------------------------------------------ diskusi proyek (chat tab Laporan)

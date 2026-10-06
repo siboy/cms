@@ -135,7 +135,8 @@ def project_activity(pid):
         only = set(S().assigned_doc_ids(g.user["id"]))
     items, total = S().list_project_activity(
         pid, limit=min(request.args.get("limit", 50, type=int), 200),
-        offset=request.args.get("offset", 0, type=int), only_doc_ids=only)
+        offset=request.args.get("offset", 0, type=int), only_doc_ids=only,
+        q=(request.args.get("q") or "").strip()[:80] or None)
     return jsonify(items=items, total=total)
 
 
