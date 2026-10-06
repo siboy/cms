@@ -113,6 +113,10 @@ CREATE TABLE IF NOT EXISTS cms_share_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL UNIQUE, doc_id INTEGER NOT NULL,
     created_by TEXT, created_at TEXT, expires_at TEXT, revoked_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_share_doc ON cms_share_links(doc_id);
+CREATE TABLE IF NOT EXISTS cms_project_chat (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, username TEXT,
+    text TEXT, file_id INTEGER, created_at TEXT, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_pchat ON cms_project_chat(project_id, id);
 """
 
 
@@ -643,6 +647,37 @@ class BlockStore:
                                 f"FROM cms_activity_log l LEFT JOIN cms_documents d ON d.id=l.doc_id "
                                 f"WHERE {w} ORDER BY l.id DESC LIMIT ? OFFSET ?", [*p, limit, offset])
         return rows, total
+
+    # ------------------------------------------------------------ diskusi proyek (chat tab Laporan)
+    def add_project_chat(self, project_id: int, username: str, text: str = "", file_id: Optional[int] = None) -> dict:
+        with self._tx() as c:
+            cur = self._x(c, "INSERT INTO cms_project_chat(project_id,username,text,file_id,created_at) "
+                             "VALUES (?,?,?,?,?)", (project_id, username, text or "", file_id, _now()))
+            cid = cur.lastrowid
+        return self.list_project_chat(project_id, after_id=cid - 1, limit=1)[0]
+
+    def list_project_chat(self, project_id: int, after_id: int = 0, limit: int = 100) -> list[dict]:
+        """Pesan diskusi (urut naik) setelah id tertentu -- dipakai muat awal & polling inkremental.
+        Gambar lampiran = baris cms_project_files kategori 'diskusi' (file_id), disajikan via
+        /project-files/<id>/raw yang sudah ada (inline aman utk image, lihat send_user_upload)."""
+        with self._tx() as c:
+            rows = self._all(c, "SELECT ch.id, ch.username, ch.text, ch.file_id, ch.created_at, "
+                                "f.filename AS file_name, f.mime AS file_mime "
+                                "FROM cms_project_chat ch LEFT JOIN cms_project_files f ON f.id=ch.file_id "
+                                "WHERE ch.project_id=? AND ch.id>? AND ch.deleted_at IS NULL "
+                                "ORDER BY ch.id LIMIT ?", (project_id, after_id, limit))
+        return rows
+
+    def get_project_chat(self, chat_id: int) -> dict:
+        with self._tx() as c:
+            r = self._one(c, "SELECT * FROM cms_project_chat WHERE id=? AND deleted_at IS NULL", (chat_id,))
+        if not r:
+            raise KeyError(f"pesan {chat_id} tidak ada")
+        return r
+
+    def delete_project_chat(self, chat_id: int):
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_project_chat SET deleted_at=? WHERE id=?", (_now(), chat_id))
 
     ACTION_LABELS = {
         "block.edit": "blok diedit", "block.insert": "blok ditambahkan", "block.delete": "blok dihapus",
@@ -1193,7 +1228,8 @@ class BlockStore:
         return {"sha1": sha1, "px_w": im.px_width, "px_h": im.px_height}
 
     # ------------------------------------------------------------ manajemen proyek
-    PROJECT_FILE_CATEGORIES = ("surat", "data_mentah", "dokumen_pendukung", "galeri", "tender", "pitching", "lab", "mom")
+    # 'diskusi' = lampiran gambar chat tab Laporan (sengaja BUKAN salah satu 8 kategori tab Berkas)
+    PROJECT_FILE_CATEGORIES = ("surat", "data_mentah", "dokumen_pendukung", "galeri", "tender", "pitching", "lab", "mom", "diskusi")
 
     def create_project(self, name: str, user: str = "", **fields) -> int:
         name = (name or "").strip()

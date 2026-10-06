@@ -139,6 +139,69 @@ def project_activity(pid):
     return jsonify(items=items, total=total)
 
 
+# ---------------------------------------------------------------- diskusi tim (chat tab Laporan)
+@bp.get("/projects/<int:pid>/chat")
+@auth.require()
+def chat_list(pid):
+    """?after=<id> utk polling inkremental (hanya pesan baru). Semua anggota tim proyek boleh baca."""
+    _project_visible(pid)
+    items = S().list_project_chat(pid, after_id=request.args.get("after", 0, type=int),
+                                  limit=min(request.args.get("limit", 100, type=int), 200))
+    return jsonify(items=items)
+
+
+@bp.post("/projects/<int:pid>/chat")
+@auth.require()
+def chat_post(pid):
+    _project_visible(pid)
+    from cmsapp.api import throttle
+    throttle(f"pchat:{g.user['id']}", 60, 60)
+    d = body()
+    text = (d.get("text") or "").strip()
+    file_id = d.get("file_id")
+    if not text and not file_id:
+        raise ValueError("pesan kosong")
+    if len(text) > 4000:
+        raise ValueError("pesan maksimal 4000 karakter")
+    if file_id:                                           # lampiran harus milik proyek ini (jangan nyomot punya tenant/proyek lain)
+        f = S().get_project_file(int(file_id))
+        if f["project_id"] != pid:
+            raise ValueError("lampiran bukan milik proyek ini")
+    msg = S().add_project_chat(pid, g.user["username"], text, int(file_id) if file_id else None)
+    return jsonify(message=msg), 201
+
+
+@bp.post("/projects/<int:pid>/chat/image")
+@auth.require()
+def chat_image(pid):
+    """Unggah gambar utk diskusi (paste CTRL+V / drag-drop). Hanya image/* -- disimpan sbg
+    cms_project_files kategori 'diskusi' (tak tampil di 8 kategori tab Berkas), disajikan via
+    /project-files/<id>/raw yang inline-aman utk gambar."""
+    _project_visible(pid)
+    from cmsapp.api import throttle
+    throttle(f"pchatimg:{g.user['id']}", 20, 60)
+    f = request.files.get("file")
+    if not f:
+        raise ValueError("multipart: 'file' wajib")
+    if not (f.mimetype or "").lower().startswith("image/"):
+        raise ValueError("hanya gambar yang boleh ditempel di diskusi")
+    fn, path, mime, size = _save_upload(pid, f)
+    fid = S().add_project_file(pid, "diskusi", fn, path, mime, size, title="", description="",
+                               status="", doc_date=None, user=g.user["username"])
+    return jsonify(file_id=fid), 201
+
+
+@bp.delete("/project-chat/<int:cid>")
+@auth.require()
+def chat_delete(cid):
+    m = S().get_project_chat(cid)
+    _project_visible(m["project_id"])
+    if m["username"] != g.user["username"] and not auth.has_perm(g.user, "project_manage"):
+        abort(403, description="hanya penulis pesan / pengelola proyek")
+    S().delete_project_chat(cid)
+    return jsonify(ok=True)
+
+
 @bp.patch("/projects/<int:pid>")
 @auth.require("project_manage")
 def update_project(pid):

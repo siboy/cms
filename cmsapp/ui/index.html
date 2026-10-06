@@ -95,6 +95,44 @@ header b{letter-spacing:.2px}
  #stog{display:grid;place-items:center;position:fixed;left:14px;bottom:14px;z-index:17;width:48px;height:48px;
   border-radius:50%;background:var(--acc);color:#fff;border:none;font-size:20px;box-shadow:var(--sh2)}
 }
+/* ===== tab Laporan 2 kolom + diskusi tim (chat ala WhatsApp) ===== */
+.ti{display:none}
+.lrwrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,400px);gap:12px;align-items:start}
+.chatbox{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+ box-shadow:var(--sh);height:calc(100vh - 215px);min-height:340px;overflow:hidden}
+.chathead{padding:8px 12px;border-bottom:1px solid var(--line);font-weight:600;display:flex;gap:8px;align-items:center}
+.chatlog{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
+.msg{position:relative;max-width:80%;align-self:flex-start;padding:5px 10px;border-radius:12px 12px 12px 3px;
+ background:var(--card);border:1px solid var(--line);font-size:13px;word-break:break-word;white-space:pre-wrap;box-shadow:var(--sh)}
+.msg.me{align-self:flex-end;background:var(--acc-soft);border-color:transparent;border-radius:12px 12px 3px 12px}
+.msg .mh{font-size:10.5px;color:var(--acc);font-weight:600}.msg.me .mh{display:none}
+.msg .mt{font-size:9.5px;color:var(--mut);text-align:right;margin-top:1px}
+.msg img{max-width:min(230px,100%);border-radius:8px;display:block;margin-top:3px;cursor:zoom-in}
+.msg .mdel{position:absolute;top:-7px;right:-7px;display:none;width:18px;height:18px;line-height:15px;padding:0;
+ border-radius:50%;font-size:10px}.msg:hover .mdel{display:block}
+.chatin{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line);align-items:flex-end}
+.chatin textarea{flex:1;min-height:38px;max-height:110px;resize:none}
+.chatbox.drop{outline:2px dashed var(--acc);outline-offset:-5px}
+.chatday{align-self:center;font-size:10.5px;color:var(--mut);background:var(--card);border-radius:99px;padding:1px 10px;margin:4px 0}
+.repmenu{display:none}
+@media(max-width:800px){
+ /* nav tab proyek jadi bottom bar berikon ala aplikasi HP */
+ #ptabs{position:fixed;left:0;right:0;bottom:0;z-index:16;display:grid;grid-auto-flow:column;gap:0;margin:0;
+  background:var(--card);border-top:1px solid var(--line);box-shadow:var(--sh2)}
+ #ptabs button{display:grid;place-items:center;gap:0;border:none;border-radius:0;padding:5px 2px 7px;background:none}
+ #ptabs button.cur{background:var(--acc-soft);color:var(--acc);font-weight:600;border:none}
+ #ptabs .ti{display:block;font-size:18px;line-height:1.2}#ptabs .tl{font-size:9.5px}
+ #docs{padding-bottom:76px!important}
+ /* tab Laporan di HP: diskusi full-screen; Draft/Interim/Final via tombol bawah */
+ .lrwrap{grid-template-columns:1fr}
+ .lrwrap .lleft{display:none}
+ .lrwrap.showrep .lleft{display:block}
+ .lrwrap.showrep .chatwrap{display:none}
+ .chatbox{height:calc(100vh - 176px);min-height:0;border-radius:0;margin:0 -1px}
+ .repmenu{display:grid;grid-auto-flow:column;gap:6px;position:sticky;bottom:62px;z-index:15;margin-top:8px;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;padding:5px;box-shadow:var(--sh2)}
+ .repmenu button{border:none;font-size:12px;padding:6px 2px}.repmenu button.cur{background:var(--acc-soft);color:var(--acc);font-weight:600}
+}
 </style></head><body>
 <header><b>CMS Kolaborasi</b><span id="who"></span><span id="pres" title="online"></span>
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
@@ -362,12 +400,12 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><p><a href="#" id=pback>← Proyek</a></p><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  $('#pback').onclick=e=>{e.preventDefault();projectsView()};
- const tabs=[['ringkasan','Ringkasan'],['laporan','Laporan'],['gantt','Gantt'],['tim','Tim'],['pic','PIC'],['berkas','Berkas'],['aktivitas','Aktivitas']];
- const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l])=>`<button data-k="${k}" class="${k===curTab?'cur':''}">${l}</button>`).join('');
+ const tabs=[['ringkasan','Ringkasan','📋'],['laporan','Laporan','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['berkas','Berkas','📁'],['aktivitas','Aktivitas','🕑']];
+ const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
 async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,berkas:tabBerkas,aktivitas:tabAktivitas};
- try{await fns[curTab]()}catch(e){note(e.message,1)}}
+ stopChat();try{await fns[curTab]()}catch(e){note(e.message,1)}}
 const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blok','block.delete':'🗑 hapus blok','block.move':'🔀 pindah blok',
  'block.restore':'♻️ pulihkan blok','block.revert':'⏪ kembalikan versi','block.hidden':'🙈 sembunyikan/tampilkan',
  'comment.add':'💬 komentar','comment.resolve':'✔ komentar selesai/dibuka','comment.delete':'💬 hapus komentar',
@@ -467,13 +505,27 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  const docsFree=u.docs;const grp=t=>documents.filter(d=>d.report_type===t);
  const row=d=>`<p><a href="#" data-open="${d.doc_id}">${esc(d.label||d.filename)}</a> <small>${esc(d.doc_status)}</small> ${d.is_printed?'<span class=badge>Dicetak</span>':''}
  ${canManage?`<button data-pr="${d.id}" data-v="${d.is_printed?0:1}">${d.is_printed?'Batal cetak':'Tandai dicetak'}</button>`:''}</p>`;
- $('#ptab').innerHTML=['draft','interim','final'].map(t=>`<div class=rc><div class=rh><b>${t[0].toUpperCase()+t.slice(1)}</b></div>${grp(t).map(row).join('')||'<p style="color:var(--mut)">Belum ada.</p>'}</div>`).join('')
+ $('#ptab').innerHTML=`<div class=lrwrap id=lrw><div class=lleft>`
+ +['draft','interim','final'].map(t=>`<div class=rc data-rt="${t}"><div class=rh><b>${t[0].toUpperCase()+t.slice(1)}</b></div>${grp(t).map(row).join('')||'<p style="color:var(--mut)">Belum ada.</p>'}</div>`).join('')
  +(canManage?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
  <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
  <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
  <select id=lrt><option value=draft>Draft</option><option value=interim>Interim</option><option value=final>Final</option></select>
- <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div></div>`:'');
+ <button id=ltaut>Tautkan</button><span>atau</span><button id=lup>Unggah baru</button></div></div>`:'')
+ +`</div><div class=chatwrap><div class=chatbox id=cbox>
+   <div class=chathead>💬 Diskusi Tim <small style="font-weight:400;color:var(--mut)">tempel (Ctrl+V) / seret gambar ke sini</small></div>
+   <div class=chatlog id=clog></div>
+   <div class=chatin><button type=button id=cimg title="Kirim gambar">🖼</button>
+    <textarea id=cin rows=1 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
+    <button class=p type=button id=csend>➤</button></div>
+  </div></div></div>
+ <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=draft>Draft</button><button data-m=interim>Interim</button><button data-m=final>Final</button></div>`;
+ initChat();
+ $('#repmenu').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  $('#repmenu .cur')?.classList.remove('cur');b.classList.add('cur');
+  const m=b.dataset.m;$('#lrw').classList.toggle('showrep',m!=='chat');
+  if(m!=='chat')$(`#lrw [data-rt="${m}"]`)?.scrollIntoView({behavior:'smooth',block:'start'})});
  $('#ptab').querySelectorAll('[data-open]').forEach(a=>a.onclick=e=>{e.preventDefault();openDoc(+a.dataset.open)});
  $('#ptab').querySelectorAll('[data-pr]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/projects/${curProj}/documents/${b.dataset.pr}/print`,{printed:!!+b.dataset.v});tabLaporan()}catch(e){note(e.message,1)}});
  if(!canManage)return;
@@ -484,6 +536,52 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
   try{await api('POST',`/projects/${curProj}/documents`,{doc_id:+$('#lex').value,report_type:$('#lrt').value});tabLaporan()}catch(e){note(e.message,1)}};
  $('#lup').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='.docx';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('report_type',$('#lrt').value);
   note('Mengunggah & mengekstrak…');try{await api('POST',`/projects/${curProj}/documents`,fd,true);note('Selesai');tabLaporan()}catch(e){note(e.message,1)}};f.click()}}
+
+/* ===== diskusi tim (chat) di tab Laporan: polling 4 dtk, kirim teks/gambar (Ctrl+V / drag-drop) ===== */
+let chatTimer=null,chatLast=0;
+function stopChat(){if(chatTimer){clearInterval(chatTimer);chatTimer=null}}
+function chatMsg(m){const mine=m.username===me.username;const el=document.createElement('div');el.className='msg'+(mine?' me':'');
+ let h=`<div class=mh>${esc(m.username)}</div>`;
+ if(m.text)h+=esc(m.text);
+ if(m.file_id&&(m.file_mime||'').startsWith('image/'))
+  h+=`<a href="/api/project-files/${m.file_id}/raw" target=_blank rel=noopener><img src="/api/project-files/${m.file_id}/raw" loading=lazy alt=""></a>`;
+ else if(m.file_id)h+=`<a href="/api/project-files/${m.file_id}/raw">📎 ${esc(m.file_name||'lampiran')}</a>`;
+ h+=`<div class=mt>${esc((m.created_at||'').slice(11,16))}</div>`;
+ if(mine||hasPerm('project_manage'))h+='<button class=mdel title="Hapus pesan" type=button>✕</button>';
+ el.innerHTML=h;
+ const d=el.querySelector('.mdel');
+ if(d)d.onclick=async()=>{if(confirm('Hapus pesan ini?')){try{await api('DELETE',`/project-chat/${m.id}`);el.remove()}catch(e){note(e.message,1)}}};
+ return el}
+function appendChat(items){const log=$('#clog');if(!log||!items||!items.length)return;
+ const atBottom=log.scrollTop+log.clientHeight>=log.scrollHeight-40;
+ for(const m of items){if(m.id<=chatLast)continue;
+  const day=(m.created_at||'').slice(0,10);
+  if(day&&day!==appendChat.day){appendChat.day=day;const s=document.createElement('div');s.className='chatday';s.textContent=idDate(day);log.append(s)}
+  log.append(chatMsg(m));chatLast=m.id}
+ if(atBottom)log.scrollTop=log.scrollHeight}
+async function chatPoll(){if(!$('#clog'))return stopChat();
+ try{const {items}=await api('GET',`/projects/${curProj}/chat?after=${chatLast}`);appendChat(items)}catch(e){}}
+async function initChat(){stopChat();chatLast=0;appendChat.day=null;
+ const log=$('#clog'),box=$('#cbox'),inp=$('#cin');
+ try{const {items}=await api('GET',`/projects/${curProj}/chat`);appendChat(items);log.scrollTop=log.scrollHeight}
+ catch(e){log.innerHTML=`<small style="color:var(--mut)">${esc(e.message)}</small>`}
+ chatTimer=setInterval(chatPoll,4000);
+ const send=async()=>{const t=inp.value.trim();if(!t)return;inp.value='';
+  try{const {message}=await api('POST',`/projects/${curProj}/chat`,{text:t});appendChat([message]);log.scrollTop=log.scrollHeight}
+  catch(e){note(e.message,1);inp.value=t}};
+ $('#csend').onclick=send;
+ inp.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};
+ const sendImage=async f=>{if(!f)return;if(!(f.type||'').startsWith('image/'))return note('Hanya gambar yang bisa dikirim ke diskusi',1);
+  const fd=new FormData();fd.append('file',f,f.name||'tempel.png');
+  try{note('Mengirim gambar…');const r=await api('POST',`/projects/${curProj}/chat/image`,fd,true);
+   const {message}=await api('POST',`/projects/${curProj}/chat`,{file_id:r.file_id});
+   appendChat([message]);log.scrollTop=log.scrollHeight;note('Terkirim')}catch(e){note(e.message,1)}};
+ inp.onpaste=e=>{const f=[...((e.clipboardData||{}).files||[])].find(x=>(x.type||'').startsWith('image/'));
+  if(f){e.preventDefault();sendImage(f)}};
+ box.ondragover=e=>{e.preventDefault();box.classList.add('drop')};
+ box.ondragleave=()=>box.classList.remove('drop');
+ box.ondrop=e=>{e.preventDefault();box.classList.remove('drop');[...((e.dataTransfer||{}).files||[])].forEach(sendImage)};
+ $('#cimg').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='image/*';f.onchange=()=>sendImage(f.files[0]);f.click()}}
 
 async function tabPic(){const {documents}=await api('GET',`/projects/${curProj}/documents`);
  if(!documents.length){$('#ptab').innerHTML='<p style="color:var(--mut)">Tautkan laporan dulu di tab Laporan.</p>';return}

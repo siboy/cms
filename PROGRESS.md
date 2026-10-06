@@ -49,6 +49,25 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Tab Laporan 2 kolom + Diskusi Tim ala WhatsApp + nav bawah mobile (2026-10-06)** —
+  `tabLaporan` (ui/index.html) jadi `.lrwrap` 2 kolom: kiri seksi Draft/Interim/Final + form tautkan/
+  unggah (semua logika lama utuh), kanan `chatbox` diskusi tim per PROYEK: bubble ala WA (milik sendiri
+  kanan, nama+jam, pemisah tanggal), kirim teks (Enter; Shift+Enter baris baru), GAMBAR via Ctrl+V
+  (onpaste clipboardData.files), drag-drop ke chatbox, atau tombol 🖼; hapus pesan sendiri/manager.
+  Realtime = POLLING 4 dtk inkremental (`?after=<id terakhir>`, `stopChat()` di renderTab —
+  SSE hub cuma per-dokumen, bukan per-proyek; cukup utk chat tim). Backend: tabel `cms_project_chat`
+  (init_schema.sql + SQLITE_DDL), metode add/list/get/delete_project_chat; endpoint
+  `GET/POST /projects/<id>/chat`, `POST .../chat/image` (HANYA image/*, throttle 20/mnt; tersimpan sbg
+  `cms_project_files` kategori BARU 'diskusi' — ditambah ke PROJECT_FILE_CATEGORIES, sengaja bukan 8
+  kategori tab Berkas jadi tak muncul di sana; disajikan via /project-files/<id>/raw yg inline-aman),
+  `DELETE /project-chat/<id>` (penulis/project_manage); semua digerbangi `_project_visible` + throttle
+  kirim 60/mnt. **Mobile (<=800px)**: tab proyek (`#ptabs`) jadi BOTTOM NAV berikon ala aplikasi HP
+  (📋📄📊👥👤📁🕑, fixed bottom, label kecil); di tab Laporan chat tampil FULL-SCREEN fokus; seksi
+  Draft/Interim/Final diakses via tombol menu bawah `repmenu` (💬 Diskusi default; Draft/Interim/Final
+  toggle `.showrep` + scroll ke seksinya). **Diuji**: suite end-to-end total (SQLite+FakeRedis) semua
+  lolos termasuk 9 cek chat (kirim/list/polling after/validasi kosong/upload gambar vs html ditolak/
+  pesan bergambar/non-anggota 404/hapus); `node --check` + py_compile lolos. **Belum dicoba** di
+  browser/HP sungguhan — rasakan paste gambar, drag-drop, bottom nav, & mode full-screen.
 - [x] **Control panel super-admin multi-tenant (2026-10-06)** — `cmspanel/panel.py` (Flask mandiri,
   TIDAK impor cmsapp; jalan di host Docker, bind 127.0.0.1:8890, login PANEL_PASSWORD + CSRF header
   X-PANEL, akses via SSH tunnel/VPN SAJA). Fitur: buat tenant dari form (panggil `add-tenant.sh` via

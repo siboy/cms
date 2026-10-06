@@ -509,3 +509,16 @@ CREATE TABLE IF NOT EXISTS cms_share_links (
     INDEX idx_share_doc (doc_id),
     CONSTRAINT fk_share_doc FOREIGN KEY (doc_id) REFERENCES cms_documents(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- diskusi tim per proyek (chat ala WhatsApp di tab Laporan; gambar = cms_project_files kategori 'diskusi')
+CREATE TABLE IF NOT EXISTS cms_project_chat (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    username    VARCHAR(100) DEFAULT NULL,
+    text        TEXT,
+    file_id     INT DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    deleted_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_pchat (project_id, id),
+    CONSTRAINT fk_pchat_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
