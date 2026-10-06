@@ -52,6 +52,18 @@ def create_app(cfg=Config) -> Flask:
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
+    @app.get("/cms.apk")
+    def apk_download():
+        """Unduh APK Android (tombol 📱 APK di header). File ditaruh `make apk` ke /data/cms.apk
+        (volume app). Publik tanpa login — APK = klien generik tanpa rahasia (server dipilih user
+        saat pertama buka); kalau belum dibangun -> 404 dgn petunjuk."""
+        p = os.environ.get("CMS_APK_PATH", os.path.join(app.config["DATA_DIR"], "cms.apk"))
+        if not os.path.isfile(p):
+            return jsonify(error="APK belum tersedia — jalankan 'make apk' di server"), 404
+        from flask import send_file
+        return send_file(p, as_attachment=True, download_name="cms-kolaborasi.apk",
+                         mimetype="application/vnd.android.package-archive")
+
     @app.get("/manifest.webmanifest")
     def pwa_manifest():
         return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "manifest.webmanifest")

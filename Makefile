@@ -198,3 +198,6 @@ apk:
 	  $$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" >/dev/null; fi; \
 	cd /work && gradle --no-daemon assembleDebug'
 	@echo "[OK] APK: mobile/app/build/outputs/apk/debug/app-debug.apk"
+	@docker cp mobile/app/build/outputs/apk/debug/app-debug.apk cms-app:/data/cms.apk 2>/dev/null \
+	  && echo "[OK] disalin ke cms-app:/data/cms.apk — tombol 📱 APK di web aktif" \
+	  || echo "[..] cms-app tidak jalan; salin manual: docker cp ... <container>:/data/cms.apk"

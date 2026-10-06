@@ -213,7 +213,7 @@ header b{letter-spacing:.2px}
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
 <button id="bmenu" title="Menu" hidden>☰</button>
 <nav id="navbtns">
-<button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
+<button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
 </nav></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script>
@@ -304,7 +304,7 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  const stok=qp.get('share');if(stok)return shareView(stok);
  try{me=(await api('GET','/me')).user}catch(e){return loginView()}
  pruneDrafts();
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;$('#bapk').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0));
  const dq=qp.get('doc');
  if(dq){await openDoc(+dq);const bq=qp.get('block');
@@ -361,6 +361,9 @@ $('#bdocs').onclick=()=>docsView();
 $('#bproj').onclick=()=>projectsView();
 $('#bfiles').onclick=()=>meFilesView();
 $('#bnotif').onclick=notifPanel;
+$('#bapk').onclick=async()=>{try{const r=await fetch('/cms.apk',{method:'HEAD'});
+ if(r.ok)location.href='/cms.apk';else note('APK belum tersedia di server ini — jalankan `make apk` dulu',1)}
+ catch(e){note('APK belum tersedia',1)}};
 $('#bout').onclick=async()=>{await api('POST','/logout');location.reload()};
 $('#bmenu').onclick=()=>$('#navbtns').classList.toggle('open');
 $('#navbtns').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>$('#navbtns').classList.remove('open')));
