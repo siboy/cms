@@ -138,6 +138,15 @@ header b{letter-spacing:.2px}
 .cattabs button:hover{color:var(--acc);border-color:var(--acc)}
 .cattabs button.cur{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600;box-shadow:var(--sh)}
 .cattabs .ti{margin-right:5px}
+/* feed Aktivitas ala pesan (bukan tabel): ikon bulat + siapa·jam + apa yang dilakukan */
+.actfeed{display:flex;flex-direction:column;gap:6px}
+.actfeed .chatday{align-self:center}
+.actitem{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:12px;background:var(--card);box-shadow:var(--sh);font-size:13px;word-break:break-word}
+.actitem:hover{border-color:var(--acc)}
+.actitem .aic{flex:0 0 32px;width:32px;height:32px;display:grid;place-items:center;font-size:15px;
+ background:var(--acc-soft);border-radius:50%}
+.actitem small{color:var(--mut)}
 @media(max-width:800px){
  /* konten tab apapun DILARANG melebarkan halaman: lebar halaman > viewport membuat elemen
     position:fixed (bottom-nav) lepas dari visual viewport di browser HP (kasus tab Tim) */
@@ -442,23 +451,30 @@ const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blo
  'project.create':'🆕 proyek dibuat','project.update':'⚙ proyek diubah','project.file_upload':'📁 unggah berkas',
  'user.file_upload':'📁 unggah berkas pribadi'};
 async function tabAktivitas(){
- const row=it=>`<tr><td style="white-space:nowrap">${esc(it.created_at||'')}</td><td>${esc(it.username)}</td>
-  <td style="white-space:nowrap">${esc(ACT_LABELS[it.action]||it.action)}</td><td>${it.doc_name?esc(it.doc_name):'—'}</td><td>${esc(it.summary||'')}</td></tr>`;
+ const item=it=>{const lbl=ACT_LABELS[it.action]||('⚙ '+it.action);const sp=lbl.indexOf(' ');
+  const ic=lbl.slice(0,sp),verb=lbl.slice(sp+1);
+  return `<div class=actitem><span class=aic>${ic}</span><div style="min-width:0;flex:1">
+   <div><b>${esc(it.username)}</b> <small>${esc((it.created_at||'').slice(11,16))}</small></div>
+   <div>${esc(verb)}${it.summary?` — <span style="color:var(--mut)">${esc(it.summary)}</span>`:''}</div>
+   ${it.doc_name?`<small>📄 ${esc(it.doc_name)}</small>`:''}</div></div>`};
  $('#ptab').innerHTML=`<div class=rc><div class=rh style="gap:10px"><b>Aktivitas Proyek</b>
   <input id=actq placeholder="🔍 Cari siapa / aksi / ringkasan / dokumen…" style="margin-left:auto;flex:1;min-width:170px;max-width:340px"></div>
-  <p style="color:var(--mut);font-size:12px;margin:4px 0 8px">Semua kejadian di proyek ini — terbaru di atas; gulir ke bawah untuk memuat yang lebih lama.</p>
-  <div class=otable><table id=acttbl><tr><th>Waktu</th><th>Siapa</th><th>Aksi</th><th>Dokumen</th><th>Ringkasan</th></tr></table></div>
+  <p style="color:var(--mut);font-size:12px;margin:4px 0 10px">Terbaru di atas — gulir ke bawah untuk memuat yang lebih lama.</p>
+  <div class=actfeed id=actfeed></div>
   <p id=actinfo style="color:var(--mut);font-size:12px;margin:8px 0 0">memuat…</p><div id=actsent style="height:1px"></div></div>`;
- const st={off:0,q:'',busy:false,done:false};
- const load=async()=>{if(st.busy||st.done||!$('#acttbl'))return;st.busy=true;
+ const st={off:0,q:'',busy:false,done:false,day:null};
+ const load=async()=>{if(st.busy||st.done||!$('#actfeed'))return;st.busy=true;
   try{const {items,total}=await api('GET',`/projects/${curProj}/activity?limit=30&offset=${st.off}&q=${encodeURIComponent(st.q)}`);
-   if(!$('#acttbl'))return;                       // tab sudah ditinggal selagi fetch
+   if(!$('#actfeed'))return;                      // tab sudah ditinggal selagi fetch
    st.off+=items.length;if(!items.length||st.off>=total)st.done=true;
-   for(const it of items)$('#acttbl').insertAdjacentHTML('beforeend',row(it));
+   const f=$('#actfeed');
+   for(const it of items){const day=(it.created_at||'').slice(0,10);
+    if(day&&day!==st.day){st.day=day;f.insertAdjacentHTML('beforeend',`<div class=chatday>${esc(idDate(day))}</div>`)}
+    f.insertAdjacentHTML('beforeend',item(it))}
    $('#actinfo').textContent=total?`${st.off} dari ${total}${st.done?'':' — gulir utk memuat lagi…'}`
     :(st.q?'Tidak ada yang cocok dgn pencarian.':'Belum ada aktivitas.')}
   catch(e){note(e.message,1)}finally{st.busy=false}};
- const reset=()=>{st.off=0;st.done=false;$('#acttbl').querySelectorAll('tr:not(:first-child)').forEach(r=>r.remove());load()};
+ const reset=()=>{st.off=0;st.done=false;st.day=null;$('#actfeed').innerHTML='';load()};
  let qt=null;$('#actq').oninput=()=>{clearTimeout(qt);qt=setTimeout(()=>{st.q=$('#actq').value.trim();reset()},350)};
  const io=new IntersectionObserver(en=>{if(en[0].isIntersecting)load()},{rootMargin:'300px'});
  io.observe($('#actsent'));
