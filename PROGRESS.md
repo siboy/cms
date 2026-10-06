@@ -69,6 +69,15 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   = poin besar; (c) kelelahan PROPORSIONAL: flag hanya bila poin luar-jam >=8 DAN >=30% total DAN
   >=2 hari berbeda (upload besar di SATU Sabtu malam = belum lelah; berulang Sabtu kedua = lelah —
   dua-duanya diuji sintetis). Field baru: effort_14d/effort_out/out_ratio/days_active/out_days.
+  **Revisi 2 (sama hari)**: (a) delta edit kini via difflib quick_ratio (replace total panjang-sama pun
+  terdeteksi; >30k char fallback delta panjang); (b) pasangan "history terakhir -> ISI BLOK SEKARANG"
+  ditambahkan (history hanya simpan versi LAMA — tanpa ini edit terakhir luput); (c) KOREKSI MENURUNKAN
+  KREDIT: tulisan user yg dirombak pihak lain (QC/ketua/atasan) tercatat `rework_in` (poin per pasangan
+  versi lintas-penulis) + komentar induk pihak lain di blok tulisannya (+0.4/komentar) -> DISKON poin
+  usaha penulis (0.7x rework, maks -60%, tak pernah 0) — pengoreksi justru DAPAT poin (comment.add/
+  edit effort); badge UI "⚠️ Kualitas minus (NN% dikoreksi)" bila rework_ratio>=0.5 & rework_in>=3;
+  field: effort_raw/rework_in/rework_ratio. Diuji sintetis: replace total oleh admin -> rework>=3 &
+  effort terdiskon; komentar pihak lain menambah rework. AWAS uji: hapus test.db* (WAL ikut) antar run.
 - [x] **Mention @ di Diskusi -> notifikasi unread (2026-10-06)** — ketik `@` di chat memunculkan saran
   (anggota tim / `@tim` = semua / `📁 @proyek` = tim proyek lain, sisip `@proyek:<id>`); yang disebut
   dapat notifikasi badge 🔔 (type `chat_mention`, sistem cms_notifications yg sudah ada). Server

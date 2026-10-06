@@ -725,16 +725,30 @@ class BlockStore:
                    "AND COALESCE(t.progress_percent,0)<100 GROUP BY tg.user_id"), [])}
             acts = safe(lambda: self._all(c, "SELECT username, action, created_at FROM cms_activity_log "
                                              "WHERE created_at>=?", (since,)), [])
-            # usaha edit teks sesungguhnya: |delta panjang| antar versi berurutan (karakter diketik/dihapus)
-            edits = safe(lambda: self._all(c, "SELECT h2.changed_by AS username, h2.changed_at AS created_at, "
-                                              "ABS(LENGTH(COALESCE(h2.text,'')) - LENGTH(COALESCE(h1.text,''))) AS delta "
+            # pasangan versi berurutan: siapa penulis versi baru, siapa penulis versi SEBELUMNYA
+            # (utk menghitung usaha edit nyata + KOREKSI terhadap karya orang lain)
+            edits = safe(lambda: self._all(c, "SELECT h2.changed_by AS author, h1.changed_by AS prev_author, "
+                                              "h2.changed_at AS created_at, h2.text AS t2, h1.text AS t1 "
                                               "FROM cms_block_history h2 LEFT JOIN cms_block_history h1 "
                                               "ON h1.block_id=h2.block_id AND h1.version=h2.version-1 "
                                               "WHERE h2.changed_at>=?", (since,)), [])
+            # + pasangan "versi history terakhir -> ISI BLOK SEKARANG": history hanya menyimpan versi
+            # LAMA, jadi edit paling akhir (termasuk replace oleh QC/atasan) tak terlihat tanpa ini
+            cur_edits = safe(lambda: self._all(c, "SELECT b.updated_by AS author, h.changed_by AS prev_author, "
+                                                  "b.updated_at AS created_at, b.text AS t2, h.text AS t1 "
+                                                  "FROM cms_blocks b JOIN cms_block_history h "
+                                                  "ON h.block_id=b.id AND h.version=b.version-1 "
+                                                  "WHERE b.updated_at>=? AND b.deleted_at IS NULL", (since,)), [])
+            # komentar koreksi/revisi PIHAK LAIN pada blok yg ditulis user -> sinyal "banyak disalahkan"
+            cmts = safe(lambda: self._all(c, "SELECT cm.author AS commenter, b.updated_by AS author "
+                                             "FROM cms_comments cm JOIN cms_blocks b ON b.id=cm.block_id "
+                                             "WHERE cm.created_at>=? AND cm.deleted_at IS NULL AND cm.parent_id IS NULL",
+                                          (since,)), [])
         per: dict[str, dict] = {}
 
         def bucket(username, created_at, points):
-            s = per.setdefault(username or "", {"n": 0, "pts": 0.0, "pts_out": 0.0,
+            s = per.setdefault(username or "", {"n": 0, "pts": 0.0, "pts_out": 0.0, "edit_pts": 0.0,
+                                                "rework_in": 0.0,
                                                 "late": 0, "weekend": 0, "days": set(), "out_days": set()})
             s["pts"] += points
             try:
@@ -755,24 +769,57 @@ class BlockStore:
         for a in acts:
             s = bucket(a["username"], a["created_at"], self.ACTION_EFFORT.get(a["action"], 0.5))
             s["n"] += 1
-        for e in edits:                                  # block.edit: poin = besar perubahan, ~400 char = 1 poin (cap 5/versi)
-            bucket(e["username"], e["created_at"], min((e["delta"] or 0) / 400.0, 5.0))
+        # usaha edit = karakter yang BENAR-BENAR berubah antar versi (difflib, bukan selisih panjang —
+        # replace total dgn panjang sama pun terdeteksi); ~400 char = 1 poin, cap 5/versi.
+        # Bila penulis versi baru BEDA dari penulis versi lama -> poin itu juga dicatat sbg KOREKSI
+        # terhadap penulis lama (rework_in) — karya yang banyak dirombak QC/ketua/atasan.
+        import difflib
+        for e in [*edits, *cur_edits]:
+            t1, t2 = e["t1"] or "", e["t2"] or ""
+            if len(t1) > 30000 or len(t2) > 30000:       # terlalu besar utk diff cepat: fallback delta panjang
+                chars = abs(len(t2) - len(t1))
+            elif t1 or t2:
+                chars = int((1 - difflib.SequenceMatcher(None, t1, t2).quick_ratio()) * max(len(t1), len(t2)))
+            else:
+                chars = 0
+            pts = min(chars / 400.0, 5.0)
+            s = bucket(e["author"], e["created_at"], pts)
+            s["edit_pts"] += pts
+            if e["prev_author"] and e["author"] and e["prev_author"] != e["author"]:
+                rp = bucket(e["prev_author"], None, 0.0)
+                rp["rework_in"] += pts
+        # komentar dari orang lain di blok tulisan user = koreksi/revisi (0.4 poin per komentar induk);
+        # si KOMENTATOR sendiri dapat poin usaha via ACTION_EFFORT comment.add (dialah yang lelah mengoreksi)
+        for cm in cmts:
+            if cm["author"] and cm["commenter"] and cm["author"] != cm["commenter"]:
+                rp = bucket(cm["author"], None, 0.0)
+                rp["rework_in"] += 0.4
         out = []
         for u in users:
-            st = per.get(u["username"], {"n": 0, "pts": 0.0, "pts_out": 0.0,
-                                         "late": 0, "weekend": 0, "days": set(), "out_days": set()})
+            st = per.get(u["username"], {"n": 0, "pts": 0.0, "pts_out": 0.0, "edit_pts": 0.0,
+                                         "rework_in": 0.0, "late": 0, "weekend": 0, "days": set(), "out_days": set()})
             p, po, tk = proj.get(u["id"], 0), pic_open.get(u["id"], 0), tasks.get(u["id"], 0)
-            pts, pts_out = round(st["pts"], 1), round(st["pts_out"], 1)
+            pts_raw, pts_out_raw = st["pts"], st["pts_out"]
+            # DISKON koreksi: karya yang dirombak pihak lain mengurangi poin usaha penulisnya
+            # (pekerjaan banyak salah/di-replace atasan != pekerjaan beres). 0.7 poin diskon per poin
+            # koreksi, maks memangkas 60% usaha (tak pernah jadi nol — tetap ada kerja yang dilakukan).
+            rework_in = round(st["rework_in"], 1)
+            discount = min(rework_in * 0.7, pts_raw * 0.6)
+            factor = (pts_raw - discount) / pts_raw if pts_raw else 1.0
+            pts, pts_out = round(pts_raw - discount, 1), round(pts_out_raw * factor, 1)
+            rework_ratio = round(rework_in / st["edit_pts"], 2) if st["edit_pts"] else (1.0 if rework_in else 0.0)
             out_ratio = round(pts_out / pts, 2) if pts else 0.0
             score = round(p * 1.5 + po * 2 + tk * 2 + pts / 6, 1)
-            # kelelahan PROPORSIONAL: usaha luar-jam signifikan (>=8 poin), porsinya besar (>=30%),
-            # dan bukan insiden sekali (>=2 hari berbeda) — tambah 2 kalimat di hari Sabtu TIDAK memicu
+            # kelelahan PROPORSIONAL (pakai poin SETELAH diskon): luar-jam >=8 poin, >=30% total,
+            # dan >=2 hari berbeda — tambah 2 kalimat di hari Sabtu TIDAK memicu
             fatigued = pts_out >= 8 and out_ratio >= 0.3 and len(st["out_days"]) >= 2
             level = "merah" if (score >= 12 or (fatigued and score >= 6)) else ("kuning" if score >= 6 else "hijau")
             out.append({"user_id": u["id"], "username": u["username"], "name": u["name"],
                         "projects_active": p, "pic_open": po, "tasks_active": tk,
-                        "actions_14d": st["n"], "effort_14d": pts, "effort_out": pts_out,
-                        "out_ratio": out_ratio, "days_active": len(st["days"]), "out_days": len(st["out_days"]),
+                        "actions_14d": st["n"], "effort_14d": pts, "effort_raw": round(pts_raw, 1),
+                        "effort_out": pts_out, "out_ratio": out_ratio,
+                        "rework_in": rework_in, "rework_ratio": rework_ratio,
+                        "days_active": len(st["days"]), "out_days": len(st["out_days"]),
                         "late_actions": st["late"], "weekend_actions": st["weekend"],
                         "score": score, "level": level, "fatigued": fatigued})
         out.sort(key=lambda x: -x["score"])
