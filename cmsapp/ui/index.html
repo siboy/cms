@@ -169,16 +169,19 @@ header b{letter-spacing:.2px}
  #ptabs button.cur{background:var(--acc-soft);color:var(--acc);font-weight:600;border:none;box-shadow:none}
  #ptabs .ti{display:block;font-size:18px;line-height:1.2;margin:0}#ptabs .tl{font-size:9.5px}
  #docs{padding-bottom:84px!important}
- /* tab Laporan di HP: diskusi full-screen; Draft/Interim/Final via tombol bawah (fixed di atas nav) */
+ /* tab Laporan di HP: diskusi full-screen MENYATU dgn bar menu bawah — chat fixed dari bawah header
+    sampai persis di atas repmenu, repmenu nempel di atas bottom-nav tanpa jarak (satu kesatuan visual) */
  .lrwrap .lleft{display:none}
- .lrwrap.showrep .lleft{display:block;padding-bottom:56px}
+ .lrwrap.showrep .lleft{display:block;padding-bottom:110px}
  .lrwrap.showrep .chatwrap{display:none}
- .chatwrap{position:static;max-width:none;flex-basis:100%}
- .chatbox{height:calc(100dvh - 232px);min-height:260px}
- .repmenu{display:grid;grid-auto-flow:column;gap:4px;position:fixed;left:10px;right:10px;z-index:15;
-  bottom:calc(58px + env(safe-area-inset-bottom));
-  background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px;box-shadow:var(--sh2)}
- .repmenu button{border:none;font-size:12px;padding:6px 2px;border-radius:999px}
+ .chatwrap{position:fixed;left:0;right:0;top:46px;bottom:calc(100px + env(safe-area-inset-bottom));
+  max-width:none;flex-basis:auto;z-index:14}
+ .chatbox{height:100%;min-height:0;border:none;border-radius:0;box-shadow:none}
+ .chatin{padding:6px 8px;border-bottom:none}
+ .repmenu{display:grid;grid-auto-flow:column;gap:4px;position:fixed;left:0;right:0;z-index:15;height:42px;
+  bottom:calc(58px + env(safe-area-inset-bottom));margin:0;box-sizing:border-box;
+  background:var(--card);border:none;border-top:1px solid var(--line);border-radius:0;padding:4px 8px;box-shadow:none}
+ .repmenu button{border:none;font-size:12px;padding:4px 2px;border-radius:8px}
  .repmenu button.cur{background:var(--acc);color:#fff;font-weight:600}
 }
 </style></head><body>
