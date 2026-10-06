@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS cms_project_chat (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, username TEXT,
     text TEXT, file_id INTEGER, created_at TEXT, deleted_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_pchat ON cms_project_chat(project_id, id);
+CREATE TABLE IF NOT EXISTS cms_settings (k TEXT PRIMARY KEY, v TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS cms_user_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
     topic TEXT, text TEXT, source TEXT DEFAULT 'chat', chat_id INTEGER,
@@ -743,6 +744,22 @@ class BlockStore:
                                 f"AND t.start_date IS NOT NULL AND t.end_date IS NOT NULL "
                                 f"AND t.start_date<=? AND t.end_date>=? ORDER BY t.start_date",
                              [*project_ids, date_to, date_from])
+
+    # ------------------------------------------------------------ setelan global (key-value, halaman Admin)
+    def get_setting(self, key: str, default: str = "") -> str:
+        try:
+            with self._tx() as c:
+                r = self._one(c, "SELECT v FROM cms_settings WHERE k=?", (key,))
+            return r["v"] if r else default
+        except Exception:                               # noqa: BLE001
+            return default
+
+    def set_setting(self, key: str, value: str):
+        with self._tx() as c:
+            if self._one(c, "SELECT k FROM cms_settings WHERE k=?", (key,)):
+                self._x(c, "UPDATE cms_settings SET v=?, updated_at=? WHERE k=?", (value, _now(), key))
+            else:
+                self._x(c, "INSERT INTO cms_settings(k,v,updated_at) VALUES (?,?,?)", (key, value, _now()))
 
     # bobot "poin usaha" per jenis aksi (bukan 1 aksi = 1 poin): upload/ekstrak dokumen berat,
     # pindah/hapus blok ringan; block.edit TIDAK dihitung dari sini melainkan dari BESAR perubahan

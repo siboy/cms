@@ -534,8 +534,10 @@ def set_printed(pid, link_id):
 @bp.get("/team-workload")
 @auth.require("project_view_all", "user_manage")
 def team_workload():
-    """Beban kerja semua pengguna (panel 'Beban Tim' daftar proyek) -- utk manajer/admin."""
-    return jsonify(items=S().team_workload())
+    """Beban kerja semua pengguna (panel 'Beban Tim' daftar proyek). `detail` = setelan GLOBAL dari
+    halaman Admin (checkbox): true = angka skor/poin tampil utk semua pembuka panel; false = note saja."""
+    return jsonify(items=S().team_workload(),
+                   detail=S().get_setting("workload_detail", "0") == "1")
 
 
 def _team_manage_guard(pid: int):

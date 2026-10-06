@@ -396,13 +396,14 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
  document.querySelectorAll('[data-menu]').forEach(b=>b.onclick=e=>{e.stopPropagation();projectMenu(projects.find(x=>x.id===+b.dataset.menu),projects)});
  if($('#npr'))$('#npr').onclick=()=>projectDlg(projects)}
 /* panel Beban Tim: profil beban per orang + deteksi overload/kelelahan (kerja malam & akhir pekan) */
-async function workloadDlg(){let items=[];try{items=(await api('GET','/team-workload')).items}catch(e){return note(e.message,1)}
+async function workloadDlg(){let items=[],detail=false;
+ try{const r=await api('GET','/team-workload');items=r.items;detail=!!r.detail}catch(e){return note(e.message,1)}
+ // detail = setelan GLOBAL dari halaman Admin (checkbox) — tak ada toggle di sini:
+ // true = angka skor/poin tampil; false = note kualitatif saja
  const LV={merah:['#d1242f','🔴 Overload'],kuning:['#b45309','🟡 Padat'],hijau:['#2da44e','🟢 Normal']};
- let detail=localStorage.getItem('wlDetail')==='1';     // default: angka/skor DISEMBUNYIKAN, kualitatif saja
  const m=document.createElement('div');m.className='mask';document.body.append(m);
  const paint=()=>{m.innerHTML=`<div class=dlg style="width:min(680px,94vw)">
- <div style="display:flex;gap:8px;align-items:center"><b style="flex:1">📊 Beban Tim</b>
-  <button type=button id=wdet title="Tampilkan/sembunyikan angka skor & poin (khusus halaman ini)">${detail?'🙈 Sembunyikan detail':'🔢 Tampilkan detail'}</button></div>
+ <div style="display:flex;gap:8px;align-items:center"><b style="flex:1">📊 Beban Tim</b></div>
  ${detail?`<p style="color:var(--mut);font-size:12px;margin:0">Skor = proyek aktif + PIC belum selesai + task berjalan + poin usaha 14 hari (berbobot per jenis aksi; edit dihitung dari besar perubahan nyata, ±400 karakter = 1 poin). Koreksi oleh pihak lain mendiskon poin penulis (maks −60%). 🔥 Kelelahan: usaha luar jam kerja ≥8 poin, ≥30% total, ≥2 hari berbeda.</p>`:''}
  <div style="display:grid;gap:8px">${items.map(u=>{const [col,lbl]=LV[u.level];const w=Math.min(100,u.score/15*100);
   return `<div style="border:1px solid var(--line);border-radius:10px;padding:8px 11px;${u.level==='merah'?'border-color:#d1242f;background:#d1242f14':''}">
@@ -417,8 +418,7 @@ async function workloadDlg(){let items=[];try{items=(await api('GET','/team-work
    <small style="color:var(--mut)">📁 ${u.projects_active} proyek aktif · 📌 ${u.pic_open} PIC belum selesai · 🗓 ${u.tasks_active} task berjalan${detail?` · ⚡ ${u.effort_14d} poin usaha/14h${u.rework_in?` (${u.effort_raw} sebelum diskon)`:''} (${u.actions_14d} aksi, ${u.days_active} hari)${u.effort_out?` · 🌙📅 ${u.effort_out} poin luar jam (${Math.round((u.out_ratio||0)*100)}%, ${u.out_days} hari)`:''}${u.rework_in?` · ✂️ ${u.rework_in} poin dikoreksi`:''}`:''}</small>
   </div>`}).join('')||'<p style="color:var(--mut)">Belum ada data pengguna.</p>'}</div>
  <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
-  m.querySelector('#x').onclick=()=>m.remove();
-  m.querySelector('#wdet').onclick=()=>{detail=!detail;localStorage.setItem('wlDetail',detail?'1':'0');paint()}};
+  m.querySelector('#x').onclick=()=>m.remove()};
  m.onclick=e=>{if(e.target===m)m.remove()};paint()}
 
 function projectMenu(p,projects){const m=document.createElement('div');m.className='mask';
@@ -1160,9 +1160,13 @@ async function privilegeView(){closeDoc();
   $('#puserm').querySelectorAll('[data-ov]').forEach(sel=>sel.onchange=async()=>{
    const v=sel.value===''?null:sel.value==='1';
    try{await api('PATCH',`/admin/users/${uid}/perms`,{overrides:{[sel.dataset.ov]:v}})}catch(e){note(e.message,1)}})}}
-async function adminView(){closeDoc();const [{users},{docs},groups]=await Promise.all([api('GET','/admin/users'),api('GET','/docs'),
- api('GET','/groups/names').then(r=>r.groups).catch(()=>[])]);
+async function adminView(){closeDoc();const [{users},{docs},groups,adset]=await Promise.all([api('GET','/admin/users'),api('GET','/docs'),
+ api('GET','/groups/names').then(r=>r.groups).catch(()=>[]),
+ api('GET','/admin/settings').then(r=>r.settings).catch(()=>({}))]);
  $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Pengguna</h3>${hasPerm('privilege_manage')?'<p><a href="#" id=gopriv>Atur grup &amp; privilege…</a></p>':''}
+ <p><label style="display:inline-flex;gap:6px;align-items:center;font-size:13px;cursor:pointer">
+  <input type=checkbox id=wldetail ${adset.workload_detail?'checked':''} style="width:auto">
+  📊 Beban Tim: tampilkan angka detail (skor &amp; poin) ke semua yang membuka panel — tidak dicentang = note kualitatif saja</label></p>
  <table><tr><th>Username</th><th>Nama</th><th>Email</th><th>WA</th><th>Tenaga ahli</th><th>Peran</th><th>Aktif</th><th></th></tr>${users.map(u=>`<tr><td>${esc(u.username)}</td><td>${esc(u.name)}</td>
  <td>${esc(u.email||'—')}${u.email?(u.email_verified_at?' <small style="color:green">✓terverifikasi</small>':' <small style="color:var(--warn)">belum verifikasi</small>'):''}</td>
  <td>${esc(u.phone_wa||'—')}</td><td>${esc(u.expertise||'—')}</td><td>${u.role}</td><td>${u.active?'ya':'tidak'}</td>
@@ -1177,6 +1181,9 @@ async function adminView(){closeDoc();const [{users},{docs},groups]=await Promis
  <select name=role>${groups.map(g=>`<option ${g.name==='editor'?'selected':''}>${esc(g.name)}</option>`).join('')}</select><button class=p>Tambah</button></form>
  <h3 style="margin-top:24px">Penugasan bab</h3><p><select id=ad>${docs.map(d=>`<option value=${d.id}>${esc(d.filename)} (#${d.id})</option>`).join('')}</select></p><div id=asg></div></div>`;
  $('#ab').onclick=e=>{e.preventDefault();docsView()};
+ if($('#wldetail'))$('#wldetail').onchange=async e=>{
+  try{await api('POST','/admin/settings',{workload_detail:e.target.checked});note('Setelan Beban Tim tersimpan')}
+  catch(x){note(x.message,1);e.target.checked=!e.target.checked}};
  if($('#gopriv'))$('#gopriv').onclick=e=>{e.preventDefault();privilegeView()};
  document.querySelectorAll('[data-u]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/admin/users/${b.dataset.u}/active`,{active:!!+b.dataset.a});adminView()}catch(e){note(e.message,1)}});
  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>editUserDlg(users.find(u=>u.id==b.dataset.edit)));

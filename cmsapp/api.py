@@ -1208,6 +1208,23 @@ def admin_assign():
     return jsonify(ok=True)
 
 
+@bp.get("/admin/settings")
+@auth.require("user_manage")
+def admin_settings_get():
+    return jsonify(settings={"workload_detail": S().get_setting("workload_detail", "0") == "1"})
+
+
+@bp.post("/admin/settings")
+@auth.require("user_manage")
+def admin_settings_set():
+    d = body()
+    if "workload_detail" in d:
+        S().set_setting("workload_detail", "1" if d["workload_detail"] else "0")
+        S().log_activity(g.user["username"], "settings.update", target_type="setting",
+                         summary=f'workload_detail={bool(d["workload_detail"])}')
+    return jsonify(ok=True)
+
+
 @bp.get("/admin/users")
 @auth.require("user_manage")
 def admin_users():

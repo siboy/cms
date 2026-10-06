@@ -570,3 +570,10 @@ CREATE TABLE IF NOT EXISTS cms_user_tasks (
     CONSTRAINT fk_utask_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE,
     CONSTRAINT fk_utask_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- setelan global aplikasi (key-value; mis. workload_detail = tampilkan angka skor Beban Tim ke semua)
+CREATE TABLE IF NOT EXISTS cms_settings (
+    k          VARCHAR(64) PRIMARY KEY,
+    v          TEXT,
+    updated_at VARCHAR(19) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
