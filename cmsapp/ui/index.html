@@ -514,10 +514,15 @@ async function tabTim(){const {team}=await api('GET',`/projects/${curProj}/team`
  <button class=p>Tambah</button></form>
  <datalist id=roleSuggest>${opts.map(r=>`<option value="${esc(r)}">`).join('')}</datalist>`:''}</div>`;
  if(canManage){
-  team.forEach(t=>{const el=$(`[data-title="${t.row_id}"]`);if(!el)return;const i=document.createElement('input');
-   i.type='text';i.value=t.title||ROLE_DEFAULT;i.setAttribute('list','roleSuggest');i.style.cssText='font-size:13px;width:220px';
-   i.onchange=async()=>{try{await api('PATCH',`/projects/${curProj}/team/${t.row_id}`,{title:i.value});tabTim()}catch(e){note(e.message,1)}};
-   el.append(i)});
+  // dropdown select SUNGGUHAN (bukan input+datalist — datalist di banyak browser/HP tak membuka
+  // daftar saat diklik, terasa "mati"); role bebas tetap bisa via opsi "Role lain…"
+  team.forEach(t=>{const el=$(`[data-title="${t.row_id}"]`);if(!el)return;const cur=t.title||ROLE_DEFAULT;
+   const s=document.createElement('select');s.style.cssText='font-size:13px;max-width:240px;width:100%';
+   s.innerHTML=[...new Set([cur,...opts])].map(r=>`<option value="${esc(r)}" ${r===cur?'selected':''}>${esc(r)}</option>`).join('')
+    +'<option value="__o">✏️ Role lain…</option>';
+   const set=async v=>{try{await api('PATCH',`/projects/${curProj}/team/${t.row_id}`,{title:v});tabTim()}catch(e){note(e.message,1);s.value=cur}};
+   s.onchange=()=>{if(s.value==='__o'){const v=prompt('Role baru:',cur);(v&&v.trim())?set(v.trim()):s.value=cur}else set(s.value)};
+   el.append(s)});
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(!confirm('Keluarkan dari tim?'))return;
    try{await api('DELETE',`/projects/${curProj}/team/${b.dataset.rm}`);tabTim()}catch(e){note(e.message,1)}});
   const f=$('#fteam');
