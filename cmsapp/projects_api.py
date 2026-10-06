@@ -268,6 +268,52 @@ def my_tasks_add(pid):
     return jsonify(ids=ids), 201
 
 
+def _tag_and_create_tasks(t: dict, uids: list[int]):
+    """Tag pengguna di task Gantt + otomatis buat entri di section Task tiap orang (idempoten per
+    gantt_task_id) + notifikasi — dipakai dialog Kalender/sub-task Gantt maupun endpoint tag lama."""
+    if not uids:
+        return
+    st = S()
+    st.tag_task(t["id"], uids, tagged_by=g.user["username"])
+    rng = f' ({t.get("start_date")} → {t.get("end_date")})' if t.get("start_date") else ""
+    for uid in uids:
+        st.add_user_task(t["project_id"], uid, f'{t.get("title") or "(tanpa judul)"}{rng}',
+                         topic="jadwal", source="gantt", gantt_task_id=t["id"], created_by=g.user["username"])
+        if uid != g.user["id"]:
+            st.add_notification(uid, "task_assign", project_id=t["project_id"], actor=g.user["username"],
+                                summary=f'{g.user["username"]} menandaimu di jadwal/task: '
+                                        f'{(t.get("title") or "")[:100]}{rng}')
+
+
+@bp.post("/user-tasks/<int:tid>/progress")
+@auth.require()
+def user_task_progress(tid):
+    """Update progres task Gantt dari section Task oleh orang yang di-tag: {percent} / {status:
+    'ongoing'|'complete'} / {auto:true} (task bab dokumen: % dihitung sistem dari isi heading —
+    >=1500 char atau ditandai DONE = penuh, kurang = proporsional)."""
+    t = S().get_user_task(tid)
+    if t["user_id"] != g.user["id"] and not g.user.get("is_super"):
+        abort(403, description="hanya pemilik task")
+    if not t.get("gantt_task_id"):
+        raise ValueError("task ini tidak tertaut ke Gantt")
+    gt = _task_row(t["gantt_task_id"])
+    d = body()
+    if d.get("auto"):
+        if not (gt.get("doc_id") and gt.get("chapter_block_id")):
+            raise ValueError("hitung otomatis hanya utk task bab dokumen laporan")
+        calc = S().chapter_fill_progress(gt["doc_id"], gt["chapter_block_id"])
+        pct = calc["percent"]
+    elif d.get("status") in ("ongoing", "complete"):
+        pct = 100 if d["status"] == "complete" else min(int(d.get("percent") or gt.get("progress_percent") or 10), 99)
+    else:
+        pct = max(0, min(100, int(d.get("percent") or 0)))
+    status = "selesai" if pct >= 100 else ("berjalan" if pct > 0 else "belum_mulai")
+    S().update_project_task(gt["id"], progress_percent=pct, status=status)
+    S().log_activity(g.user["username"], "task.update", target_type="task", target_id=gt["id"],
+                     project_id=gt["project_id"], summary=f'progres {pct}% ({status})')
+    return jsonify(percent=pct, status=status)
+
+
 @bp.post("/user-tasks/<int:tid>/done")
 @auth.require()
 def user_task_done(tid):
@@ -335,9 +381,14 @@ def project_calendar_add(pid):
                                   status=d.get("status") or "belum_mulai",
                                   parent_task_id=int(parent) if parent else None,
                                   calendar_only=not to_gantt, user=g.user["username"])
+    # "add tim": tag anggota -> notifikasi + otomatis masuk section Task mereka
+    team = {(m.get("username") or "").lower(): m["user_id"] for m in S().list_project_team(pid) if m.get("user_id")}
+    uids = set(team.values()) if d.get("all") else {team[u.lower()] for u in (d.get("usernames") or []) if u.lower() in team}
+    _tag_and_create_tasks({"id": tid, "project_id": pid, "title": title,
+                           "start_date": d["start_date"], "end_date": d["end_date"]}, sorted(uids))
     S().log_activity(g.user["username"], "task.create", target_type="task", target_id=tid, project_id=pid,
-                     summary=f'[kalender] {title}')
-    return jsonify(id=tid), 201
+                     summary=f'[kalender] {title}' + (f' +{len(uids)} ditag' if uids else ''))
+    return jsonify(id=tid, tagged=len(uids)), 201
 
 
 def _notify_chat_mentions(pid: int, text: str):
@@ -769,7 +820,7 @@ def tag_task(tid):
     _project_visible(t["project_id"])
     d = body()
     uids = [int(u) for u in d.get("user_ids", [])]
-    S().tag_task(tid, uids, tagged_by=g.user["username"])
+    _tag_and_create_tasks(t, uids)                     # tag + auto entri section Task + notifikasi
     S().log_activity(g.user["username"], "task.tag", target_type="task", target_id=tid, project_id=t["project_id"],
                      summary=f'{len(uids)} pengguna ditandai')
     return jsonify(ok=True)

@@ -562,6 +562,7 @@ CREATE TABLE IF NOT EXISTS cms_user_tasks (
     text        TEXT,
     source      VARCHAR(10) DEFAULT 'chat',
     chat_id     INT DEFAULT NULL,
+    gantt_task_id INT DEFAULT NULL,
     created_by  VARCHAR(100) DEFAULT NULL,
     created_at  VARCHAR(19) DEFAULT NULL,
     done_at     VARCHAR(19) DEFAULT NULL,
@@ -592,3 +593,16 @@ END$$
 DELIMITER ;
 CALL cms_tmp_migrate_calonly();
 DROP PROCEDURE cms_tmp_migrate_calonly;
+
+-- tautan task personal <-> baris Gantt (2026-10-06): tag di jadwal/sub-task otomatis bikin entri Task
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_utask_gantt;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_utask_gantt()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_tasks' AND COLUMN_NAME='gantt_task_id') THEN
+    ALTER TABLE cms_user_tasks ADD COLUMN gantt_task_id INT DEFAULT NULL AFTER chat_id;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_utask_gantt();
+DROP PROCEDURE cms_tmp_migrate_utask_gantt;

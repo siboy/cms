@@ -124,6 +124,10 @@ header b{letter-spacing:.2px}
 .mbox{max-height:180px;overflow-y:auto;border-top:1px solid var(--line);background:var(--card);font-size:13px}
 .mbox .mi{padding:6px 12px;cursor:pointer}.mbox .mi:hover{background:var(--acc-soft);color:var(--acc)}
 /* Task personal + Kalender (tab Laporan) */
+.tagteam{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12.5px;max-height:120px;overflow-y:auto;
+ border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.tagteam label{display:inline-flex;gap:4px;align-items:center;color:var(--fg);cursor:pointer}
+.tagteam input{width:auto}
 .tki{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);border-radius:9px;font-size:13px}
 .tki:hover{border-color:var(--acc)}.tki input[type=checkbox]{margin-top:3px}
 .calhead{display:grid;grid-template-columns:repeat(7,1fr);font-size:10.5px;color:var(--mut);text-align:center;margin-bottom:2px}
@@ -690,11 +694,22 @@ async function renderTasks(){const box=$('#tklist');if(!box)return;
   box.innerHTML=items.map(t=>`<div class=tki style="${t.done_at?'opacity:.55':''}">
    <input type=checkbox data-tk="${t.id}" ${t.done_at?'checked':''} title="Tandai selesai">
    <div style="flex:1;min-width:0"><div style="word-break:break-word">${esc(t.text).replace(/(^|\s)([#@][A-Za-z0-9_.:\-]+)/g,'$1<span class=mn>$2</span>')}</div>
-    <small style="color:var(--mut)">${t.topic?`<span class=badge style="background:#6b21a8">#${esc(t.topic)}</span> `:''}dari ${esc(t.created_by||'?')} · ${esc((t.created_at||'').slice(0,16))}${tkAll&&t.project_name?` · 📁 ${esc(t.project_name)}`:''}</small></div>
+    <small style="color:var(--mut)">${t.topic?`<span class=badge style="background:#6b21a8">#${esc(t.topic)}</span> `:''}dari ${esc(t.created_by||'?')} · ${esc((t.created_at||'').slice(0,16))}${tkAll&&t.project_name?` · 📁 ${esc(t.project_name)}`:''}</small>
+    ${t.gantt_task_id?`<div style="display:flex;gap:6px;align-items:center;margin-top:5px;flex-wrap:wrap">
+     <div class=pbar style="flex:1;min-width:80px;max-width:180px"><i style="width:${t.gantt_progress||0}%"></i></div>
+     <small style="color:var(--mut)">${t.gantt_progress||0}% · ${esc(t.gantt_status||'')}</small>
+     <input type=number data-pin="${t.id}" value="${t.gantt_progress||0}" min=0 max=100 style="width:58px;font-size:12px;padding:2px 5px">%
+     <button type=button data-pset="${t.id}" style="font-size:11px;padding:2px 8px">Simpan</button>
+     ${t.gantt_doc_id&&t.gantt_chapter_id?`<button type=button data-pauto="${t.id}" style="font-size:11px;padding:2px 8px" title="Dihitung sistem dari isi heading bab: >=1500 karakter / ditandai DONE = penuh, kurang = proporsional">⚡ Auto %</button>`:''}
+    </div>`:''}</div>
    <button type=button data-tkdel="${t.id}" title="Hapus task" style="padding:1px 7px">✕</button></div>`).join('')
    ||'<small style="color:var(--mut)">Belum ada task utkmu.</small>';
   box.querySelectorAll('[data-tk]').forEach(cb=>cb.onchange=async()=>{try{await api('POST',`/user-tasks/${cb.dataset.tk}/done`,{done:cb.checked});renderTasks()}catch(e){note(e.message,1)}});
-  box.querySelectorAll('[data-tkdel]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus task ini?')){try{await api('DELETE',`/user-tasks/${b.dataset.tkdel}`);renderTasks()}catch(e){note(e.message,1)}}})}
+  box.querySelectorAll('[data-tkdel]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus task ini?')){try{await api('DELETE',`/user-tasks/${b.dataset.tkdel}`);renderTasks()}catch(e){note(e.message,1)}}});
+  box.querySelectorAll('[data-pset]').forEach(b=>b.onclick=async()=>{const v=+box.querySelector(`[data-pin="${b.dataset.pset}"]`).value;
+   try{await api('POST',`/user-tasks/${b.dataset.pset}/progress`,{percent:v});note('Progres Gantt diperbarui');renderTasks()}catch(e){note(e.message,1)}});
+  box.querySelectorAll('[data-pauto]').forEach(b=>b.onclick=async()=>{
+   try{const r=await api('POST',`/user-tasks/${b.dataset.pauto}/progress`,{auto:true});note(`Progres otomatis: ${r.percent}%`);renderTasks()}catch(e){note(e.message,1)}})}
  catch(e){box.innerHTML=`<small style="color:var(--mut)">${esc(e.message)}</small>`}}
 async function taskAddDlg(){
  let parents=[];try{parents=(await api('GET',`/projects/${curProj}/tasks`)).tasks.filter(t=>!t.parent_task_id)}catch(e){}
@@ -736,7 +751,9 @@ async function renderCal(){const grid=$('#calgrid');if(!grid||!calCur)return;
  grid.innerHTML=html+'</div>';
  grid.querySelectorAll('.cald').forEach(c=>c.onclick=()=>calAddDlg(c.dataset.d))}
 async function calAddDlg(day,onDone,defGantt){onDone=onDone||renderCal;
- let parents=[];try{parents=(await api('GET',`/projects/${curProj}/tasks`)).tasks.filter(t=>!t.parent_task_id)}catch(e){}
+ let parents=[],team=[];
+ try{parents=(await api('GET',`/projects/${curProj}/tasks`)).tasks.filter(t=>!t.parent_task_id)}catch(e){}
+ try{team=(await api('GET',`/projects/${curProj}/team`)).team.filter(t=>t.username)}catch(e){}
  const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<form class=dlg><b>📅 Jadwal / sub-task baru — ${esc(idDate(day))}</b>
  <label>Agenda / task<input name=title required placeholder="mis. Survei lapangan / Uji laboratorium / Rapat pemrakarsa"></label>
@@ -747,13 +764,18 @@ async function calAddDlg(day,onDone,defGantt){onDone=onDone||renderCal;
   <option value="0">Task utama</option>
   ${parents.map(t=>`<option value="${t.id}">${esc((t.title||'(tanpa judul)').slice(0,60))}</option>`).join('')}</select></label>
  <small style="color:var(--mut)">Default: hanya tampil di kalender. Pilih "Ya" bila agenda ini bagian dari pekerjaan di Gantt chart.</small>
+ <label>Tag tim (yang dicentang dapat notifikasi & jadwal ini masuk daftar Task mereka)</label>
+ <div class=tagteam><label><input type=checkbox name=tall> 👥 @all — semua anggota</label>
+  ${team.map(u=>`<label><input type=checkbox name=tu value="${esc(u.username)}"> ${esc(u.name||u.username)}</label>`).join('')||'<small style="color:var(--mut)">belum ada anggota tim</small>'}</div>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
  if(defGantt)m.querySelector('[name=parent]').value='0';   // dibuka dari Gantt: default masuk Gantt
  m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target;const pv=f.parent.value;
-  try{await api('POST',`/projects/${curProj}/calendar`,{title:f.title.value,start_date:f.sd.value,end_date:f.ed.value,
-   parent_task_id:(pv&&pv!=='0')?+pv:null,to_gantt:pv!==''});
-   m.remove();note(pv===''?'Agenda kalender tersimpan':'Tersimpan (muncul di Gantt & Kalender)');onDone()}catch(x){note(x.message,1)}}}
+  const who=[...m.querySelectorAll('[name=tu]:checked')].map(x=>x.value);
+  try{const r=await api('POST',`/projects/${curProj}/calendar`,{title:f.title.value,start_date:f.sd.value,end_date:f.ed.value,
+   parent_task_id:(pv&&pv!=='0')?+pv:null,to_gantt:pv!=='',all:f.tall.checked,usernames:who});
+   m.remove();note((pv===''?'Agenda kalender tersimpan':'Tersimpan (muncul di Gantt & Kalender)')
+    +(r.tagged?` — ${r.tagged} anggota ditag`:''));onDone();renderTasks()}catch(x){note(x.message,1)}}}
 /* ===== diskusi tim (chat) di tab Laporan: polling 4 dtk, kirim teks/gambar (Ctrl+V / drag-drop) ===== */
 let chatTimer=null,chatLast=0;
 function stopChat(){if(chatTimer){clearInterval(chatTimer);chatTimer=null}}
@@ -1437,12 +1459,15 @@ const GENLIST_LABELS={toc:'Daftar Isi',tof_tabel:'Daftar Tabel',tof_gambar:'Daft
 const HIDEABLE_KINDS=['heading','table','image','caption'];
 function view(b){const el=document.createElement('div');el.className='blk'+(b.kind==='heading'?' h':'')+(b.locked_by?' locked':'');el.dataset.id=b.id;
  const canEdit=!!b.can_edit,gen=b.kind==='heading'&&(b.data||{}).generated,hidden=HIDEABLE_KINDS.includes(b.kind)&&(b.data||{}).hidden;
+ const sdone=b.kind==='heading'&&!!(b.data||{}).section_done;
  const canOutline=hasPerm('outline_manage');
- el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
+ el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${sdone?'<span class=badge style="background:#2da44e" title="Heading ditandai selesai diisi — dihitung penuh di progres task bab">✅ DONE</span>':''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
  el.append(bodyOf(b));const a=document.createElement('div');a.className='acts';
  const btn=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
  if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
   btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
+ if(b.kind==='heading'&&canEdit)btn(sdone?'✅ DONE (klik utk batalkan)':'☐ Tandai heading DONE',
+  ()=>api('POST',`/blocks/${b.id}/section-done`,{done:!sdone,version:b.version}).then(()=>refreshBlock(b.id)));
  if(canOutline&&HIDEABLE_KINDS.includes(b.kind))btn(hidden?'👁 Tampilkan lagi':'🙈 Sembunyikan dari ekspor',()=>api('POST',`/blocks/${b.id}/hidden`,{hidden:!hidden,version:b.version}));
  if(['paragraph','heading','list_item','caption','note'].includes(b.kind)&&canEdit)btn('Edit',()=>edit(el,b));
  if(canEdit){btn('+ Blok',()=>blockDlg(b));

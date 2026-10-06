@@ -49,6 +49,19 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Tag tim di jadwal/Gantt -> auto Task + progres + auto-% isi heading (2026-10-06)** —
+  (1) dialog Kalender/sub-task Gantt punya checklist "Tag tim" (@all / per orang): yang ditag di-`tag_task`
+  + OTOMATIS dapat entri di section Task (kolom BARU `cms_user_tasks.gantt_task_id`, idempoten per task)
+  + notifikasi; endpoint tag lama `/tasks/<id>/tag` ikut lewat helper yg sama (`_tag_and_create_tasks`).
+  (2) Dari section Task, pemilik bisa update progres task Gantt tertaut: `POST /user-tasks/<id>/progress`
+  {percent}/{status: ongoing|complete}/{auto} -> update progress_percent+status baris Gantt (bar progres
+  + input % + tombol Simpan di kartu task). (3) AUTO-%: utk task bab dokumen (doc_id+chapter_block_id),
+  `BlockStore.chapter_fill_progress`: tiap heading/sub-heading subtree = 1 bagian; DONE bila ditandai
+  `data.section_done` (tombol "☐ Tandai heading DONE" di editor + badge ✅, endpoint
+  `POST /blocks/<id>/section-done`) ATAU isi >= 1500 char; kurang = proporsional chars/1500; tombol
+  "⚡ Auto %" di kartu task. **Diuji**: 14 skenario baru lolos (tag->task idempoten, 70%->berjalan,
+  complete->selesai->gantt ikut, parsial ~50%, >=1500 penuh, DONE flag menskip, auto endpoint 100%).
+  Live di :8879 (skema gantt_task_id termigrasi).
 - [x] **Tab Laporan dirombak: seksi Laporan gabungan + Task personal + Kalender; chat hashtag (2026-10-06)**
   — permintaan "Interim->Task, Final->Kalender": seksi draft/interim/final DIGABUNG jadi satu kartu
   "📄 Laporan" (sub-judul per tipe — dokumen interim/final TIDAK hilang), lalu dua seksi baru:

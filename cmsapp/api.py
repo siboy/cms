@@ -605,6 +605,20 @@ def set_hidden(bid):
     return jsonify(id=bid, version=v)
 
 
+@bp.post("/blocks/<int:bid>/section-done")
+@auth.require("block_edit_all", "block_edit_assigned")
+def section_done(bid):
+    """Tandai heading/sub-heading SELESAI diisi ({done:true/false}) — dipakai perhitungan % otomatis
+    task bab di Gantt/Task (heading DONE dihitung penuh walau isi < 1500 karakter; tanpa dicentang,
+    isi >= 1500 karakter otomatis dianggap DONE)."""
+    d = body()
+    b = guard(bid)
+    v = S().set_section_done(bid, bool(d.get("done")), g.user["username"], expected_version=d.get("version"))
+    emit(b["doc_id"], "block", id=bid, version=v, log_action="block.section_done",
+         log_summary=f'heading #{bid}: {"DONE" if d.get("done") else "belum done"}')
+    return jsonify(id=bid, version=v)
+
+
 @bp.post("/blocks/<int:bid>/outline-move")
 @auth.require("outline_manage")
 def move_outline(bid):

@@ -121,7 +121,7 @@ CREATE INDEX IF NOT EXISTS idx_pchat ON cms_project_chat(project_id, id);
 CREATE TABLE IF NOT EXISTS cms_settings (k TEXT PRIMARY KEY, v TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS cms_user_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
-    topic TEXT, text TEXT, source TEXT DEFAULT 'chat', chat_id INTEGER,
+    topic TEXT, text TEXT, source TEXT DEFAULT 'chat', chat_id INTEGER, gantt_task_id INTEGER,
     created_by TEXT, created_at TEXT, done_at TEXT, deleted_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_utask_user ON cms_user_tasks(user_id, done_at);
 CREATE INDEX IF NOT EXISTS idx_utask_proj ON cms_user_tasks(project_id);
@@ -693,11 +693,18 @@ class BlockStore:
 
     # ------------------------------------------------------------ task personal (dari Diskusi #task/#topik atau manual)
     def add_user_task(self, project_id: int, user_id: int, text: str, topic: Optional[str] = None,
-                      source: str = "chat", chat_id: Optional[int] = None, created_by: str = "") -> int:
+                      source: str = "chat", chat_id: Optional[int] = None, created_by: str = "",
+                      gantt_task_id: Optional[int] = None) -> int:
         with self._tx() as c:
-            cur = self._x(c, "INSERT INTO cms_user_tasks(project_id,user_id,topic,text,source,chat_id,created_by,created_at) "
-                             "VALUES (?,?,?,?,?,?,?,?)",
-                          (project_id, user_id, (topic or None), (text or "")[:2000], source, chat_id, created_by, _now()))
+            if gantt_task_id:                           # 1 task Gantt = maks 1 entri per user (tag ulang aman)
+                ex = self._one(c, "SELECT id FROM cms_user_tasks WHERE user_id=? AND gantt_task_id=? AND deleted_at IS NULL",
+                               (user_id, gantt_task_id))
+                if ex:
+                    return ex["id"]
+            cur = self._x(c, "INSERT INTO cms_user_tasks(project_id,user_id,topic,text,source,chat_id,gantt_task_id,created_by,created_at) "
+                             "VALUES (?,?,?,?,?,?,?,?,?)",
+                          (project_id, user_id, (topic or None), (text or "")[:2000], source, chat_id, gantt_task_id,
+                           created_by, _now()))
             return cur.lastrowid
 
     def list_user_tasks(self, user_id: int, project_id: Optional[int] = None,
@@ -709,8 +716,11 @@ class BlockStore:
         if not include_done:
             w.append("t.done_at IS NULL")
         with self._tx() as c:
-            return self._all(c, f"SELECT t.*, pr.name AS project_name FROM cms_user_tasks t "
-                                f"LEFT JOIN cms_projects pr ON pr.id=t.project_id "
+            return self._all(c, f"SELECT t.*, pr.name AS project_name, gt.progress_percent AS gantt_progress, "
+                                f"gt.status AS gantt_status, gt.doc_id AS gantt_doc_id, "
+                                f"gt.chapter_block_id AS gantt_chapter_id, gt.start_date AS gantt_start, gt.end_date AS gantt_end "
+                                f"FROM cms_user_tasks t LEFT JOIN cms_projects pr ON pr.id=t.project_id "
+                                f"LEFT JOIN cms_project_tasks gt ON gt.id=t.gantt_task_id "
                                 f"WHERE {' AND '.join(w)} ORDER BY t.done_at IS NOT NULL, t.id DESC LIMIT ?",
                              [*p, limit])
 
@@ -728,6 +738,59 @@ class BlockStore:
     def delete_user_task(self, tid: int):
         with self._tx() as c:
             self._x(c, "UPDATE cms_user_tasks SET deleted_at=? WHERE id=?", (_now(), tid))
+
+    def set_section_done(self, block_id: int, done: bool, user: str = "", expected_version=None) -> int:
+        """Tandai heading/sub-heading SELESAI diisi (data.section_done) — dipakai hitung % otomatis task
+        bab (chapter_fill_progress): heading ber-flag DONE dihitung penuh walau isinya < 1500 karakter."""
+        b = self.get_block(block_id)
+        if b["kind"] != "heading":
+            raise ValueError("hanya blok heading")
+        data = dict(b["data"] or {})
+        if done:
+            data["section_done"] = True
+        else:
+            data.pop("section_done", None)
+        return self.update_block(block_id, user, data=data, expected_version=expected_version)
+
+    def chapter_fill_progress(self, doc_id: int, chapter_block_id: int) -> dict:
+        """% kesiapan bab utk task Gantt dokumen: tiap heading/sub-heading di subtree bab = 1 bagian.
+        Bagian DONE bila heading ditandai section_done (tombol di editor) ATAU isi teks di bawahnya
+        >= 1500 karakter; kurang dari itu dihitung parsial (chars/1500). Return {percent, sections,
+        done_sections}."""
+        with self._tx() as c:
+            rows = self._all(c, "SELECT id, kind, level, text, data FROM cms_blocks "
+                                "WHERE doc_id=? AND deleted_at IS NULL ORDER BY seq", (doc_id,))
+        idx = next((i for i, r in enumerate(rows) if r["id"] == chapter_block_id), None)
+        if idx is None:
+            raise KeyError(f"bab {chapter_block_id} tidak ada")
+        lvl = rows[idx]["level"] or 1
+        sub = [rows[idx]]
+        for r in rows[idx + 1:]:
+            if r["kind"] == "heading" and (r["level"] or 1) <= lvl:
+                break
+            sub.append(r)
+        sections, cur = [], None
+        for r in sub:
+            if r["kind"] == "heading":
+                d = r["data"]
+                if isinstance(d, str):
+                    try:
+                        d = json.loads(d)
+                    except Exception:                   # noqa: BLE001
+                        d = {}
+                cur = {"chars": 0, "done_flag": bool((d or {}).get("section_done"))}
+                sections.append(cur)
+            elif cur is not None:
+                cur["chars"] += len(r["text"] or "")
+        if not sections:
+            return {"percent": 0, "sections": 0, "done_sections": 0}
+        tot = done_n = 0.0
+        for s0 in sections:
+            ratio = 1.0 if (s0["done_flag"] or s0["chars"] >= 1500) else min(s0["chars"] / 1500.0, 1.0)
+            tot += ratio
+            done_n += 1 if ratio >= 1.0 else 0
+        return {"percent": int(round(100 * tot / len(sections))), "sections": len(sections),
+                "done_sections": int(done_n)}
 
     # ------------------------------------------------------------ kalender proyek (= cms_project_tasks, data Gantt yang sama)
     def calendar_tasks(self, project_ids: list[int], date_from: str, date_to: str) -> list[dict]:
