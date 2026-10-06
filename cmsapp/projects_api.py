@@ -323,8 +323,14 @@ def project_calendar_add(pid):
     title = (d.get("title") or "").strip()
     if not title or not d.get("start_date") or not d.get("end_date"):
         raise ValueError("title, start_date, end_date wajib")
+    parent = d.get("parent_task_id")
+    if parent:                                        # sub-task: induk harus task proyek INI
+        pt = _task_row(int(parent))
+        if pt["project_id"] != pid:
+            raise ValueError("task induk bukan milik proyek ini")
     tid = S().upsert_project_task(pid, title=title[:200], start_date=d["start_date"], end_date=d["end_date"],
-                                  status=d.get("status") or "belum_mulai", user=g.user["username"])
+                                  status=d.get("status") or "belum_mulai",
+                                  parent_task_id=int(parent) if parent else None, user=g.user["username"])
     S().log_activity(g.user["username"], "task.create", target_type="task", target_id=tid, project_id=pid,
                      summary=f'[kalender] {title}')
     return jsonify(id=tid), 201

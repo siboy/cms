@@ -698,17 +698,30 @@ async function renderTasks(){const box=$('#tklist');if(!box)return;
   box.querySelectorAll('[data-tk]').forEach(cb=>cb.onchange=async()=>{try{await api('POST',`/user-tasks/${cb.dataset.tk}/done`,{done:cb.checked});renderTasks()}catch(e){note(e.message,1)}});
   box.querySelectorAll('[data-tkdel]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus task ini?')){try{await api('DELETE',`/user-tasks/${b.dataset.tkdel}`);renderTasks()}catch(e){note(e.message,1)}}})}
  catch(e){box.innerHTML=`<small style="color:var(--mut)">${esc(e.message)}</small>`}}
-function taskAddDlg(){const m=document.createElement('div');m.className='mask';
+async function taskAddDlg(){
+ let parents=[];try{parents=(await api('GET',`/projects/${curProj}/tasks`)).tasks.filter(t=>!t.parent_task_id)}catch(e){}
+ const today=dstr(new Date());
+ const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<form class=dlg><b>✅ Task baru</b>
  <label>Tugas<textarea name=text rows=2 required placeholder="mis. lengkapi data kualitas air bab 3"></textarea></label>
  <label>Topik (opsional, tanpa #)<input name=topic placeholder="mis. survei-air"></label>
  <label>Untuk (username, pisah koma; kosong = saya sendiri)<input name=who placeholder="mis. siti, agus"></label>
  <label style="flex-direction:row;display:flex;gap:6px;align-items:center">Utk SEMUA anggota tim <input type=checkbox name=all style="width:auto"></label>
+ <label>Masukkan juga ke Gantt chart (opsional)
+  <select name=gparent><option value="">— tidak dimasukkan ke Gantt —</option>
+  <option value="0">Masuk Gantt sebagai TASK UTAMA</option>
+  ${parents.map(t=>`<option value="${t.id}">↳ sub-task dari: ${esc((t.title||'(tanpa judul)').slice(0,55))}</option>`).join('')}</select></label>
+ <div style="display:flex;gap:8px"><label style="flex:1">Mulai (utk Gantt)<input type=date name=gsd value="${today}"></label>
+ <label style="flex:1">Selesai<input type=date name=ged value="${today}"></label></div>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();
  m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target;
   try{await api('POST',`/projects/${curProj}/mytasks`,{text:f.text.value,topic:f.topic.value,
-   usernames:f.who.value.split(',').map(s=>s.trim()).filter(Boolean),all:f.all.checked});m.remove();renderTasks()}catch(x){note(x.message,1)}}}
+   usernames:f.who.value.split(',').map(s=>s.trim()).filter(Boolean),all:f.all.checked});
+   if(f.gparent.value!==''){await api('POST',`/projects/${curProj}/calendar`,{title:f.text.value.slice(0,120),
+    start_date:f.gsd.value||today,end_date:f.ged.value||f.gsd.value||today,
+    parent_task_id:+f.gparent.value||null});note('Task tersimpan + masuk Gantt/Kalender')}
+   m.remove();renderTasks();renderCal()}catch(x){note(x.message,1)}}}
 async function renderCal(){const grid=$('#calgrid');if(!grid||!calCur)return;
  const y=calCur.getFullYear(),mo=calCur.getMonth();
  $('#calttl').textContent=calCur.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
@@ -724,17 +737,23 @@ async function renderCal(){const grid=$('#calgrid');if(!grid||!calCur)return;
    <b>${d.getDate()}</b>${evs.slice(0,3).map(t=>`<span class=cev title="${esc(t.title)} — ${esc(t.project_name)} (${esc(t.start_date)} → ${esc(t.end_date)})" style="${t.project_id!==curProj?'border-left:3px solid var(--warn);opacity:.85':''}">${esc((t.title||'').slice(0,16))}</span>`).join('')}${evs.length>3?`<small style="color:var(--mut)">+${evs.length-3} lagi</small>`:''}</div>`}
  grid.innerHTML=html+'</div>';
  grid.querySelectorAll('.cald').forEach(c=>c.onclick=()=>calAddDlg(c.dataset.d))}
-function calAddDlg(day){const m=document.createElement('div');m.className='mask';
- m.innerHTML=`<form class=dlg><b>📅 Jadwal baru — ${esc(idDate(day))}</b>
- <label>Agenda<input name=title required placeholder="mis. Survei lapangan / Uji laboratorium / Rapat pemrakarsa"></label>
+async function calAddDlg(day,onDone){onDone=onDone||renderCal;
+ let parents=[];try{parents=(await api('GET',`/projects/${curProj}/tasks`)).tasks.filter(t=>!t.parent_task_id)}catch(e){}
+ const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>📅 Jadwal / sub-task baru — ${esc(idDate(day))}</b>
+ <label>Agenda / task<input name=title required placeholder="mis. Survei lapangan / Uji laboratorium / Rapat pemrakarsa"></label>
  <div style="display:flex;gap:8px"><label style="flex:1">Mulai<input type=date name=sd value="${day}" required></label>
  <label style="flex:1">Selesai<input type=date name=ed value="${day}" required></label></div>
- <small style="color:var(--mut)">Jadwal ini otomatis jadi baris di Gantt chart proyek (satu data, dua tampilan).</small>
+ <label>Bagian dari task utama di Gantt (boleh dikosongkan)
+  <select name=parent><option value="">— berdiri sendiri (task utama) —</option>
+  ${parents.map(t=>`<option value="${t.id}">${esc((t.title||'(tanpa judul)').slice(0,60))}</option>`).join('')}</select></label>
+ <small style="color:var(--mut)">Masuk ke Gantt chart & Kalender sekaligus (satu data, dua tampilan); sub-task tampil menjorok di bawah induknya.</small>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
  m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target;
-  try{await api('POST',`/projects/${curProj}/calendar`,{title:f.title.value,start_date:f.sd.value,end_date:f.ed.value});
-   m.remove();note('Jadwal tersimpan (muncul juga di Gantt)');renderCal()}catch(x){note(x.message,1)}}}
+  try{await api('POST',`/projects/${curProj}/calendar`,{title:f.title.value,start_date:f.sd.value,end_date:f.ed.value,
+   parent_task_id:f.parent.value?+f.parent.value:null});
+   m.remove();note('Tersimpan (muncul di Gantt & Kalender)');onDone()}catch(x){note(x.message,1)}}}
 /* ===== diskusi tim (chat) di tab Laporan: polling 4 dtk, kirim teks/gambar (Ctrl+V / drag-drop) ===== */
 let chatTimer=null,chatLast=0;
 function stopChat(){if(chatTimer){clearInterval(chatTimer);chatTimer=null}}
@@ -818,16 +837,24 @@ async function tabGantt(){const [{project:p},{tasks},scurve]=await Promise.all([
  const dates=tasks.flatMap(t=>[t.start_date,t.end_date]).filter(Boolean).concat([p.start_date,p.end_date].filter(Boolean)).map(d=>+new Date(d));
  const lo=dates.length?Math.min(...dates):+new Date(),hi=dates.length?Math.max(...dates):+new Date()+7*86400000;
  const span=Math.max(hi-lo,86400000),pos=d=>(+new Date(d)-lo)/span*100;
+ // susun hirarki: sub-task (parent_task_id) tampil menjorok di bawah induknya
+ const kids={};tasks.forEach(t=>{if(t.parent_task_id)(kids[t.parent_task_id]=kids[t.parent_task_id]||[]).push(t)});
+ const ordered=[];
+ tasks.filter(t=>!t.parent_task_id).forEach(t=>{ordered.push(t);(kids[t.id]||[]).forEach(c=>ordered.push(Object.assign({_sub:1},c)))});
+ tasks.filter(t=>t.parent_task_id&&!tasks.some(x=>x.id===t.parent_task_id)).forEach(t=>ordered.push(t));
  const row=(t,i)=>{const pics=[...new Set([...(t.pic||[]),...(t.tags||[])].map(u=>u.username))];
   const bar=t.start_date&&t.end_date
-   ?`<div class=gtrack><div class=gbar data-idx="${i}" style="left:${pos(t.start_date)}%;width:${Math.max(pos(t.end_date)-pos(t.start_date),2)}%"><i style="width:${t.progress_percent||0}%"></i></div></div>`
+   ?`<div class=gtrack><div class=gbar data-idx="${i}" style="left:${pos(t.start_date)}%;width:${Math.max(pos(t.end_date)-pos(t.start_date),2)}%;${t._sub?'opacity:.75':''}"><i style="width:${t.progress_percent||0}%"></i></div></div>`
    :`<div class=gtrack><div class="gbar unsched" data-idx="${i}">+ jadwalkan</div></div>`;
-  return `<div class=grow><div class=glabel title="${esc(t.title||'')}">${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,34))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
- $('#ptab').innerHTML=(hasPerm('project_tasks_admin')?'<p><button id=ntask>+ Task manual</button></p>':'')
+  return `<div class=grow><div class=glabel title="${esc(t.title||'')}" style="${t._sub?'padding-left:20px;font-size:12px;color:var(--mut)':''}">${t._sub?'↳ ':''}${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,34))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
+ $('#ptab').innerHTML='<p style="display:flex;gap:6px;flex-wrap:wrap">'
+  +'<button id=gsub class=p>+ Sub-task / jadwal</button>'
+  +(hasPerm('project_tasks_admin')?'<button id=ntask>+ Task manual (admin)</button>':'')+'</p>'
   +'<div class=gantt><div class=ghead><span></span><span>'+new Date(lo).toLocaleDateString()+' → '+new Date(hi).toLocaleDateString()+'</span></div>'
-  +tasks.map(row).join('')+'</div>'
+  +ordered.map(row).join('')+'</div>'
   +'<div class=rc style="margin-top:14px"><div class=rh><b>Kurva S — rencana vs realisasi</b></div><div id=scurve></div></div>';
- $('#ptab').querySelectorAll('.gbar').forEach(el=>el.onclick=()=>taskDlg(tasks[+el.dataset.idx]));
+ $('#ptab').querySelectorAll('.gbar').forEach(el=>el.onclick=()=>taskDlg(ordered[+el.dataset.idx]));
+ $('#gsub').onclick=()=>calAddDlg(dstr(new Date()),()=>tabGantt());
  if($('#ntask'))$('#ntask').onclick=()=>taskDlg({});
  renderSCurve($('#scurve'),scurve)}
 
