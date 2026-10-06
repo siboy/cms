@@ -30,7 +30,8 @@ RUN chmod +x /usr/local/bin/claude-runner.sh
 # dari HOME runner — HOME sengaja dibuat = HOME host (lihat compose) agar `~/flask`
 # dst. di skrip/Makefile menunjuk ke repo yang di-mount.
 ENV CLAUDE_CONFIG_DIR=/claude-home/.claude \
-    DISABLE_AUTOUPDATER=1
+    DISABLE_AUTOUPDATER=1 \
+    LANG=C.UTF-8 LC_ALL=C.UTF-8
 RUN mkdir -p /claude-home && chmod 777 /claude-home
 
 ENTRYPOINT ["/usr/local/bin/claude-runner.sh"]
