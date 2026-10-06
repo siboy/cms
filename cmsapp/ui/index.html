@@ -123,6 +123,16 @@ header b{letter-spacing:.2px}
 .mn{color:var(--acc);font-weight:600}
 .mbox{max-height:180px;overflow-y:auto;border-top:1px solid var(--line);background:var(--card);font-size:13px}
 .mbox .mi{padding:6px 12px;cursor:pointer}.mbox .mi:hover{background:var(--acc-soft);color:var(--acc)}
+/* Task personal + Kalender (tab Laporan) */
+.tki{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);border-radius:9px;font-size:13px}
+.tki:hover{border-color:var(--acc)}.tki input[type=checkbox]{margin-top:3px}
+.calhead{display:grid;grid-template-columns:repeat(7,1fr);font-size:10.5px;color:var(--mut);text-align:center;margin-bottom:2px}
+.calbody{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cald{min-height:58px;border:1px solid var(--line);border-radius:6px;padding:2px 4px;font-size:11px;cursor:pointer;overflow:hidden}
+.cald:hover{border-color:var(--acc)}.cald.dim{opacity:.45}.cald.today{border-color:var(--acc);background:var(--acc-soft)}
+.cald b{font-size:10.5px;color:var(--mut)}
+.cev{display:block;background:var(--acc-soft);color:var(--acc);border-radius:4px;padding:0 3px;margin-top:1px;
+ font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .repmenu{display:none}
 /* polish section Manajemen Proyek (desktop & HP): tab pill berikon, kartu lega, baris laporan rapi */
 #docs{padding-top:12px}
@@ -300,7 +310,7 @@ function resetPasswordView(token){$('#app').innerHTML=`<form id=rp><h3>Atur pass
    note('Password berhasil diubah, silakan login');history.replaceState(null,'',location.pathname);boot()}
   catch(x){$('#rpe').textContent=x.message}}}
 function setNotif(n){const b=$('#bnotif');b.hidden=!n;b.textContent='🔔 '+n}
-const NOTIF_LABELS={pic_assign:'📌 PIC',comment:'💬 Komentar',comment_reply:'💬 Balasan',chat_mention:'🔔 Disebut di Diskusi'};
+const NOTIF_LABELS={pic_assign:'📌 PIC',comment:'💬 Komentar',comment_reply:'💬 Balasan',chat_mention:'🔔 Disebut di Diskusi',task_assign:'✅ Task baru'};
 async function notifPanel(){document.querySelector('.notifd')?.remove();
  let tags=[],notifs=[];
  try{tags=(await api('GET','/me/tags?unread=1')).tags}catch(e){}
@@ -625,7 +635,18 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  const row=d=>`<p><a href="#" data-open="${d.doc_id}">${esc(d.label||d.filename)}</a> <small>${esc(d.doc_status)}</small> ${d.is_printed?'<span class=badge>Dicetak</span>':''}
  ${canManage?`<button data-pr="${d.id}" data-v="${d.is_printed?0:1}">${d.is_printed?'Batal cetak':'Tandai dicetak'}</button>`:''}</p>`;
  $('#ptab').innerHTML=`<div class=lrwrap id=lrw><div class=lleft>`
- +['draft','interim','final'].map(t=>`<div class=rc data-rt="${t}"><div class=rh><b>${t[0].toUpperCase()+t.slice(1)}</b></div>${grp(t).map(row).join('')||'<p style="color:var(--mut)">Belum ada.</p>'}</div>`).join('')
+ +`<div class=rc data-rt=laporan><div class=rh><b>📄 Laporan</b></div>
+   ${['draft','interim','final'].map(t=>`<div style="margin:8px 0 4px;font-weight:600;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">${t} (${grp(t).length})</div>${grp(t).map(row).join('')||'<small style="color:var(--mut)">— belum ada —</small>'}`).join('')}</div>`
+ +`<div class=rc data-rt=task><div class=rh><b>✅ Task</b>
+   <label style="font-size:11.5px;color:var(--mut);display:flex;gap:4px;align-items:center;margin-left:auto"><input type=checkbox id=tkall> lintas proyek</label>
+   <button type=button id=tkadd>+ Task</button></div>
+   <p style="color:var(--mut);font-size:12px;margin:2px 0 8px">Dari Diskusi: tulis <b>#task @nama</b> (atau <b>#namatopik @tim</b> / <b>@all</b>) — otomatis masuk daftar task orang yang di-tag. Tanpa tag = catatan tugasmu sendiri.</p>
+   <div id=tklist style="display:grid;gap:6px"></div></div>`
+ +`<div class=rc data-rt=kalender><div class=rh style="gap:6px"><b>📅 Kalender</b>
+   <button type=button id=calprev style="padding:2px 9px">‹</button><b id=calttl style="font-size:13px"></b><button type=button id=calnext style="padding:2px 9px">›</button>
+   <label style="font-size:11.5px;color:var(--mut);display:flex;gap:4px;align-items:center;margin-left:auto"><input type=checkbox id=callall ${calAll?'checked':''}> semua proyek saya</label></div>
+   <p style="color:var(--mut)!important;font-size:12px;margin:2px 0 8px">Klik tanggal utk menjadwalkan (survei, uji lab, rapat, dll). Jadwal = baris Gantt chart proyek — satu data, dua tampilan. Jadwal proyek lain bergaris oranye.</p>
+   <div id=calgrid></div></div>`
  +(canManage?`<div class=rc><div class=rh><b>Tambah laporan</b></div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
  <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
@@ -640,8 +661,13 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
     <textarea id=cin rows=2 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
     <button class=p type=button id=csend>➤</button></div>
   </div></div></div>
- <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=draft>Draft</button><button data-m=interim>Interim</button><button data-m=final>Final</button></div>`;
- initChat();
+ <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=task>✅ Task</button><button data-m=kalender>📅 Kal</button></div>`;
+ initChat();renderTasks();calCur=calCur||new Date();renderCal();
+ $('#tkall').onchange=e=>{tkAll=e.target.checked;renderTasks()};
+ $('#tkadd').onclick=taskAddDlg;
+ $('#calprev').onclick=()=>{calCur=new Date(calCur.getFullYear(),calCur.getMonth()-1,1);renderCal()};
+ $('#calnext').onclick=()=>{calCur=new Date(calCur.getFullYear(),calCur.getMonth()+1,1);renderCal()};
+ $('#callall').onchange=e=>{calAll=e.target.checked;localStorage.setItem('calAll',calAll?'1':'0');renderCal()};
  $('#repmenu').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   $('#repmenu .cur')?.classList.remove('cur');b.classList.add('cur');
   const m=b.dataset.m;$('#lrw').classList.toggle('showrep',m!=='chat');
@@ -657,6 +683,57 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  $('#lup').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='.docx';f.onchange=async()=>{const fd=new FormData();fd.append('file',f.files[0]);fd.append('report_type',$('#lrt').value);
   note('Mengunggah & mengekstrak…');try{await api('POST',`/projects/${curProj}/documents`,fd,true);note('Selesai');tabLaporan()}catch(e){note(e.message,1)}};f.click()}}
 
+/* ===== Task personal & Kalender proyek (tab Laporan) ===== */
+let calCur=null,calAll=localStorage.getItem('calAll')==='1',tkAll=false;
+const dstr=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+async function renderTasks(){const box=$('#tklist');if(!box)return;
+ try{const {items}=await api('GET',`/projects/${curProj}/mytasks?all=${tkAll?1:0}&done=1`);
+  box.innerHTML=items.map(t=>`<div class=tki style="${t.done_at?'opacity:.55':''}">
+   <input type=checkbox data-tk="${t.id}" ${t.done_at?'checked':''} title="Tandai selesai">
+   <div style="flex:1;min-width:0"><div style="word-break:break-word">${esc(t.text).replace(/(^|\s)([#@][A-Za-z0-9_.:\-]+)/g,'$1<span class=mn>$2</span>')}</div>
+    <small style="color:var(--mut)">${t.topic?`<span class=badge style="background:#6b21a8">#${esc(t.topic)}</span> `:''}dari ${esc(t.created_by||'?')} · ${esc((t.created_at||'').slice(0,16))}${tkAll&&t.project_name?` · 📁 ${esc(t.project_name)}`:''}</small></div>
+   <button type=button data-tkdel="${t.id}" title="Hapus task" style="padding:1px 7px">✕</button></div>`).join('')
+   ||'<small style="color:var(--mut)">Belum ada task utkmu.</small>';
+  box.querySelectorAll('[data-tk]').forEach(cb=>cb.onchange=async()=>{try{await api('POST',`/user-tasks/${cb.dataset.tk}/done`,{done:cb.checked});renderTasks()}catch(e){note(e.message,1)}});
+  box.querySelectorAll('[data-tkdel]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus task ini?')){try{await api('DELETE',`/user-tasks/${b.dataset.tkdel}`);renderTasks()}catch(e){note(e.message,1)}}})}
+ catch(e){box.innerHTML=`<small style="color:var(--mut)">${esc(e.message)}</small>`}}
+function taskAddDlg(){const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>✅ Task baru</b>
+ <label>Tugas<textarea name=text rows=2 required placeholder="mis. lengkapi data kualitas air bab 3"></textarea></label>
+ <label>Topik (opsional, tanpa #)<input name=topic placeholder="mis. survei-air"></label>
+ <label>Untuk (username, pisah koma; kosong = saya sendiri)<input name=who placeholder="mis. siti, agus"></label>
+ <label style="flex-direction:row;display:flex;gap:6px;align-items:center">Utk SEMUA anggota tim <input type=checkbox name=all style="width:auto"></label>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+ document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();
+ m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target;
+  try{await api('POST',`/projects/${curProj}/mytasks`,{text:f.text.value,topic:f.topic.value,
+   usernames:f.who.value.split(',').map(s=>s.trim()).filter(Boolean),all:f.all.checked});m.remove();renderTasks()}catch(x){note(x.message,1)}}}
+async function renderCal(){const grid=$('#calgrid');if(!grid||!calCur)return;
+ const y=calCur.getFullYear(),mo=calCur.getMonth();
+ $('#calttl').textContent=calCur.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+ const first=new Date(y,mo,1),start=new Date(first);start.setDate(1-((first.getDay()+6)%7));
+ const end=new Date(start);end.setDate(start.getDate()+41);
+ let items=[];try{items=(await api('GET',`/projects/${curProj}/calendar?from=${dstr(start)}&to=${dstr(end)}&all=${calAll?1:0}`)).items}
+ catch(e){grid.innerHTML=`<small style="color:var(--mut)">${esc(e.message)}</small>`;return}
+ const today=dstr(new Date());
+ let html='<div class=calhead>'+['Sen','Sel','Rab','Kam','Jum','Sab','Min'].map(x=>`<span>${x}</span>`).join('')+'</div><div class=calbody>';
+ for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=dstr(d);
+  const evs=items.filter(t=>t.start_date<=ds&&t.end_date>=ds);
+  html+=`<div class="cald${d.getMonth()!==mo?' dim':''}${ds===today?' today':''}" data-d="${ds}" title="Klik utk menjadwalkan">
+   <b>${d.getDate()}</b>${evs.slice(0,3).map(t=>`<span class=cev title="${esc(t.title)} — ${esc(t.project_name)} (${esc(t.start_date)} → ${esc(t.end_date)})" style="${t.project_id!==curProj?'border-left:3px solid var(--warn);opacity:.85':''}">${esc((t.title||'').slice(0,16))}</span>`).join('')}${evs.length>3?`<small style="color:var(--mut)">+${evs.length-3} lagi</small>`:''}</div>`}
+ grid.innerHTML=html+'</div>';
+ grid.querySelectorAll('.cald').forEach(c=>c.onclick=()=>calAddDlg(c.dataset.d))}
+function calAddDlg(day){const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<form class=dlg><b>📅 Jadwal baru — ${esc(idDate(day))}</b>
+ <label>Agenda<input name=title required placeholder="mis. Survei lapangan / Uji laboratorium / Rapat pemrakarsa"></label>
+ <div style="display:flex;gap:8px"><label style="flex:1">Mulai<input type=date name=sd value="${day}" required></label>
+ <label style="flex:1">Selesai<input type=date name=ed value="${day}" required></label></div>
+ <small style="color:var(--mut)">Jadwal ini otomatis jadi baris di Gantt chart proyek (satu data, dua tampilan).</small>
+ <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+ document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
+ m.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target;
+  try{await api('POST',`/projects/${curProj}/calendar`,{title:f.title.value,start_date:f.sd.value,end_date:f.ed.value});
+   m.remove();note('Jadwal tersimpan (muncul juga di Gantt)');renderCal()}catch(x){note(x.message,1)}}}
 /* ===== diskusi tim (chat) di tab Laporan: polling 4 dtk, kirim teks/gambar (Ctrl+V / drag-drop) ===== */
 let chatTimer=null,chatLast=0;
 function stopChat(){if(chatTimer){clearInterval(chatTimer);chatTimer=null}}

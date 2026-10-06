@@ -170,7 +170,164 @@ def chat_post(pid):
             raise ValueError("lampiran bukan milik proyek ini")
     msg = S().add_project_chat(pid, g.user["username"], text, int(file_id) if file_id else None)
     _notify_chat_mentions(pid, text)
+    if not d.get("_crosspost"):                       # salinan lintas-proyek tidak diproses ulang (cegah loop)
+        _process_chat_hashtags(pid, msg["id"], text)
     return jsonify(message=msg), 201
+
+
+def _slug(s: str) -> str:
+    import re
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _process_chat_hashtags(pid: int, chat_id: int, text: str):
+    """Hashtag di Diskusi: (1) #task / #<topik> (+ @user/@tim/@all) -> masuk daftar Task personal
+    penerima (tanpa mention = task utk pengirim sendiri); (2) #<nama proyek lain yang boleh ia lihat>
+    -> pesan DISALIN ke Diskusi proyek itu (chat menyeberang proyek). Best-effort."""
+    import re
+    tags = re.findall(r"#([A-Za-z0-9_\-]+)", text or "")
+    if not tags:
+        return
+    try:
+        st = S()
+        # --- lintas proyek: #namaproyek (dicocokkan tanpa spasi/karakter non-alfanumerik)
+        topic_tags = []
+        crossed = set()
+        projects = {p["id"]: p for p in st.list_projects()}
+        visible = None
+        for tag in tags:
+            tgt = next((p for p in projects.values() if p["id"] != pid and _slug(p["name"]) == _slug(tag)), None)
+            if tgt:
+                if visible is None:
+                    visible = (set(projects) if auth.has_perm(g.user, "project_view_all")
+                               else st.visible_project_ids(g.user["id"]))
+                if tgt["id"] in visible and tgt["id"] not in crossed:
+                    crossed.add(tgt["id"])
+                    src = projects.get(pid, {}).get("name") or f"#{pid}"
+                    st.add_project_chat(tgt["id"], g.user["username"], f"↪ dari Diskusi \"{src}\": {text}"[:4000])
+            elif tag.lower() != "task":
+                topic_tags.append(tag)
+        # --- task personal: #task atau #topik apa pun yang bukan nama proyek
+        has_task = any(t.lower() == "task" for t in tags)
+        if not (has_task or topic_tags):
+            return
+        team = {(t.get("username") or "").lower(): t["user_id"] for t in st.list_project_team(pid) if t.get("user_id")}
+        mention = {m.lower() for m in re.findall(r"@([A-Za-z0-9_.\-]+)", text or "")}
+        if mention & {"all", "tim", "semua", "proyek"}:
+            recipients = set(team.values())
+        else:
+            recipients = {team[m] for m in mention if m in team}
+        if not recipients:
+            recipients = {g.user["id"]}                # tanpa mention: catatan tugas utk diri sendiri
+        topic = (topic_tags[0][:80] if topic_tags else None)
+        for uid in recipients:
+            st.add_user_task(pid, uid, text, topic=topic, source="chat", chat_id=chat_id,
+                             created_by=g.user["username"])
+            if uid != g.user["id"]:
+                st.add_notification(uid, "task_assign", project_id=pid, actor=g.user["username"],
+                                    summary=f'{g.user["username"]} memberimu task{f" #{topic}" if topic else ""}: '
+                                            f'{(text or "")[:120]}')
+    except Exception:                                   # noqa: BLE001
+        pass
+
+
+# ---------------------------------------------------------------- task personal (tab Laporan -> Task)
+@bp.get("/projects/<int:pid>/mytasks")
+@auth.require()
+def my_tasks(pid):
+    """Task milik user di proyek ini; ?all=1 = LINTAS semua proyek (tombol 'semua'); ?done=1 ikut yang selesai."""
+    _project_visible(pid)
+    all_proj = request.args.get("all", type=int)
+    return jsonify(items=S().list_user_tasks(g.user["id"], project_id=None if all_proj else pid,
+                                             include_done=bool(request.args.get("done", type=int))))
+
+
+@bp.post("/projects/<int:pid>/mytasks")
+@auth.require()
+def my_tasks_add(pid):
+    """Tambah task manual: {text, topic?, usernames?[], all?} — penerima default diri sendiri;
+    menugaskan ke orang lain hanya ke sesama anggota tim proyek."""
+    _project_visible(pid)
+    d = body()
+    text = (d.get("text") or "").strip()
+    if not text:
+        raise ValueError("isi task wajib")
+    st = S()
+    team = {(t.get("username") or "").lower(): t["user_id"] for t in st.list_project_team(pid) if t.get("user_id")}
+    if d.get("all"):
+        recipients = set(team.values()) or {g.user["id"]}
+    else:
+        recipients = {team[u.lower()] for u in (d.get("usernames") or []) if u.lower() in team} or {g.user["id"]}
+    ids = []
+    for uid in recipients:
+        ids.append(st.add_user_task(pid, uid, text, topic=(d.get("topic") or "").strip()[:80] or None,
+                                    source="manual", created_by=g.user["username"]))
+        if uid != g.user["id"]:
+            st.add_notification(uid, "task_assign", project_id=pid, actor=g.user["username"],
+                                summary=f'{g.user["username"]} memberimu task: {text[:120]}')
+    return jsonify(ids=ids), 201
+
+
+@bp.post("/user-tasks/<int:tid>/done")
+@auth.require()
+def user_task_done(tid):
+    t = S().get_user_task(tid)
+    if t["user_id"] != g.user["id"] and not g.user.get("is_super"):
+        abort(403, description="hanya pemilik task")
+    S().set_user_task_done(tid, bool(body().get("done", True)))
+    return jsonify(ok=True)
+
+
+@bp.delete("/user-tasks/<int:tid>")
+@auth.require()
+def user_task_delete(tid):
+    t = S().get_user_task(tid)
+    if t["user_id"] != g.user["id"] and t["created_by"] != g.user["username"] and not g.user.get("is_super"):
+        abort(403, description="hanya pemilik/pembuat task")
+    S().delete_user_task(tid)
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------- kalender proyek (tab Laporan -> Kalender)
+@bp.get("/projects/<int:pid>/calendar")
+@auth.require()
+def project_calendar(pid):
+    """Jadwal (= task Gantt ber-tanggal) dlm rentang ?from&to. ?all=1 = SEMUA proyek yang terkait user
+    (tim/PIC; project_view_all melihat semuanya) — bukan hanya proyek yang sedang dibuka."""
+    _project_visible(pid)
+    dfrom = request.args.get("from") or ""
+    dto = request.args.get("to") or ""
+    if not (dfrom and dto):
+        raise ValueError("from & to wajib (YYYY-MM-DD)")
+    if request.args.get("all", type=int):
+        if auth.has_perm(g.user, "project_view_all"):
+            pids = [p["id"] for p in S().list_projects()]
+        else:
+            pids = list(S().visible_project_ids(g.user["id"]))
+    else:
+        pids = [pid]
+    return jsonify(items=S().calendar_tasks(pids, dfrom, dto))
+
+
+@bp.post("/projects/<int:pid>/calendar")
+@auth.require()
+def project_calendar_add(pid):
+    """Tambah jadwal (survei/lab/rapat dll) dari kalender = MEMBUAT task Gantt manual proyek ini —
+    boleh utk SEMUA anggota tim proyek (beda dari POST /tasks yang butuh project_tasks_admin),
+    krn menjadwalkan agenda adalah kerja harian tim; tetap tertolak bagi non-anggota."""
+    _project_visible(pid)
+    if not (auth.has_perm(g.user, "project_tasks_admin")
+            or S().is_project_visible_to(g.user["id"], pid)):
+        abort(403, description="hanya anggota tim proyek")
+    d = body()
+    title = (d.get("title") or "").strip()
+    if not title or not d.get("start_date") or not d.get("end_date"):
+        raise ValueError("title, start_date, end_date wajib")
+    tid = S().upsert_project_task(pid, title=title[:200], start_date=d["start_date"], end_date=d["end_date"],
+                                  status=d.get("status") or "belum_mulai", user=g.user["username"])
+    S().log_activity(g.user["username"], "task.create", target_type="task", target_id=tid, project_id=pid,
+                     summary=f'[kalender] {title}')
+    return jsonify(id=tid), 201
 
 
 def _notify_chat_mentions(pid: int, text: str):

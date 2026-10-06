@@ -117,6 +117,12 @@ CREATE TABLE IF NOT EXISTS cms_project_chat (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, username TEXT,
     text TEXT, file_id INTEGER, created_at TEXT, deleted_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_pchat ON cms_project_chat(project_id, id);
+CREATE TABLE IF NOT EXISTS cms_user_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+    topic TEXT, text TEXT, source TEXT DEFAULT 'chat', chat_id INTEGER,
+    created_by TEXT, created_at TEXT, done_at TEXT, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_utask_user ON cms_user_tasks(user_id, done_at);
+CREATE INDEX IF NOT EXISTS idx_utask_proj ON cms_user_tasks(project_id);
 """
 
 
@@ -682,6 +688,61 @@ class BlockStore:
     def delete_project_chat(self, chat_id: int):
         with self._tx() as c:
             self._x(c, "UPDATE cms_project_chat SET deleted_at=? WHERE id=?", (_now(), chat_id))
+
+    # ------------------------------------------------------------ task personal (dari Diskusi #task/#topik atau manual)
+    def add_user_task(self, project_id: int, user_id: int, text: str, topic: Optional[str] = None,
+                      source: str = "chat", chat_id: Optional[int] = None, created_by: str = "") -> int:
+        with self._tx() as c:
+            cur = self._x(c, "INSERT INTO cms_user_tasks(project_id,user_id,topic,text,source,chat_id,created_by,created_at) "
+                             "VALUES (?,?,?,?,?,?,?,?)",
+                          (project_id, user_id, (topic or None), (text or "")[:2000], source, chat_id, created_by, _now()))
+            return cur.lastrowid
+
+    def list_user_tasks(self, user_id: int, project_id: Optional[int] = None,
+                        include_done: bool = False, limit: int = 200) -> list[dict]:
+        """Task milik user: per proyek (project_id terisi) atau LINTAS proyek (None) — tombol 'semua'."""
+        w, p = ["t.user_id=?", "t.deleted_at IS NULL"], [user_id]
+        if project_id:
+            w.append("t.project_id=?"); p.append(project_id)
+        if not include_done:
+            w.append("t.done_at IS NULL")
+        with self._tx() as c:
+            return self._all(c, f"SELECT t.*, pr.name AS project_name FROM cms_user_tasks t "
+                                f"LEFT JOIN cms_projects pr ON pr.id=t.project_id "
+                                f"WHERE {' AND '.join(w)} ORDER BY t.done_at IS NOT NULL, t.id DESC LIMIT ?",
+                             [*p, limit])
+
+    def get_user_task(self, tid: int) -> dict:
+        with self._tx() as c:
+            r = self._one(c, "SELECT * FROM cms_user_tasks WHERE id=? AND deleted_at IS NULL", (tid,))
+        if not r:
+            raise KeyError(f"task {tid} tidak ada")
+        return r
+
+    def set_user_task_done(self, tid: int, done: bool):
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_user_tasks SET done_at=? WHERE id=?", (_now() if done else None, tid))
+
+    def delete_user_task(self, tid: int):
+        with self._tx() as c:
+            self._x(c, "UPDATE cms_user_tasks SET deleted_at=? WHERE id=?", (_now(), tid))
+
+    # ------------------------------------------------------------ kalender proyek (= cms_project_tasks, data Gantt yang sama)
+    def calendar_tasks(self, project_ids: list[int], date_from: str, date_to: str) -> list[dict]:
+        """Jadwal utk tampilan kalender: task Gantt (manual/bab) yang rentangnya BERSINGGUNGAN dgn
+        [date_from..date_to] di proyek-proyek tsb. SATU data dgn Gantt — menjadwalkan dari kalender
+        otomatis muncul di Gantt dan sebaliknya."""
+        if not project_ids:
+            return []
+        ph = ",".join(["?"] * len(project_ids))
+        with self._tx() as c:
+            return self._all(c, f"SELECT t.id, t.project_id, pr.name AS project_name, t.title, t.start_date, "
+                                f"t.end_date, t.progress_percent, t.status, t.doc_id, t.chapter_block_id "
+                                f"FROM cms_project_tasks t JOIN cms_projects pr ON pr.id=t.project_id "
+                                f"WHERE t.project_id IN ({ph}) AND t.deleted_at IS NULL "
+                                f"AND t.start_date IS NOT NULL AND t.end_date IS NOT NULL "
+                                f"AND t.start_date<=? AND t.end_date>=? ORDER BY t.start_date",
+                             [*project_ids, date_to, date_from])
 
     # bobot "poin usaha" per jenis aksi (bukan 1 aksi = 1 poin): upload/ekstrak dokumen berat,
     # pindah/hapus blok ringan; block.edit TIDAK dihitung dari sini melainkan dari BESAR perubahan

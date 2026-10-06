@@ -49,6 +49,26 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Tab Laporan dirombak: seksi Laporan gabungan + Task personal + Kalender; chat hashtag (2026-10-06)**
+  — permintaan "Interim->Task, Final->Kalender": seksi draft/interim/final DIGABUNG jadi satu kartu
+  "📄 Laporan" (sub-judul per tipe — dokumen interim/final TIDAK hilang), lalu dua seksi baru:
+  **✅ Task personal** (tabel BARU `cms_user_tasks`: project_id,user_id,topic,text,source,chat_id,...;
+  init_schema + SQLITE_DDL; SUDAH di MySQL live): dari Diskusi `#task @user` / `#topikbebas @tim|@all`
+  -> masuk daftar task tiap penerima (+notif `task_assign`); tanpa mention = task pengirim sendiri;
+  tambah manual (dialog: teks/topik/penerima/semua-tim), checklist done (pemilik/super), hapus
+  (pemilik/pembuat/super), toggle "lintas proyek" (?all=1, tampil nama proyek). Endpoint:
+  GET/POST /projects/<id>/mytasks, POST /user-tasks/<id>/done, DELETE /user-tasks/<id>.
+  **📅 Kalender** = cms_project_tasks (SATU data dgn Gantt — jadwal dari kalender otomatis baris Gantt
+  & sebaliknya): grid bulan (Senin awal, hari ini di-highlight, event proyek lain bergaris oranye),
+  klik tanggal -> dialog jadwal (survei/lab/rapat); `POST /projects/<id>/calendar` boleh SEMUA anggota
+  tim (beda dari POST /tasks yg butuh project_tasks_admin — menjadwalkan agenda = kerja harian tim);
+  "semua proyek saya" (?all=1 -> visible_project_ids / semua utk project_view_all; persist localStorage);
+  `BlockStore.calendar_tasks(pids, from, to)`. **Chat lintas proyek**: `#NamaProyek` (dicocokkan tanpa
+  spasi, case-insensitive, hanya proyek yg boleh dilihat pengirim) -> pesan DISALIN ke Diskusi proyek
+  itu dgn prefix '↪ dari Diskusi "..."' (salinan tak diproses ulang — cegah loop). Parser di
+  `projects_api._process_chat_hashtags`. Mobile repmenu jadi: Diskusi|Laporan|Task|Kal.
+  **Diuji**: 12 skenario end-to-end baru semua lolos (termasuk jadwal kalender = baris Gantt &
+  show-all lintas proyek). Live di :8879. Belum: autocomplete `#` di chat (hanya `@` yang ada).
 - [x] **Filter status daftar proyek + panel Beban Tim / deteksi overload (2026-10-06)** — daftar proyek:
   pil filter "Aktif (n)" (default, = status!=completed) / Planning / Ongoing / On hold / Done / Semua,
   jumlah di tiap label (`projFilter` global, render ulang projectsView). Tombol "📊 Beban Tim"

@@ -550,3 +550,23 @@ END$$
 DELIMITER ;
 CALL cms_tmp_migrate_notif_project();
 DROP PROCEDURE cms_tmp_migrate_notif_project;
+
+-- Task personal (2026-10-06): tugas per-user dari Diskusi (#task/#topik + @mention) atau input manual;
+-- beda dari cms_project_tasks (baris Gantt/kalender proyek).
+CREATE TABLE IF NOT EXISTS cms_user_tasks (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    user_id     INT NOT NULL,
+    topic       VARCHAR(80) DEFAULT NULL,
+    text        TEXT,
+    source      VARCHAR(10) DEFAULT 'chat',
+    chat_id     INT DEFAULT NULL,
+    created_by  VARCHAR(100) DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    done_at     VARCHAR(19) DEFAULT NULL,
+    deleted_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_utask_user (user_id, done_at),
+    INDEX idx_utask_proj (project_id),
+    CONSTRAINT fk_utask_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_utask_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
