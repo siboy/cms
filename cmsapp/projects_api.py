@@ -644,9 +644,13 @@ def list_files(pid):
 
 
 @bp.post("/projects/<int:pid>/files")
-@auth.require("project_files_manage")
+@auth.require()
 def upload_file(pid):
+    """Unggah berkas repository: SEMUA anggota tim proyek boleh (bukan cuma project_files_manage) —
+    mengarsip surat/data/foto adalah kerja harian tim; non-anggota tetap tertolak."""
     _project_visible(pid)
+    if not (auth.has_perm(g.user, "project_files_manage") or S().is_project_visible_to(g.user["id"], pid)):
+        abort(403, description="hanya anggota tim proyek")
     f = request.files.get("file")
     category = request.form.get("category", "")
     if not f or not category:
@@ -675,10 +679,14 @@ def raw_file(fid):
 
 
 @bp.delete("/project-files/<int:fid>")
-@auth.require("project_files_manage")
+@auth.require()
 def delete_file(fid):
+    """Hapus: pemegang project_files_manage ATAU pengunggah berkasnya sendiri."""
     r = S().get_project_file(fid)
     _project_visible(r["project_id"])
+    if not (auth.has_perm(g.user, "project_files_manage") or r.get("uploaded_by") == g.user["username"]
+            or g.user.get("is_super")):
+        abort(403, description="hanya pengunggah / pengelola berkas")
     S().delete_project_file(fid)
     S().log_activity(g.user["username"], "project.file_delete", target_type="file", target_id=fid,
                      project_id=r["project_id"], summary=r["filename"])
