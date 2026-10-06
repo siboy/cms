@@ -183,4 +183,18 @@ ccms:
 %:
 	@:
 
-.PHONY: push stack stack-restart rr rx7 stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
+.PHONY: push stack stack-restart rr rx7 apk panel panel-tunnel panel-adopt stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
+
+# ---- APK Android (tanpa Android Studio: build headless via Docker, image di-cache setelah run pertama) ----
+apk:
+	docker rm -f cms-apk-build 2>/dev/null || true
+	docker run --rm --name cms-apk-build --network host -v $(CURDIR)/mobile:/work -w /work gradle:8.7-jdk17 bash -c '\
+	set -e; export ANDROID_HOME=/opt/android-sdk; \
+	if [ ! -d $$ANDROID_HOME/cmdline-tools/latest ]; then \
+	  mkdir -p $$ANDROID_HOME/cmdline-tools && cd /tmp && \
+	  curl -sSLo ct.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
+	  unzip -q ct.zip -d $$ANDROID_HOME/cmdline-tools && mv $$ANDROID_HOME/cmdline-tools/cmdline-tools $$ANDROID_HOME/cmdline-tools/latest && \
+	  yes | $$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null && \
+	  $$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" >/dev/null; fi; \
+	cd /work && gradle --no-daemon assembleDebug'
+	@echo "[OK] APK: mobile/app/build/outputs/apk/debug/app-debug.apk"
