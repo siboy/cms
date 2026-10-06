@@ -122,7 +122,8 @@ header b{letter-spacing:.2px}
 .chatday{align-self:center;font-size:10.5px;color:var(--mut);background:var(--card);border-radius:99px;padding:1px 10px;margin:4px 0}
 .repmenu{display:none}
 /* polish section Manajemen Proyek (desktop & HP): tab pill berikon, kartu lega, baris laporan rapi */
-#ptabs{display:flex;gap:6px;flex-wrap:wrap;border:none;margin:4px 0 12px}
+#docs{padding-top:12px}
+#ptabs{display:flex;gap:6px;flex-wrap:wrap;border:none;margin:0 0 12px}
 #ptabs button{border-radius:999px;padding:6px 14px;border:1px solid var(--line);background:var(--card)}
 #ptabs button.cur{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600;box-shadow:var(--sh)}
 .rc{padding:14px 16px}
@@ -342,7 +343,7 @@ const ID_BULAN=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustu
 function idDate(s){if(!s)return '?';const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);if(!m)return s;return `${+m[3]} ${ID_BULAN[+m[2]-1]} ${m[1]}`}
 
 async function projectsView(){closeDoc();const {projects}=await api('GET','/projects');
- $('#app').innerHTML='<div id=docs><h3>Manajemen Proyek</h3>'+(hasPerm('project_manage')?'<p><button id=npr>+ Proyek baru</button></p>':'')
+ $('#app').innerHTML='<div id=docs>'+(hasPerm('project_manage')?'<p style="margin-top:0"><button id=npr>+ Proyek baru</button></p>':'')
  +'<div class=rg>'+(projects.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
   return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${hasPerm('project_manage')?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
   <div style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
@@ -436,8 +437,8 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
   m.remove();projectsView()}catch(x){note(x.message,1)}}}
 
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
- $('#app').innerHTML='<div id=docs><p><a href="#" id=pback>← Proyek</a></p><div id=ptabs class=tabs></div><div id=ptab></div></div>';
- $('#pback').onclick=e=>{e.preventDefault();projectsView()};
+ $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
+ // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
  const tabs=[['ringkasan','Ringkasan','📋'],['laporan','Laporan','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['berkas','Berkas','📁'],['aktivitas','Aktivitas','🕑']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
