@@ -45,6 +45,9 @@ tunnel:
 	ssh -N -L 3307:127.0.0.1:3307 -L 6380:127.0.0.1:6380 dbscraping
 
 # ---- Control panel super-admin multi-tenant (cmspanel, 127.0.0.1:8895) ----
+# PANEL_BIND: default loopback; dari PC pakai `make panel-tunnel`, atau nyalakan dgn IP VPN:
+#   make rx7 PANEL_BIND=10.100.10.29   (JANGAN 0.0.0.0 — panel memegang kendali docker)
+PANEL_BIND ?= 127.0.0.1
 # Password dibuat otomatis sekali di ~/.cms_panel_pass (chmod 600). Akses dari PC: make panel-tunnel.
 panel:
 	@test -f $(HOME)/.cms_panel_pass || { umask 077; openssl rand -hex 16 > $(HOME)/.cms_panel_pass; echo "[OK] password panel baru: $(HOME)/.cms_panel_pass"; }
@@ -62,11 +65,11 @@ panel-adopt:
 rx7:
 	@test -f $(HOME)/.cms_panel_pass || { umask 077; openssl rand -hex 16 > $(HOME)/.cms_panel_pass; echo "[OK] password panel baru dibuat: ~/.cms_panel_pass"; }
 	@PYTHONPATH=$(CURDIR) python3 -m cmspanel.panel --kill; sleep 1
-	@PANEL_PASSWORD=$$(cat $(HOME)/.cms_panel_pass) PYTHONPATH=$(CURDIR) \
+	@PANEL_PASSWORD=$$(cat $(HOME)/.cms_panel_pass) PYTHONPATH=$(CURDIR) PANEL_BIND=$(PANEL_BIND) \
 	nohup python3 -m cmspanel.panel > $(HOME)/.cms_panel.log 2>&1 & \
 	sleep 2; \
-	if curl -sf -o /dev/null http://127.0.0.1:8895/login; then \
-	  echo "[OK] panel jalan: http://127.0.0.1:8895  (password: cat ~/.cms_panel_pass | log: ~/.cms_panel.log)"; \
+	if curl -sf -o /dev/null http://$(PANEL_BIND):8895/login; then \
+	  echo "[OK] panel jalan: http://$(PANEL_BIND):8895  (password: cat ~/.cms_panel_pass | log: ~/.cms_panel.log)"; \
 	else echo "[FATAL] panel gagal start:"; tail -5 $(HOME)/.cms_panel.log; exit 1; fi
 
 # ---- DB Schema ----

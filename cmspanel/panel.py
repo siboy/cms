@@ -448,4 +448,6 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if not PASSWORD:
         raise SystemExit("set env PANEL_PASSWORD dulu (wajib)")
-    app.run(host="127.0.0.1", port=int(os.environ.get("PANEL_PORT", 8895)))
+    # PANEL_BIND: default hanya loopback; boleh diisi IP VPN (mis. 10.100.10.29) spt pola CMS_BIND —
+    # JANGAN 0.0.0.0 (panel memegang kendali docker penuh)
+    app.run(host=os.environ.get("PANEL_BIND", "127.0.0.1"), port=int(os.environ.get("PANEL_PORT", 8895)))
