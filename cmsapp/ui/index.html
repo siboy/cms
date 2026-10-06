@@ -117,7 +117,7 @@ header b{letter-spacing:.2px}
 .msg .mdel{position:absolute;top:-7px;right:-7px;display:none;width:18px;height:18px;line-height:15px;padding:0;
  border-radius:50%;font-size:10px}.msg:hover .mdel{display:block}
 .chatin{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line);align-items:flex-end}
-.chatin textarea{flex:1;min-height:38px;max-height:110px;resize:none}
+.chatin textarea{flex:1;min-height:62px;max-height:130px;resize:none;line-height:1.45}
 .chatbox.drop{outline:2px dashed var(--acc);outline-offset:-5px}
 .chatday{align-self:center;font-size:10.5px;color:var(--mut);background:var(--card);border-radius:99px;padding:1px 10px;margin:4px 0}
 .repmenu{display:none}
@@ -555,7 +555,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
    <div class=chathead>💬 Diskusi Tim <small style="font-weight:400;color:var(--mut)">tempel (Ctrl+V) / seret gambar ke sini</small></div>
    <div class=chatlog id=clog></div>
    <div class=chatin><button type=button id=cimg title="Kirim gambar">🖼</button>
-    <textarea id=cin rows=1 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
+    <textarea id=cin rows=2 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
     <button class=p type=button id=csend>➤</button></div>
   </div></div></div>
  <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=draft>Draft</button><button data-m=interim>Interim</button><button data-m=final>Final</button></div>`;
