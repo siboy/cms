@@ -46,7 +46,11 @@ def create_app(cfg=Config) -> Flask:
 
     @app.get("/")
     def ui():
-        return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "index.html")
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "index.html")
+        # SPA satu file: wajib revalidasi tiap buka (perubahan UI sering; tanpa ini browser bisa
+        # menahan versi lama berhari-hari dan fitur/perbaikan baru "tidak muncul")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
     @app.get("/health")
     def health():
