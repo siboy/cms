@@ -15,3 +15,48 @@ komentar per blok/bab), lalu diekspor lagi menjadi DOCX rapi. Detail arsitektur,
 | `make stack-status / stack-logs / stack-down` | pantau / log / matikan |
 | `make dev` | gunicorn hot-reload di :8880, memakai MySQL/Redis stack (`make tunnel` bila dari PC) |
 | `make pull / cmd m="..." / cal m="..."` | git via token TOS |
+
+## Multi-tenant: banyak perusahaan, banyak divisi (sejak 2026-10-06)
+
+Kebutuhan: CMS dipakai banyak perusahaan, tiap perusahaan punya divisi-divisi; laporan, pengguna,
+identitas, dan gambar TIDAK boleh bocor/saling ganggu lintas pihak — kecuali dibagikan eksplisit
+lewat share link. Solusinya **dua lapis yang berbeda mekanismenya** (jangan ditukar):
+
+### Lapis 1 — antar PERUSAHAAN: pisah fisik (1 stack Docker per perusahaan), BUKAN kode
+Satu perusahaan = satu compose project (`cms-<slug>`) berisi 4 container (mysql+redis+app+worker)
+dengan network, volume, sandi, dan port `127.0.0.1` sendiri. DB terpisah = user/dokumen/gambar/sesi
+terpisah *by construction* — tidak bergantung benarnya filter di kode, dan container tenant A tidak
+bisa menjangkau MySQL tenant B. Satu **nginx shared** di host me-route subdomain tiap tenant.
+
+```
+bash scripts/add-tenant.sh <slug> <domain> [port]   # contoh: add-tenant.sh agro agro.cms.id
+```
+- Idempoten; folder tenant `~/cms-tenants/<slug>` (`CMS_TENANTS_DIR` utk override). `.env` sandi acak
+  dibuat SEKALI (rerun tidak menimpa). Port otomatis 8901+ (scan `TENANT_PORT` tenant lain), subnet
+  `172.29.<port-8900>.0/24` (JANGAN 172.20.x — bentrok rute VPN; stack lama `cmscollab` memakai .250).
+- Berkas terkait: `docker/tenant.yml` (template compose; DNS antar-container pakai NAMA SERVICE
+  `mysql`/`redis`, bukan container_name; image `cms-collab:dev` SATU utk semua tenant — upgrade kode =
+  `REBUILD=1 add-tenant.sh ...` sekali lalu `docker compose up -d` per tenant),
+  `docker/nginx-tenant.conf.template` (wajib: `proxy_buffering off` + `proxy_read_timeout 1h` utk jalur
+  SSE `/api/docs/<id>/events`, header `X-Real-IP` diteruskan krn dipakai rate-limit login), 
+  `scripts/collab_backup.sh` (per tenant: `CMS_MYSQL_CONTAINER=cms-<slug>-mysql bash backup.sh` di cron).
+- Setelah stack jalan: pasang nginx conf hasil generate, `certbot --nginx -d <domain>`, buat admin
+  (`docker exec -it cms-<slug>-app python scripts/cms_admin.py user ...`). Stack lama `make stack`
+  (`cmscollab`, tanpa slug) tetap ada utk pemakaian satu-perusahaan — kedua pola boleh hidup berdampingan.
+
+### Lapis 2 — antar DIVISI dalam satu perusahaan: default-deny dokumen (di kode)
+Dalam satu instance, dokumen itu **default-deny**: pengguna biasa hanya melihat dokumen yang
+(1) ia unggah, (2) menandainya PIC (`cms_assign` scope apapun), atau (3) milik proyek yang ia ikuti
+(Tim proyek). Dokumen divisi lain **404 total** — termasuk media/asset gambar, SSE, komentar, ekspor.
+- Ditegakkan TERPUSAT di `cmsapp/auth.py::require -> _doc_guard` (sniff `doc_id`/`bid`/`cid` dari path
+  semua rute terlindungi) — endpoint baru ber-doc_id otomatis ikut terkunci, jangan tambah cek per-endpoint.
+- Dua permission (halaman Privilege): `doc_view_all` = pengawas lintas divisi (QC pusat/direksi);
+  `doc_share` = boleh membuat share link. Grup `is_super` bebas semua.
+- **Share link** = pengecualian yang disengaja: tombol "🔗 Bagikan" di header dokumen → link
+  `/?share=<token>` **baca-saja tanpa login** (bisa kedaluwarsa 7/30/90 hari, bisa dicabut; tabel
+  `cms_share_links`; rute publik `/api/shared/<token>[/blocks|/asset/<sha1>]`, rate-limit per IP).
+  Karena tanpa login, link juga bisa dipakai lintas perusahaan.
+- ⚠️ Deploy ke instance lama: pengguna non-super tanpa `doc_view_all` akan kehilangan akses dokumen yg
+  tak tertaut proyek/PIC-nya — isi dulu Tim proyek / beri `doc_view_all` ke grup pengawas via Privilege.
+
+Divisi TIDAK butuh stack sendiri; perusahaan JANGAN cuma dipisah pakai lapis 2.
