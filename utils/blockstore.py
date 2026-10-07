@@ -1562,7 +1562,8 @@ class BlockStore:
         if not p:
             raise KeyError(f"proyek {project_id} tidak ada")
         p["progress_auto"] = self.project_progress_auto(project_id)
-        p["progress_effective"] = p["progress_override"] if p.get("progress_override") is not None else p["progress_auto"]
+        p["progress_gantt"] = self.project_progress_gantt(project_id)
+        p["progress_effective"] = self._progress_effective(p)
         return p
 
     def list_projects(self) -> list[dict]:
@@ -1574,7 +1575,8 @@ class BlockStore:
             by_proj.setdefault(cnt["project_id"], {})[cnt["report_type"]] = cnt["n"]
         for p in rows:
             p["progress_auto"] = self.project_progress_auto(p["id"])
-            p["progress_effective"] = p["progress_override"] if p.get("progress_override") is not None else p["progress_auto"]
+            p["progress_gantt"] = self.project_progress_gantt(p["id"])
+            p["progress_effective"] = self._progress_effective(p)
             p["report_counts"] = by_proj.get(p["id"], {})
         return rows
 
@@ -1583,6 +1585,33 @@ class BlockStore:
             if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
                 raise KeyError(f"proyek {project_id} tidak ada")
             self._x(c, "UPDATE cms_projects SET deleted_at=? WHERE id=?", (_now(), project_id))
+
+    def project_progress_gantt(self, project_id: int) -> Optional[int]:
+        """Progres dari Gantt chart: rata-rata progress_percent semua task (baris bab + manual/sub,
+        TANPA agenda kalender murni). None bila belum ada task — pembeda 'belum ada data' vs 0%."""
+        try:
+            with self._tx() as c:
+                rows = self._all(c, "SELECT progress_percent FROM cms_project_tasks WHERE project_id=? "
+                                    "AND deleted_at IS NULL AND COALESCE(calendar_only,0)=0", (project_id,))
+            if not rows:
+                return None
+            return round(sum(r["progress_percent"] or 0 for r in rows) / len(rows))
+        except Exception:                               # noqa: BLE001
+            return None
+
+    def _progress_effective(self, p: dict) -> int:
+        """Progres riil proyek — Override TIDAK pernah 'mati':
+        - override KOSONG  -> nilai Gantt (rata2 progres task); belum ada task -> auto status blok.
+        - override TERISI  -> bila Gantt LEBIH BESAR, pakai Gantt (kenyataan sudah melampaui klaim);
+                              bila Gantt lebih kecil, rata-rata (override + gantt) / 2 (klaim manual
+                              ditarik mendekati kenyataan, tidak dipakai mentah-mentah)."""
+        g = p.get("progress_gantt")
+        o = p.get("progress_override")
+        if o is None:
+            return g if g is not None else p["progress_auto"]
+        if g is None:
+            return o
+        return g if g > o else round((o + g) / 2)
 
     def project_progress_auto(self, project_id: int) -> int:
         """Rata-rata tertimbang status blok di semua dokumen proyek: approved=1, review=0.5, draft=0."""

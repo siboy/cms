@@ -619,7 +619,7 @@ async function teamImportDlg(){const {projects}=await api('GET','/projects');
 async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${curProj}`);const adm=hasPerm('project_manage');
  $('#ptab').innerHTML=`<div class=rc>
  <div style="display:flex;align-items:center;gap:8px"><div class=pbar style="max-width:300px;flex:1"><i style="width:${p.progress_effective}%"></i></div>
- <b>${p.progress_effective}%</b><small style="color:var(--mut)">(otomatis: ${p.progress_auto}%)</small></div>
+ <b>${p.progress_effective}%</b><small style="color:var(--mut)">(Gantt: ${p.progress_gantt??'—'}% · status blok: ${p.progress_auto}%${p.progress_override!=null?` · override: ${p.progress_override}%`:''})</small></div>
  <div class=rg style="margin-top:10px">
  <label class=fl><small>Nama</small><div class=fld contenteditable="${adm}" data-f=name>${esc(p.name)}</div></label>
  <label class=fl><small>Klien</small><div class=fld contenteditable="${adm}" data-f=client>${esc(p.client||'')}</div></label>
@@ -633,7 +633,7 @@ async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${cur
  <label>Mulai <input type=date id=pstart value="${p.start_date||''}"></label>
  <label>Selesai <input type=date id=pend value="${p.end_date||''}"></label>
  <label>Status <select id=pstatus>${['planning','ongoing','on_hold','completed'].map(s=>`<option value=${s} ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></label>
- <label>Override progress % <input type=number id=pov min=0 max=100 value="${p.progress_override??''}" placeholder="(otomatis)" style="width:70px"></label>
+ <label title="Kosong = ikut hitungan Gantt. Terisi: bila Gantt lebih besar dipakai Gantt; bila lebih kecil dipakai rata-rata (override+Gantt)/2 — klaim manual selalu ditarik ke kenyataan">Override progress % <input type=number id=pov min=0 max=100 value="${p.progress_override??''}" placeholder="(dari Gantt)" style="width:70px"></label>
  </div>`:''}</div>`;
  if(!adm)return;
  $('#ptab').querySelectorAll('[data-f]').forEach(el=>el.onblur=()=>api('PATCH',`/projects/${curProj}`,{[el.dataset.f]:el.textContent.trim()}).catch(e=>note(e.message,1)));
