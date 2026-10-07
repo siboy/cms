@@ -1,4 +1,4 @@
-# CMS kolaborasi DOCX
+# dupoin — CMS kolaborasi DOCX
 
 Dokumen `.docx` diekstrak ke database per **blok**, diedit bersama lewat web (lock per blok, real-time SSE,
 komentar per blok/bab), lalu diekspor lagi menjadi DOCX rapi. Detail arsitektur, status, dan daftar tugas: `PROGRESS.md`.

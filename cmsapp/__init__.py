@@ -61,7 +61,7 @@ def create_app(cfg=Config) -> Flask:
         if not os.path.isfile(p):
             return jsonify(error="APK belum tersedia — jalankan 'make apk' di server"), 404
         from flask import send_file
-        return send_file(p, as_attachment=True, download_name="cms-kolaborasi.apk",
+        return send_file(p, as_attachment=True, download_name="dupoin.apk",
                          mimetype="application/vnd.android.package-archive")
 
     @app.get("/manifest.webmanifest")
