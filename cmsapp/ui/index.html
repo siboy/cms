@@ -1011,15 +1011,20 @@ async function taskDlg(t){const m=document.createElement('div');m.className='mas
 
 /* repository berkas proyek — kini bagian dari kartu "Tambah Dokumen" di tab MyTask (tab Berkas dibuang) */
 async function renderBerkas(){const host=$('#bfilewrap');if(!host)return;
- let files=[];try{files=(await api('GET',`/projects/${curProj}/files?category=${curCat}`)).files}catch(e){host.innerHTML=esc(e.message);return}
- host.innerHTML='<div class=cattabs>'+FILE_CATS.map(([k,l,ic])=>`<button type=button data-c="${k}" class="${k===curCat?'cur':''}"><span class=ti>${ic}</span>${l}</button>`).join('')+'</div>'
+ let files=[],counts={};
+ try{const r=await api('GET',`/projects/${curProj}/files?category=${curCat}`);files=r.files;counts=r.counts||{}}
+ catch(e){host.innerHTML=esc(e.message);return}
+ // pil kategori hanya utk kategori yang ADA isinya (kategori kosong tak memunculkan tombol)
+ const cats=FILE_CATS.filter(([k])=>counts[k]>0);
+ if(cats.length&&!counts[curCat]){curCat=cats[0][0];return renderBerkas()}   // kategori aktif kosong -> lompat ke yg berisi
+ host.innerHTML=(cats.length?'<div class=cattabs>'+cats.map(([k,l,ic])=>`<button type=button data-c="${k}" class="${k===curCat?'cur':''}"><span class=ti>${ic}</span>${l} (${counts[k]})</button>`).join('')+'</div>':'')
  +`<p style="margin:4px 0 8px"><button type=button id=fup class=p>+ Unggah berkas ke kategori ini</button>
    <small style="color:var(--mut)">masuk ke kategori yang sedang dipilih di atas</small></p>`
  +'<div class=rg>'+(files.map(f=>`<div class=rc>${curCat==='galeri'?`<a href="/api/project-files/${f.id}/raw" target=_blank><img src="/api/project-files/${f.id}/raw" style="max-width:100%;border-radius:6px"></a>`:''}
   <b>${esc(f.title||f.filename)}</b><br><small style="color:var(--mut)">${esc(f.doc_date||'')} ${f.status?'· '+esc(f.status):''} · ${esc(f.uploaded_by||'')}</small>
   ${f.description?`<div style="font-size:12px;margin-top:4px">${esc(f.description)}</div>`:''}
   <div style="margin-top:6px"><a href="/api/project-files/${f.id}/raw" download>Unduh</a> ${hasPerm('project_files_manage')||f.uploaded_by===me.username?`<button data-del="${f.id}">Hapus</button>`:''}</div></div>`).join('')
-  ||'<p style="color:var(--mut)">Belum ada berkas di kategori ini.</p>')+'</div>';
+  ||`<p style="color:var(--mut)">${Object.keys(counts).length?'Belum ada berkas di kategori ini.':'Belum ada berkas di proyek ini — klik "+ Unggah berkas" utk mulai mengarsip.'}</p>`)+'</div>';
  host.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{curCat=b.dataset.c;renderBerkas()});
  host.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(confirm('Hapus berkas ini?')){try{await api('DELETE',`/project-files/${b.dataset.del}`);renderBerkas()}catch(e){note(e.message,1)}}});
  if($('#fup'))$('#fup').onclick=fileDlg}

@@ -701,7 +701,12 @@ def project_team_import(pid):
 @auth.require()
 def list_files(pid):
     _project_visible(pid)
-    return jsonify(files=S().list_project_files(pid, request.args.get("category")))
+    st = S()
+    with st._tx() as c:
+        cnt = st._all(c, "SELECT category, COUNT(*) AS n FROM cms_project_files "
+                         "WHERE project_id=? AND deleted_at IS NULL GROUP BY category", (pid,))
+    return jsonify(files=st.list_project_files(pid, request.args.get("category")),
+                   counts={r["category"]: r["n"] for r in cnt})   # utk pil kategori: hanya yg berisi
 
 
 @bp.post("/projects/<int:pid>/files")
