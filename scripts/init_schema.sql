@@ -355,6 +355,8 @@ CREATE TABLE IF NOT EXISTS cms_projects (
     end_date          DATE DEFAULT NULL,
     status            ENUM('planning','ongoing','completed','on_hold') NOT NULL DEFAULT 'planning',
     progress_override TINYINT DEFAULT NULL,        -- NULL = pakai hitung otomatis dari status blok
+    progress_final_by VARCHAR(100) DEFAULT NULL,   -- siapa yg melaporkan FINAL (override=100)
+    progress_final_at VARCHAR(19) DEFAULT NULL,    -- kapan dilaporkan final
     sales_team        VARCHAR(255) DEFAULT NULL,    -- nama tim/PIC sales yang menangani proyek ini
     pic               VARCHAR(255) DEFAULT NULL,    -- PIC proyek keseluruhan (bukan per-bab, lihat cms_assign)
     pemrakarsa_contact TEXT,                        -- nama/jabatan/kontak (telp/email) pemrakarsa (klien)
@@ -628,3 +630,17 @@ END$$
 DELIMITER ;
 CALL cms_tmp_migrate_utask_read();
 DROP PROCEDURE cms_tmp_migrate_utask_read;
+
+-- proyek dinyatakan FINAL (2026-10-07): override=100 mencatat pelapor & tanggal
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_proj_final;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_proj_final()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='progress_final_by') THEN
+    ALTER TABLE cms_projects ADD COLUMN progress_final_by VARCHAR(100) DEFAULT NULL AFTER progress_override;
+    ALTER TABLE cms_projects ADD COLUMN progress_final_at VARCHAR(19) DEFAULT NULL AFTER progress_final_by;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_proj_final();
+DROP PROCEDURE cms_tmp_migrate_proj_final;

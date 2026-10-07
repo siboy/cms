@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS cms_assets (
 CREATE TABLE IF NOT EXISTS cms_projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, client TEXT, description TEXT, location TEXT,
     start_date TEXT, end_date TEXT, status TEXT NOT NULL DEFAULT 'planning', progress_override INTEGER,
+    progress_final_by TEXT, progress_final_at TEXT,
     sales_team TEXT, pic TEXT, pemrakarsa_contact TEXT,
     created_by TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT);
 CREATE TABLE IF NOT EXISTS cms_project_documents (
@@ -1599,9 +1600,17 @@ class BlockStore:
                            vals[6], vals[7], vals[8], user, _now(), _now()))
             return cur.lastrowid
 
-    def update_project(self, project_id: int, **fields) -> None:
+    def update_project(self, project_id: int, user: str = "", **fields) -> None:
         allowed = {"name", "client", "description", "location", "start_date", "end_date", "status", "progress_override",
                    "sales_team", "pic", "pemrakarsa_contact"}
+        # Override = 100 -> proyek dinyatakan FINAL: catat SIAPA yang melaporkan & KAPAN (progress_final_by/at);
+        # override diubah ke nilai lain / dikosongkan -> catatan final dihapus lagi.
+        if "progress_override" in fields:
+            if fields["progress_override"] == 100:
+                fields["progress_final_by"], fields["progress_final_at"] = (user or ""), _now()
+            else:
+                fields["progress_final_by"], fields["progress_final_at"] = None, None
+            allowed = allowed | {"progress_final_by", "progress_final_at"}
         with self._tx() as c:
             if not self._one(c, "SELECT id FROM cms_projects WHERE id=? AND deleted_at IS NULL", (project_id,)):
                 raise KeyError(f"proyek {project_id} tidak ada")
@@ -1667,6 +1676,8 @@ class BlockStore:
         o = p.get("progress_override")
         if o is None:
             return g if g is not None else p["progress_auto"]
+        if o == 100:
+            return 100                                  # dinyatakan FINAL oleh admin/ketua (tercatat siapa & kapan)
         if g is None:
             return o
         return g if g > o else round((o + g) / 2)

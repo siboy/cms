@@ -478,11 +478,18 @@ def chat_delete(cid):
 
 
 @bp.patch("/projects/<int:pid>")
-@auth.require("project_manage")
+@auth.require()
 def update_project(pid):
     _project_visible(pid)
     d = body()
-    S().update_project(pid, **d)
+    # Ketua Tim proyek (tanpa project_manage) boleh mengubah SATU field saja: progress_override —
+    # "admin atau ketua melaporkan progres/final"; field lain tetap khusus pemegang project_manage.
+    if not auth.has_perm(g.user, "project_manage"):
+        if set(d.keys()) <= {"progress_override"} and S().is_project_leader(g.user["id"], pid):
+            pass
+        else:
+            abort(403, description="hanya pengelola proyek (atau Ketua Tim utk progres)")
+    S().update_project(pid, user=g.user["username"], **d)
     S().log_activity(g.user["username"], "project.update", target_type="project", target_id=pid, project_id=pid,
                      summary=", ".join(sorted(d)))
     return jsonify(ok=True)

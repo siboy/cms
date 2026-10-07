@@ -406,7 +406,8 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
   </div>`
  +'<div class=rg>'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
   const unread=(p.unread_chat||0)+(p.unread_tasks||0);
-  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}${hasPerm('project_manage')?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
+  const final100=p.progress_override===100;
+  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${final100?`<span class=badge style="background:#2da44e" title="Dinyatakan FINAL oleh ${esc(p.progress_final_by||'?')} pada ${esc((p.progress_final_at||'').slice(0,10))}">✔ 100% Final</span>`:''}${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}${hasPerm('project_manage')?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
   <div style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
   <div style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
   <div style="font-size:11px;color:var(--mut)">${idDate(p.start_date)} → ${idDate(p.end_date)}</div>
@@ -627,7 +628,7 @@ async function teamImportDlg(){const {projects}=await api('GET','/projects');
 async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${curProj}`);const adm=hasPerm('project_manage');
  $('#ptab').innerHTML=`<div class=rc>
  <div style="display:flex;align-items:center;gap:8px"><div class=pbar style="max-width:300px;flex:1"><i style="width:${p.progress_effective}%"></i></div>
- <b>${p.progress_effective}%</b><small style="color:var(--mut)">(Gantt: ${p.progress_gantt??'—'}% · status blok: ${p.progress_auto}%${p.progress_override!=null?` · override: ${p.progress_override}%`:''})</small></div>
+ <b>${p.progress_effective}%</b><small style="color:var(--mut)">${p.progress_override===100?`✔ FINAL — dilaporkan <b>${esc(p.progress_final_by||'?')}</b> ${esc(idDate((p.progress_final_at||'').slice(0,10)))}`:`(Gantt: ${p.progress_gantt??'—'}% · status blok: ${p.progress_auto}%${p.progress_override!=null?` · override: ${p.progress_override}%`:''})`}</small></div>
  <div class=rg style="margin-top:10px">
  <label class=fl><small>Nama</small><div class=fld contenteditable="${adm}" data-f=name>${esc(p.name)}</div></label>
  <label class=fl><small>Klien</small><div class=fld contenteditable="${adm}" data-f=client>${esc(p.client||'')}</div></label>
