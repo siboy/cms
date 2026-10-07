@@ -260,6 +260,10 @@ def me():
         u["unread_notifications"] = S().count_unread_notifications(u["id"])
     except Exception:                                     # noqa: BLE001
         u["unread_notifications"] = 0
+    try:                                                  # pesan Diskusi + task belum terbaca (semua proyek)
+        u["unread_projects"] = sum(x["chat"] + x["tasks"] for x in S().project_unreads(u["id"], u["username"]))
+    except Exception:                                     # noqa: BLE001
+        u["unread_projects"] = 0
     return jsonify(user=u)
 
 

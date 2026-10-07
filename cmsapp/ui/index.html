@@ -305,7 +305,7 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  try{me=(await api('GET','/me')).user}catch(e){return loginView()}
  pruneDrafts();
  $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;$('#bapk').hidden=false;
- setNotif((me.unread_tags||0)+(me.unread_notifications||0));
+ setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));
  const dq=qp.get('doc');
  if(dq){await openDoc(+dq);const bq=qp.get('block');
   if(bq){try{const loc=await api('GET',`/blocks/${bq}/location`);jumpToBlock(+bq,loc.chapter_id,loc.section_id)}catch(e){}}
@@ -323,18 +323,25 @@ function resetPasswordView(token){$('#app').innerHTML=`<form id=rp><h3>Atur pass
 function setNotif(n){const b=$('#bnotif');b.hidden=!n;b.textContent='🔔 '+n}
 const NOTIF_LABELS={pic_assign:'📌 PIC',comment:'💬 Komentar',comment_reply:'💬 Balasan',chat_mention:'🔔 Disebut di Diskusi',task_assign:'✅ Task baru'};
 async function notifPanel(){document.querySelector('.notifd')?.remove();
- let tags=[],notifs=[];
+ let tags=[],notifs=[],unreads=[];
  try{tags=(await api('GET','/me/tags?unread=1')).tags}catch(e){}
  try{notifs=(await api('GET','/me/notifications?unread=1')).items}catch(e){}
- const items=[...tags.map(t=>({kind:'tag',ts:t.tagged_at,...t})),...notifs.map(n=>({kind:'notif',ts:n.created_at,...n}))]
+ try{unreads=(await api('GET','/me/unreads')).items}catch(e){}
+ const items=[...unreads.map(u=>({kind:'unread',ts:'9999',...u})),   // diskusi/task belum dibaca selalu teratas
+  ...tags.map(t=>({kind:'tag',ts:t.tagged_at,...t})),...notifs.map(n=>({kind:'notif',ts:n.created_at,...n}))]
   .sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
  const d=document.createElement('div');d.className='notifd';
- d.innerHTML=items.length?items.map((it,i)=>it.kind==='tag'
+ d.innerHTML=items.length?items.map((it,i)=>it.kind==='unread'
+   ?`<div class=ni data-i="${i}"><b>💬 ${esc(it.name)}</b>${it.chat?`${it.chat} pesan Diskusi baru`:''}${it.chat&&it.tasks?' · ':''}${it.tasks?`${it.tasks} task baru`:''}<br><small>klik utk membuka diskusinya</small></div>`
+   :it.kind==='tag'
    ?`<div class=ni data-i="${i}"><b>${esc(it.project_name)}</b>${esc(it.title||'')}<br><small>${esc(it.tagged_at||'')}</small></div>`
    :`<div class=ni data-i="${i}"><b>${esc(NOTIF_LABELS[it.type]||it.type)}</b>${esc(it.summary||'')}<br><small>${esc(it.created_at||'')}</small></div>`).join('')
   :'<p style="padding:8px;color:var(--mut)">Tidak ada notifikasi baru.</p>';
  document.body.append(d);
  d.querySelectorAll('.ni').forEach(x=>x.onclick=async()=>{const it=items[+x.dataset.i];d.remove();
+  if(it.kind==='unread'){projectDetailView(it.project_id,{tab:'laporan'});
+   me.unread_projects=Math.max(0,(me.unread_projects||0)-(it.chat+it.tasks));
+   setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));return}
   if(it.kind==='tag'){try{await api('POST',`/tasks/${it.task_id}/read`)}catch(e){}
    me.unread_tags=Math.max(0,(me.unread_tags||1)-1);setNotif((me.unread_tags||0)+(me.unread_notifications||0));
    projectDetailView(it.project_id,{tab:'gantt'})}
@@ -398,7 +405,8 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
    ${hasPerm('project_manage')?'<button id=npr class=p>+ Proyek baru</button>':''}
   </div>`
  +'<div class=rg>'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
-  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${hasPerm('project_manage')?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
+  const unread=(p.unread_chat||0)+(p.unread_tasks||0);
+  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}${hasPerm('project_manage')?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
   <div style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
   <div style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
   <div style="font-size:11px;color:var(--mut)">${idDate(p.start_date)} → ${idDate(p.end_date)}</div>
@@ -833,7 +841,13 @@ async function chatPoll(){if(!$('#clog'))return stopChat();
  try{const {items}=await api('GET',`/projects/${curProj}/chat?after=${chatLast}`);appendChat(items)}catch(e){}}
 async function initChat(){stopChat();chatLast=0;appendChat.day=null;
  const log=$('#clog'),box=$('#cbox'),inp=$('#cin');
- try{const {items}=await api('GET',`/projects/${curProj}/chat`);appendChat(items);log.scrollTop=log.scrollHeight}
+ try{const {items,last_read}=await api('GET',`/projects/${curProj}/chat`);
+  const firstNew=(items||[]).find(x=>x.id>(last_read||0)&&x.username!==me.username);
+  appendChat(items);
+  if(firstNew){const el=[...log.querySelectorAll('.msg')][items.indexOf(firstNew)];
+   if(el){const dv=document.createElement('div');dv.className='chatday';dv.style.color='#d1242f';
+    dv.textContent='— pesan baru —';el.before(dv);el.scrollIntoView({block:'center'})}}
+  else log.scrollTop=log.scrollHeight}
  catch(e){log.innerHTML=`<small style="color:var(--mut)">${esc(e.message)}</small>`}
  chatTimer=setInterval(chatPoll,4000);
  const send=async()=>{const t=inp.value.trim();if(!t)return;inp.value='';

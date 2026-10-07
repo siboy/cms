@@ -606,3 +606,25 @@ END$$
 DELIMITER ;
 CALL cms_tmp_migrate_utask_gantt();
 DROP PROCEDURE cms_tmp_migrate_utask_gantt;
+
+-- penanda-baca Diskusi & Task (2026-10-07): badge unread per proyek di kartu & lonceng 🔔
+CREATE TABLE IF NOT EXISTS cms_chat_reads (
+    project_id   INT NOT NULL,
+    user_id      INT NOT NULL,
+    last_read_id INT NOT NULL DEFAULT 0,
+    updated_at   VARCHAR(19) DEFAULT NULL,
+    PRIMARY KEY (project_id, user_id),
+    CONSTRAINT fk_cr_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cr_user FOREIGN KEY (user_id) REFERENCES cms_users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+DROP PROCEDURE IF EXISTS cms_tmp_migrate_utask_read;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_migrate_utask_read()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_user_tasks' AND COLUMN_NAME='read_at') THEN
+    ALTER TABLE cms_user_tasks ADD COLUMN read_at VARCHAR(19) DEFAULT NULL AFTER created_at;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_migrate_utask_read();
+DROP PROCEDURE cms_tmp_migrate_utask_read;

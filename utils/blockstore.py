@@ -122,9 +122,12 @@ CREATE TABLE IF NOT EXISTS cms_settings (k TEXT PRIMARY KEY, v TEXT, updated_at 
 CREATE TABLE IF NOT EXISTS cms_user_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
     topic TEXT, text TEXT, source TEXT DEFAULT 'chat', chat_id INTEGER, gantt_task_id INTEGER,
-    created_by TEXT, created_at TEXT, done_at TEXT, deleted_at TEXT);
+    created_by TEXT, created_at TEXT, read_at TEXT, done_at TEXT, deleted_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_utask_user ON cms_user_tasks(user_id, done_at);
 CREATE INDEX IF NOT EXISTS idx_utask_proj ON cms_user_tasks(project_id);
+CREATE TABLE IF NOT EXISTS cms_chat_reads (
+    project_id INTEGER NOT NULL, user_id INTEGER NOT NULL, last_read_id INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT, PRIMARY KEY (project_id, user_id));
 """
 
 
@@ -690,6 +693,61 @@ class BlockStore:
     def delete_project_chat(self, chat_id: int):
         with self._tx() as c:
             self._x(c, "UPDATE cms_project_chat SET deleted_at=? WHERE id=?", (_now(), chat_id))
+
+    # ------------------------------------------------------------ penanda-baca chat & task (badge unread)
+    def get_chat_read(self, project_id: int, user_id: int) -> int:
+        try:
+            with self._tx() as c:
+                r = self._one(c, "SELECT last_read_id FROM cms_chat_reads WHERE project_id=? AND user_id=?",
+                              (project_id, user_id))
+            return r["last_read_id"] if r else 0
+        except Exception:                               # noqa: BLE001
+            return 0
+
+    def mark_chat_read(self, project_id: int, user_id: int, last_id: int):
+        try:
+            with self._tx() as c:
+                cur = self._one(c, "SELECT last_read_id FROM cms_chat_reads WHERE project_id=? AND user_id=?",
+                                (project_id, user_id))
+                if cur is None:
+                    self._x(c, "INSERT INTO cms_chat_reads(project_id,user_id,last_read_id,updated_at) VALUES (?,?,?,?)",
+                            (project_id, user_id, last_id, _now()))
+                elif last_id > cur["last_read_id"]:      # jangan mundurkan posisi baca
+                    self._x(c, "UPDATE cms_chat_reads SET last_read_id=?, updated_at=? WHERE project_id=? AND user_id=?",
+                            (last_id, _now(), project_id, user_id))
+        except Exception:                               # noqa: BLE001
+            pass
+
+    def mark_user_tasks_read(self, project_id: int, user_id: int):
+        try:
+            with self._tx() as c:
+                self._x(c, "UPDATE cms_user_tasks SET read_at=? WHERE project_id=? AND user_id=? AND read_at IS NULL",
+                        (_now(), project_id, user_id))
+        except Exception:                               # noqa: BLE001
+            pass
+
+    def project_unreads(self, user_id: int, username: str) -> list[dict]:
+        """Per proyek (yang belum dihapus): jumlah pesan Diskusi belum terbaca (bukan tulisan sendiri,
+        id > last_read) + task belum terbaca (pemberi bukan diri sendiri). Utk badge kartu proyek,
+        total di lonceng 🔔, dan entri dropdown yang bisa diklik menuju diskusinya."""
+        out: dict[int, dict] = {}
+        try:
+            with self._tx() as c:
+                for r in self._all(c, "SELECT ch.project_id, p.name, COUNT(*) AS n FROM cms_project_chat ch "
+                                      "JOIN cms_projects p ON p.id=ch.project_id AND p.deleted_at IS NULL "
+                                      "LEFT JOIN cms_chat_reads rd ON rd.project_id=ch.project_id AND rd.user_id=? "
+                                      "WHERE ch.deleted_at IS NULL AND ch.username<>? AND ch.id>COALESCE(rd.last_read_id,0) "
+                                      "GROUP BY ch.project_id, p.name", (user_id, username)):
+                    out[r["project_id"]] = {"project_id": r["project_id"], "name": r["name"], "chat": r["n"], "tasks": 0}
+                for r in self._all(c, "SELECT t.project_id, p.name, COUNT(*) AS n FROM cms_user_tasks t "
+                                      "JOIN cms_projects p ON p.id=t.project_id AND p.deleted_at IS NULL "
+                                      "WHERE t.user_id=? AND t.deleted_at IS NULL AND t.read_at IS NULL AND t.created_by<>? "
+                                      "GROUP BY t.project_id, p.name", (user_id, username)):
+                    e = out.setdefault(r["project_id"], {"project_id": r["project_id"], "name": r["name"], "chat": 0, "tasks": 0})
+                    e["tasks"] = r["n"]
+        except Exception:                               # noqa: BLE001
+            pass
+        return sorted(out.values(), key=lambda x: -(x["chat"] + x["tasks"]))
 
     # ------------------------------------------------------------ task personal (dari Diskusi #task/#topik atau manual)
     def add_user_task(self, project_id: int, user_id: int, text: str, topic: Optional[str] = None,

@@ -97,6 +97,10 @@ def list_projects():
     if not auth.has_perm(g.user, "project_view_all"):
         visible = S().visible_project_ids(g.user["id"])
         projects = [p for p in projects if p["id"] in visible]
+    un = {u["project_id"]: u for u in S().project_unreads(g.user["id"], g.user["username"])}
+    for p in projects:                                   # badge 💬/✅ belum terbaca di kartu proyek
+        e = un.get(p["id"], {})
+        p["unread_chat"], p["unread_tasks"] = e.get("chat", 0), e.get("tasks", 0)
     return jsonify(projects=projects)
 
 
@@ -123,6 +127,13 @@ def get_project(pid):
     return jsonify(project=S().get_project(pid))
 
 
+@bp.get("/me/unreads")
+@auth.require()
+def my_unreads():
+    """Pesan Diskusi & task belum terbaca per proyek — entri dropdown lonceng 🔔 (klik -> diskusi proyek)."""
+    return jsonify(items=S().project_unreads(g.user["id"], g.user["username"]))
+
+
 @bp.get("/projects/<int:pid>/activity")
 @auth.require()
 def project_activity(pid):
@@ -144,11 +155,16 @@ def project_activity(pid):
 @bp.get("/projects/<int:pid>/chat")
 @auth.require()
 def chat_list(pid):
-    """?after=<id> utk polling inkremental (hanya pesan baru). Semua anggota tim proyek boleh baca."""
+    """?after=<id> utk polling inkremental (hanya pesan baru). Membuka/poll chat = MEMBACA:
+    posisi baca user digeser otomatis (badge unread proyek terhapus). `last_read` (posisi sebelum
+    digeser) dikirim utk divider '— pesan baru —' di klien."""
     _project_visible(pid)
+    last_read = S().get_chat_read(pid, g.user["id"])
     items = S().list_project_chat(pid, after_id=request.args.get("after", 0, type=int),
                                   limit=min(request.args.get("limit", 100, type=int), 200))
-    return jsonify(items=items)
+    if items:
+        S().mark_chat_read(pid, g.user["id"], items[-1]["id"])
+    return jsonify(items=items, last_read=last_read)
 
 
 @bp.post("/projects/<int:pid>/chat")
@@ -238,8 +254,10 @@ def my_tasks(pid):
     """Task milik user di proyek ini; ?all=1 = LINTAS semua proyek (tombol 'semua'); ?done=1 ikut yang selesai."""
     _project_visible(pid)
     all_proj = request.args.get("all", type=int)
-    return jsonify(items=S().list_user_tasks(g.user["id"], project_id=None if all_proj else pid,
-                                             include_done=bool(request.args.get("done", type=int))))
+    items = S().list_user_tasks(g.user["id"], project_id=None if all_proj else pid,
+                                include_done=bool(request.args.get("done", type=int)))
+    S().mark_user_tasks_read(pid, g.user["id"])          # membuka daftar = membaca (badge terhapus)
+    return jsonify(items=items)
 
 
 @bp.post("/projects/<int:pid>/mytasks")
