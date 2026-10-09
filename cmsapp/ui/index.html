@@ -937,7 +937,6 @@ async function tabGantt(){const [{project:p},tr,dr,scurve]=await Promise.all([ap
    <div class=glabel title="${esc(t.title||'')}${draggable?' — seret utk atur urutan; jatuhkan di NAMA task lain = jadi sub-task':''}" style="${v._sub?'padding-left:20px;font-size:12px;color:var(--mut)':''}${v._doc?'padding-left:20px;font-size:12px':''}">${draggable?'<span class=gh title="seret">⠿</span> ':''}${v._sub?`<button type=button class=gmain data-gm="${t.id}" data-gma="${t.parent_task_id}" title="Kembalikan jadi task utama (keluar dari sub)">↰</button> ↳ `:''}${t.chapter_block_id?'📖 ':''}${esc((t.title||'').slice(0,32))}${pics.length?` <span class=badge style="background:var(--mut)">${pics.map(esc).join(', ')}</span>`:''}</div>${bar}</div>`};
  $('#ptab').innerHTML='<p style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
   +'<button id=gsub class=p>+ Sub-task / jadwal</button>'
-  +(hasPerm('project_tasks_admin')?'<button id=ntask>+ Task manual (admin)</button>':'')
   +'<small style="color:var(--mut)">⠿ seret utk urutan · jatuhkan di nama task = jadi sub · 📄 klik utk expand bab laporan</small></p>'
   +'<div class=gantt><div class=ghead><span></span><span>'+new Date(lo).toLocaleDateString()+' → '+new Date(hi).toLocaleDateString()+'</span></div>'
   +view.map(row).join('')+'</div>'
@@ -950,7 +949,6 @@ async function tabGantt(){const [{project:p},tr,dr,scurve]=await Promise.all([ap
   try{await api('POST',`/tasks/${b.dataset.gm}/reorder`,{after_id:+b.dataset.gma,parent_task_id:null});tabGantt()}
   catch(x){note(x.message,1)}});
  $('#gsub').onclick=()=>calAddDlg(dstr(new Date()),()=>tabGantt(),true);
- if($('#ntask'))$('#ntask').onclick=()=>taskDlg({});
  // drag & drop: jatuhkan di NAMA (glabel) task utama = jadi sub-task-nya; selain itu = pindah urutan
  let dragT=null;
  $('#ptab').querySelectorAll('.gdrag').forEach(el=>{
