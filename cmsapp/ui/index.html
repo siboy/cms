@@ -369,7 +369,7 @@ $('#bproj').onclick=()=>projectsView();
 $('#bfiles').onclick=()=>meFilesView();
 $('#bnotif').onclick=notifPanel;
 $('#bapk').onclick=async()=>{try{const r=await fetch('/cms.apk',{method:'HEAD'});
- if(r.ok)location.href='/cms.apk';else note('APK belum tersedia di server ini — jalankan `make apk` dulu',1)}
+ if(r.ok)location.href='/install-apk';else note('APK belum tersedia di server ini — jalankan `make apk` dulu',1)}
  catch(e){note('APK belum tersedia',1)}};
 $('#bout').onclick=async()=>{await api('POST','/logout');location.reload()};
 $('#bmenu').onclick=()=>$('#navbtns').classList.toggle('open');

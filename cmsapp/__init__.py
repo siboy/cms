@@ -68,6 +68,11 @@ def create_app(cfg=Config) -> Flask:
     def pwa_manifest():
         return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "manifest.webmanifest")
 
+    @app.get("/install-apk")
+    def install_apk_guide():
+        """Halaman instruksi instal APK Android (izinkan sumber tak dikenal) - ditautkan dari tombol 📱 APK."""
+        return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "install-apk.html")
+
     @app.get("/app-icon.svg")
     def app_icon():
         resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "app-icon.svg")
