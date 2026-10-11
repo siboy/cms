@@ -5,7 +5,7 @@
 > Perbarui file ini (status, tanggal, centang, temuan baru) sebelum menutup sesi, lalu commit.
 > Jangan menaruh sandi/token di sini. Bahasa pengguna: Indonesia; gaya jawab ringkas (lihat preferensi pengguna).
 
-Terakhir diperbarui: **2026-09-30** (tahap 3 + editor tabel mode form + manajemen proyek + navigasi header proyek + template proyek).
+Terakhir diperbarui: **2026-10-11** (deploy pertama ke ultra + domain publik sdrive.team + rebrand sdrive + keystore rilis + halaman instal APK; ultra DIMATIKAN di akhir sesi ini — lihat §4 paling atas).
 
 ## 1. Tujuan
 Tim (target minimal **500–1000 koneksi**, realistisnya ~100–200 penulis aktif) + AI mengerjakan dokumen resmi
@@ -49,6 +49,45 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Deploy pertama ke ultra + domain publik sdrive.team + rebrand (2026-10-11)** — desain multi-tenant
+  (2026-10-06, lihat entri di bawah) pertama kali dipakai sungguhan: host produksi dipindah dari
+  `dbscraping` ke **PC ultra** (Tailscale `100.94.222.31`, WSL "Ubuntu-Sys" = host docker sebenarnya,
+  diakses `ssh ultra` lalu `ssh -p 2222 root@127.0.0.1` — detail pola akses+quoting+transfer file di
+  memori Claude `cms-sdrive-ultra-deploy.md`, BUKAN didokumentasikan di sini).
+  - Tenant **`utama`** (data lama dbscraping, migrasi via mysqldump+tar volume, diverifikasi row count
+    & jumlah file media cocok 100%) jadi hostname **`cms.sdrive.team`** (slug vs hostname SENGAJA beda —
+    kode perusahaan yg diketik user di APK = "cms"). Tenant **`chp`** (baru) jadi `chp.sdrive.team`.
+  - Domain `sdrive.team` (Hostinger, NS -> Cloudflare) + **Cloudflare Tunnel** (`cloudflared` systemd
+    service di ultra-wsl, token dari dashboard Zero Trust/Cloudflare One) — 1 connector melayani SEMUA
+    tenant via multi "Public Hostname", bukan 1 tunnel per tenant.
+  - **Rebrand "dupoin" -> "sdrive"**: title/header/manifest/APK/ikon (ikon baru huruf **S** + titik
+    aksen oranye, gradasi sama; `cmsapp/ui/app-icon.svg` pakai `<text>`, Android pisah jadi
+    `drawable/ic_cms.xml` [gradient background saja] + `drawable/ic_cms_fg.png` [S+dot transparan,
+    digenerate via Pillow lokal lalu di-copy, BUKAN digambar manual sbg vector path]).
+    `mobile/.../TenantActivity.kt` `BASE_DOMAIN` -> `sdrive.team`.
+  - **Keystore rilis sendiri** dibuat (`keytool`, PKCS12 — storePassword HARUS sama dgn keyPassword,
+    format ini tak dukung beda): `app/build.gradle` baca `CMS_KEYSTORE_PATH/PASSWORD/ALIAS` dari env
+    (fallback debug key kalau kosong), `make apk` kini `assembleRelease` (dulu `assembleDebug`) + mount
+    `CMS_KEYSTORE_DIR` (default `$HOME/cms-keystore`) + **auto docker-cp APK ke SEMUA container
+    `cms-*-app` yang jalan** (loop, bukan hardcode `cms-app` lagi). Sumber keystore di
+    `/root/cms-keystore/` (ultra-wsl); backup di PC agusd `C:\Users\agusd\cms-keystore-backup\`
+    (di luar repo git).
+  - **Halaman instruksi instal** `/install-apk` (`cmsapp/ui/install-apk.html`, route baru di
+    `cmsapp/__init__.py`) — 3 langkah izinkan "sumber tak dikenal" Android; tombol 📱 APK di header
+    (`index.html`) kini arahkan ke sini dulu (bukan langsung unduh).
+  - **Insiden**: APK rilis PERTAMA yang sempat disebar ke 2 tenant salah `BASE_DOMAIN` (lupa sinkron
+    `TenantActivity.kt` ke `/root/cms` di ultra-wsl sebelum `make apk` — `git push` dari PC TIDAK
+    otomatis update clone di sana, ultra-wsl tak punya akses `git fetch` ke GitHub). Ketauan dari
+    verifikasi string di dalam APK (`jar xf` dex + `strings`), bukan dari error. Sudah dibuild ulang
+    + diverifikasi benar + disebar ulang.
+  - Stack lama di dbscraping (`cmscollab`: cms-app/mysql/redis/worker) **di-stop** (bukan dihapus —
+    data/volume tetap ada utk rollback) setelah migrasi+verifikasi beres.
+  - Keputusan: TIDAK publish ke Play Store publik (app WebView generik berisiko kena kebijakan
+    "Minimum Functionality" krn user bisa connect ke URL manapun) — tetap distribusi APK langsung.
+  - **STATUS AKHIR SESI INI: PC ultra DIMATIKAN** (shutdown diminta user) — `cms.sdrive.team` &
+    `chp.sdrive.team` **DOWN** (502) sampai ultra dinyalakan manual lagi (perlu orang di tempat tekan
+    tombol power, belum ada Wake-on-LAN). Sesi berikutnya: cek ultra sudah nyala dulu sebelum asumsi
+    CMS jalan.
 - [x] **APK Android single multi-tenant + PWA (2026-10-06)** — `mobile/` = proyek Android lengkap
   (Kotlin): `TenantActivity` layar pilih perusahaan (kode tenant -> https://<kode>.<BASE_DOMAIN>, atau
   URL penuh termasuk http://IP:8879; tersimpan di SharedPreferences; ganti via app-shortcut tekan-tahan
