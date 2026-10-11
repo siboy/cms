@@ -5,7 +5,7 @@
 > Perbarui file ini (status, tanggal, centang, temuan baru) sebelum menutup sesi, lalu commit.
 > Jangan menaruh sandi/token di sini. Bahasa pengguna: Indonesia; gaya jawab ringkas (lihat preferensi pengguna).
 
-Terakhir diperbarui: **2026-10-11** (deploy pertama ke ultra + domain publik sdrive.team + rebrand sdrive + keystore rilis + halaman instal APK; ultra DIMATIKAN di akhir sesi ini — lihat §4 paling atas).
+Terakhir diperbarui: **2026-10-12** (mulai persiapan rilis APK ke Play Store publik — targetSdk 36 + AAB + rename package + privacy policy; lihat §4 paling atas).
 
 ## 1. Tujuan
 Tim (target minimal **500–1000 koneksi**, realistisnya ~100–200 penulis aktif) + AI mengerjakan dokumen resmi
@@ -49,6 +49,29 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [x] **Persiapan rilis APK ke Play Store publik (2026-10-12)** — membalik keputusan sesi 2026-10-11
+  ("TIDAK publish ke Play Store", lihat entri di bawah) karena user minta lanjut proses publish sungguhan.
+  - `mobile/app/build.gradle`: `compileSdk`/`targetSdk` 34 -> **36** (syarat Play Store: app baru/update
+    wajib target API 36 mulai 31 Agt 2026, sudah lewat per hari ini).
+  - `applicationId`/`namespace` **`id.databoks.cms` -> `team.sdrive.cms`** (ikut rebrand sdrive; package
+    Kotlin dipindah `java/id/databoks/cms/` -> `java/team/sdrive/cms/`, `shortcuts.xml` disesuaikan).
+    AMAN diganti sekarang krn belum pernah rilis publik ke Play Store (versionCode masih 2).
+  - **Target `make aab` baru** (Makefile) — `bundleRelease` -> `mobile/app/build/outputs/bundle/release/app-release.aab`,
+    dibutuhkan krn Play Store app baru wajib format AAB (bukan APK); `make apk` tetap ada khusus
+    sideload/distribusi langsung (tombol 📱 di web, `/cms.apk`).
+  - **Privacy policy** dibuat & di-hosting: `cmsapp/ui/privacy-policy.html`, route `GET /privacy-policy`
+    (`cmsapp/__init__.py`) — isi disusun dari baca kode `auth.py`/`projects_api.py` (data yg benar2
+    dikumpulkan: username/nama/email/no.WA/password-hash, konten dokumen/proyek, log IP+waktu login;
+    TIDAK ada SDK iklan/analitik pihak ketiga). URL utk Play Console: `https://<domain>/privacy-policy`.
+  - **Data Safety form** (Play Console -> App content): checklist jawaban per section dikirim ke chat user
+    (bukan file — diisi manual di Play Console), ringkasnya: collects data=Yes, personal info (name/email/
+    phone) + app activity utk account management & app functionality, encrypted in transit=Yes, tidak
+    share ke 3rd party, user bisa minta hapus data via admin tenant. **User HARUS cek ulang** sesuai fitur
+    CMS terbaru sebelum submit.
+  - Sisa syarat Play Store yg BELUM dikerjakan (lihat juga §4 bawah "Keputusan: TIDAK publish..."):
+    Play App Signing (aktifkan setelah upload AAB pertama), feature graphic 1024x500 + screenshot,
+    content rating questionnaire, target audience, closed testing 20 tester/14 hari (kalau akun developer
+    baru), verifikasi identitas developer di Play Console.
 - [x] **Deploy pertama ke ultra + domain publik sdrive.team + rebrand (2026-10-11)** — desain multi-tenant
   (2026-10-06, lihat entri di bawah) pertama kali dipakai sungguhan: host produksi dipindah dari
   `dbscraping` ke **PC ultra** (Tailscale `100.94.222.31`, WSL "Ubuntu-Sys" = host docker sebenarnya,

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kebijakan Privasi — sdrive</title>
+<style>
+  :root{
+    --bg:#f3f5f9; --card:#fff; --text:#1f2430; --muted:#6b7280; --border:#e5e7eb;
+    --g1:#7c3aed; --g2:#2563eb; --g3:#06b6d4; --accent:#fbbf24;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){ --bg:#15171f; --card:#1d2029; --text:#eef0f4; --muted:#9aa1b1; --border:#2b2f3a; }
+  }
+  :root[data-theme="dark"]{ --bg:#15171f; --card:#1d2029; --text:#eef0f4; --muted:#9aa1b1; --border:#2b2f3a; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+       padding:24px 16px 48px;display:flex;justify-content:center}
+  main{max-width:640px;width:100%}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .logo{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,var(--g1),var(--g2) 55%,var(--g3));
+        display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:19px;flex-shrink:0;position:relative}
+  .logo:after{content:"";position:absolute;right:5px;bottom:5px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  h1{font-size:20px;margin:0}
+  p.lead{color:var(--muted);margin:14px 0 28px;font-size:13px;line-height:1.5}
+  section{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+  section h2{font-size:14.5px;margin:0 0 8px}
+  section p, section li{color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 8px}
+  ul{margin:0;padding-left:20px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--muted)}
+  th{color:var(--text)}
+  footer{margin-top:28px;font-size:12px;color:var(--muted);text-align:center}
+  a{color:var(--g2)}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo">S</div>
+    <h1>Kebijakan Privasi — sdrive</h1>
+  </header>
+  <p class="lead">Berlaku sejak 2026-10-12. sdrive adalah aplikasi kolaborasi internal (CMS/manajemen proyek) yang
+    digunakan oleh perusahaan pelanggan kami ("Perusahaan") dan pengguna yang diundang oleh Perusahaan tersebut.
+    Kebijakan ini menjelaskan data apa yang kami proses saat Anda menggunakan aplikasi Android sdrive maupun
+    versi webnya.</p>
+
+  <section>
+    <h2>Data yang kami kumpulkan</h2>
+    <table>
+      <tr><th>Kategori</th><th>Contoh</th><th>Keterangan</th></tr>
+      <tr><td>Akun</td><td>username, nama, email, no. WhatsApp, kata sandi</td><td>Kata sandi disimpan terenkripsi (hash), tidak pernah dalam bentuk teks biasa.</td></tr>
+      <tr><td>Konten kerja</td><td>dokumen, komentar, data proyek/task yang Anda unggah atau buat</td><td>Dimasukkan sendiri oleh pengguna sesuai pekerjaan di Perusahaan.</td></tr>
+      <tr><td>Log teknis</td><td>alamat IP, waktu login</td><td>Untuk keamanan akun (deteksi login mencurigakan) dan audit.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Yang TIDAK kami lakukan</h2>
+    <ul>
+      <li>Tidak ada SDK iklan atau pelacak pihak ketiga di aplikasi ini.</li>
+      <li>Tidak ada analitik pihak ketiga — aplikasi Android hanya membuka tampilan web ke server kami sendiri
+        (tidak ada koneksi ke domain lain selain server perusahaan Anda).</li>
+      <li>Kami tidak menjual atau membagikan data Anda ke pihak ketiga untuk tujuan pemasaran.</li>
+      <li>Kami tidak mengakses lokasi, kontak, kamera, atau mikrofon perangkat Anda.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Penyimpanan &amp; keamanan</h2>
+    <p>Data disimpan di server milik/dikelola Perusahaan pelanggan (self-hosted), dilindungi dengan HTTPS,
+      sesi login terenkripsi, dan kontrol akses berbasis peran. Setiap Perusahaan hanya dapat melihat datanya
+      sendiri.</p>
+  </section>
+
+  <section>
+    <h2>Berapa lama data disimpan</h2>
+    <p>Data disimpan selama akun/proyek Anda masih aktif di Perusahaan terkait. Anda dapat meminta penghapusan
+      akun dan datanya melalui admin Perusahaan Anda, atau menghubungi kami langsung menggunakan kontak di bawah.</p>
+  </section>
+
+  <section>
+    <h2>Anak-anak</h2>
+    <p>Aplikasi ini ditujukan untuk penggunaan kerja/bisnis oleh karyawan perusahaan, bukan untuk anak-anak di
+      bawah 13 tahun.</p>
+  </section>
+
+  <section>
+    <h2>Perubahan kebijakan</h2>
+    <p>Kami dapat memperbarui kebijakan ini sewaktu-waktu. Perubahan material akan diinformasikan melalui aplikasi.</p>
+  </section>
+
+  <section>
+    <h2>Kontak</h2>
+    <p>Pertanyaan terkait privasi: <a href="mailto:databoks.kic@katadata.co.id">databoks.kic@katadata.co.id</a></p>
+  </section>
+
+  <footer>sdrive — aplikasi kolaborasi internal</footer>
+</main>
+</body>
+</html>

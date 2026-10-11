@@ -73,6 +73,11 @@ def create_app(cfg=Config) -> Flask:
         """Halaman instruksi instal APK Android (izinkan sumber tak dikenal) - ditautkan dari tombol 📱 APK."""
         return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "install-apk.html")
 
+    @app.get("/privacy-policy")
+    def privacy_policy():
+        """Kebijakan privasi — wajib ditautkan di Play Console (Data safety) kalau app dirilis publik."""
+        return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "privacy-policy.html")
+
     @app.get("/app-icon.svg")
     def app_icon():
         resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "app-icon.svg")

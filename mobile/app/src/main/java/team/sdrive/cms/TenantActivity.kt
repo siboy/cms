@@ -1,4 +1,4 @@
-package id.databoks.cms
+package team.sdrive.cms
 
 import android.content.Intent
 import android.os.Bundle
