@@ -2,6 +2,7 @@ plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
 }
+def hasReleaseKs = System.getenv("CMS_KEYSTORE_PATH") != null
 android {
     namespace 'id.databoks.cms'
     compileSdk 34
@@ -9,11 +10,22 @@ android {
         applicationId "id.databoks.cms"      // SATU appId utk semua perusahaan (single APK multi-tenant)
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1"
+    }
+    signingConfigs {
+        if (hasReleaseKs) {
+            release {
+                storeFile file(System.getenv("CMS_KEYSTORE_PATH"))
+                storePassword System.getenv("CMS_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("CMS_KEY_ALIAS")
+                keyPassword System.getenv("CMS_KEY_PASSWORD")
+            }
+        }
     }
     buildTypes {
-        release { minifyEnabled false; signingConfig signingConfigs.debug } // ganti dgn keystore sendiri utk rilis
+        // keystore rilis via env CMS_KEYSTORE_* (lihat `make apk`); tanpa env ini jatuh ke debug key
+        release { minifyEnabled false; signingConfig hasReleaseKs ? signingConfigs.release : signingConfigs.debug }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = '17' }

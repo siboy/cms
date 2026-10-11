@@ -1,6 +1,6 @@
 {
-  "name": "dupoin",
-  "short_name": "dupoin",
+  "name": "sdrive",
+  "short_name": "sdrive",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f3f5f9",

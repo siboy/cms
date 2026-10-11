@@ -17,7 +17,7 @@ import androidx.appcompat.app.AppCompatActivity
 class TenantActivity : AppCompatActivity() {
     companion object {
         // GANTI sesuai domain induk tenant-mu (subdomain per perusahaan, lihat scripts/add-tenant.sh)
-        const val BASE_DOMAIN = "cms.databoks.id"
+        const val BASE_DOMAIN = "sdrive.team"
         const val PREFS = "cms"; const val KEY_URL = "base_url"
     }
 

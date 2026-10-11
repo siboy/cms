@@ -186,18 +186,27 @@ ccms:
 .PHONY: push stack stack-restart rr rx7 apk panel panel-tunnel panel-adopt stack-down stack-logs stack-status stack-bash dev tunnel init-schema drop-schema pull cmd cal ovpn ovpn-stop ovpn-status cbuild cup cdown clog csh clogin csekda cflask cnewflask cdiskusidata ccms
 
 # ---- APK Android (tanpa Android Studio: build headless via Docker, image di-cache setelah run pertama) ----
+# Keystore rilis: CMS_KEYSTORE_DIR (isi dupoin-release.jks + keystore.env dari `keytool`, lihat README).
+# Tanpa keystore.env di situ, build jatuh ke debug key (lihat app/build.gradle hasReleaseKs).
+CMS_KEYSTORE_DIR ?= $(HOME)/cms-keystore
 apk:
 	docker rm -f cms-apk-build 2>/dev/null || true
-	docker run --rm --name cms-apk-build --network host -v cms-android-sdk:/opt/android-sdk -v cms-gradle-cache:/home/gradle/.gradle -v $(CURDIR)/mobile:/work -w /work gradle:8.7-jdk17 bash -c '\
+	docker run --rm --name cms-apk-build --network host \
+	  -v cms-android-sdk:/opt/android-sdk -v cms-gradle-cache:/home/gradle/.gradle \
+	  -v $(CURDIR)/mobile:/work -v $(CMS_KEYSTORE_DIR):/keystore:ro -w /work gradle:8.7-jdk17 bash -c '\
 	set -e; export ANDROID_HOME=/opt/android-sdk; \
+	if [ -f /keystore/keystore.env ]; then set -a; . /keystore/keystore.env; set +a; \
+	  export CMS_KEYSTORE_PATH=/keystore/dupoin-release.jks CMS_KEYSTORE_PASSWORD=$$KEYSTORE_PASSWORD \
+	  CMS_KEY_PASSWORD=$$KEY_PASSWORD CMS_KEY_ALIAS=$$KEY_ALIAS; fi; \
 	if [ ! -d $$ANDROID_HOME/cmdline-tools/latest ]; then \
 	  mkdir -p $$ANDROID_HOME/cmdline-tools && cd /tmp && \
 	  curl -sSLo ct.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
 	  unzip -q ct.zip -d $$ANDROID_HOME/cmdline-tools && mv $$ANDROID_HOME/cmdline-tools/cmdline-tools $$ANDROID_HOME/cmdline-tools/latest && \
 	  yes | $$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null && \
 	  $$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" >/dev/null; fi; \
-	cd /work && gradle --no-daemon assembleDebug'
-	@echo "[OK] APK: mobile/app/build/outputs/apk/debug/app-debug.apk"
-	@docker cp mobile/app/build/outputs/apk/debug/app-debug.apk cms-app:/data/cms.apk 2>/dev/null \
-	  && echo "[OK] disalin ke cms-app:/data/cms.apk — tombol 📱 APK di web aktif" \
-	  || echo "[..] cms-app tidak jalan; salin manual: docker cp ... <container>:/data/cms.apk"
+	cd /work && gradle --no-daemon assembleRelease'
+	@echo "[OK] APK: mobile/app/build/outputs/apk/release/app-release.apk"
+	@for c in $$(docker ps --format '{{.Names}}' | grep -E '^cms-[a-z0-9-]+-app$$'); do \
+	  docker cp mobile/app/build/outputs/apk/release/app-release.apk $$c:/data/cms.apk \
+	    && echo "[OK] disalin ke $$c:/data/cms.apk"; \
+	done
