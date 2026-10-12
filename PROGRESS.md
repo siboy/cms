@@ -49,6 +49,31 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [ ] **Rencana: distribusi via Managed Google Play / private app (org-only), bukan Play Store publik (2026-10-12)**
+  — alasan: install APK sideload wajib user klik-klik "izinkan sumber tak dikenal" tiap HP baru (lihat
+  `/install-apk`), user minta hindari ini. Jalur ini install app lewat Play Store resmi di device yang
+  terdaftar Android Enterprise -> tidak ada prompt untrust sama sekali. Yang BELUM dikerjakan (belum ada
+  yang disentuh di sesi ini, baru riset):
+  1. **KOREKSI (2026-10-12, cek lanjutan)**: akun Play Console developer **personal pun bisa** publish
+     private app — tidak wajib tipe Organization. "Organization" di langkah #3 di bawah = ID enterprise
+     TARGET distribusi (identitas perusahaan penerima lewat Workspace/Android Enterprise-nya), bukan tipe
+     akun developer. Kalau akun yg dipakai daftar Play Console juga admin Workspace perusahaan, app bisa
+     auto-approve ke org itu tanpa isi ID manual. Alternatif: upload lewat Admin console Workspace (bukan
+     Play Console) -> Google otomatis buatkan akun developer org, gratis tanpa fee registrasi.
+  2. **Daftarkan device perusahaan ke Android Enterprise/EMM** (Google Workspace Admin console -> Devices
+     -> Mobile & endpoints, built-in management cukup kalau sudah pakai Workspace) — ini bagian yg
+     sebenarnya hilangkan prompt untrust; tanpa ini Managed Google Play tak muncul di device.
+  3. Di Play Console: Release -> Setup -> Advanced settings -> tab **Managed Google Play** -> Add
+     organization (Organization ID perusahaan). Upload cukup **AAB + judul** (`make aab` sudah ada, lihat
+     entri di atas) — TIDAK perlu screenshot/feature graphic krn tak tampil di listing publik.
+  4. App content questionnaire (privacy policy sudah ada di `/privacy-policy`, data safety checklist
+     sudah disusun di sesi 2026-10-12) kemungkinan tetap diminta Console meski private — belum pasti mana
+     yg di-skip, cek langsung di Console.
+  5. Closed testing 12 tester/14 hari: kemungkinan exempt utk akun Organization tapi sumber riset tidak
+     tegas — cek banner status Play Console setelah app dibuat.
+  - App **tidak bisa** sekaligus private-org & publik di Play Store (keputusan final, bukan sementara).
+  - Catatan: ini berarti keputusan "Persiapan rilis ke Play Store publik" di entri tepat di bawah ini
+    kemungkinan juga bergeser arah (private org, bukan publik) — rekonsiliasi saat eksekusi nanti.
 - [x] **Persiapan rilis APK ke Play Store publik (2026-10-12)** — membalik keputusan sesi 2026-10-11
   ("TIDAK publish ke Play Store", lihat entri di bawah) karena user minta lanjut proses publish sungguhan.
   - `mobile/app/build.gradle`: `compileSdk`/`targetSdk` 34 -> **36** (syarat Play Store: app baru/update
