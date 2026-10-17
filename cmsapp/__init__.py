@@ -30,6 +30,9 @@ def create_app(cfg=Config) -> Flask:
     from cmsapp.projects_api import bp as projects_bp
     app.register_blueprint(projects_bp)
 
+    from cmsapp.kd_api import bp as kd_bp
+    app.register_blueprint(kd_bp)
+
     @app.after_request
     def _security_headers(resp):
         h = resp.headers
@@ -72,6 +75,13 @@ def create_app(cfg=Config) -> Flask:
     def install_apk_guide():
         """Halaman instruksi instal APK Android (izinkan sumber tak dikenal) - ditautkan dari tombol 📱 APK."""
         return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "install-apk.html")
+
+    @app.get("/data-desa")
+    def data_desa_page():
+        """Halaman data desa Kemendagri (indikator, grafik, peta, proyeksi 5 tahun). Login dicek oleh /api/kd/*."""
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "data-desa.html")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
     @app.get("/privacy-policy")
     def privacy_policy():

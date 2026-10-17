@@ -26,6 +26,32 @@ Ganti perusahaan: tekan-tahan ikon app → "Ganti Perusahaan". Build: buka `mobi
 Studio → Build APK. Webapp juga ber-manifest PWA (`/manifest.webmanifest`) — bisa "Add to Home
 Screen" tanpa APK. Detail: `mobile/README.md`.
 
+## Data Desa Kemendagri (`/data-desa`) — indikator, grafik, peta, proyeksi 5 tahun
+
+Halaman terpisah (tombol **📊 Data Desa** di header) untuk membaca data kependudukan DKB Kemendagri dari NAS Synology:
+pilih wilayah (nasional → provinsi → kab/kota → kecamatan → desa; hingga 12 unit. Unit = satu wilayah, atau **gabungan** beberapa wilayah yang dijumlahkan jadi satu — mis. 3 kecamatan masing-masing, atau digabung jadi 1; token API `33.03.09+33.03.14`) dan indikator
+(jumlah penduduk, pendidikan, umur, pekerjaan, agama, dst + turunan seperti usia produktif/rasio ketergantungan),
+lihat grafik historis per semester, peta choropleth anak-wilayah, lalu **proyeksi 5 tahun** dengan skenario.
+
+- **Sumber data** (`utils/kd_nas.py`, `utils/kd_data.py`): NAS `CMS_NAS_HOST/USER/PASS` (+ `CMS_NAS_BASE`, default
+  `/TIMDATA/kemendagri`; boleh `CMS_NAS_ENV_FILE` berformat `~/.hp_upload.env` utk dev) **atau** folder lokal berlayout sama
+  (`CMS_KD_LOCAL_DIR`). Periode ditemukan otomatis dari nama berkas `kemendagri_<level>_<YYYY>_sem<N>.parquet` di
+  `parquet/` (terbaru) dan `<YYYY>_sem<N>/parquet/` — semester baru muncul begitu berkasnya diunggah. Parquet di-cache di
+  `$CMS_DATA_DIR/kd_cache`. Riwayat per wilayah diambil dari berkas tingkat wilayah itu (periode lama mungkin hanya ada di
+  tingkat provinsi).
+- **Peta** butuh GeoJSON (data Kemendagri tidak membawa geometri): taruh `geojson/<level>.geojson` di NAS
+  (`desa_kelurahan` boleh dipecah `geojson/desa_kelurahan_<kode kab tanpa titik>.geojson`) atau di `CMS_KD_GEOJSON_DIR`.
+  Fitur dicocokkan ke wilayah lewat properti berisi kode (mis. `33.03.05.1012` / `3303051012`); tanpa GeoJSON halaman tetap
+  menampilkan peringkat.
+- **Proyeksi** (`utils/kd_projection.py`, murni Python): tren dasar otomatis (majemuk/linear/datar/laju manual) + driver
+  skenario yang dihitung **mandiri** lalu dijumlahkan, jadi kontribusi tiap faktor terbaca terpisah. Driver preset
+  (kelahiran, kematian, migrasi, pertumbuhan ekonomi/pengeluaran, serapan tenaga kerja, akses pendidikan, tambahan laju,
+  lonjakan sekali) hanya perlu satu angka; rumus & bobot tersembunyi di “Lanjutan”. User bisa menulis **rumus sendiri**
+  (parser aman berbasis `ast`, bukan `eval`; variabel `base v0 k g x x0 dx w prev` + kode indikator). Elastisitas bawaan
+  = asumsi awal, bukan estimasi statistik — UI menyatakan ini. Keluaran bisa diunduh CSV/PNG.
+- **API**: `/api/kd/{meta,regions,search,series,children_values,geojson,baselines,formula/check,project}` (login wajib).
+- **Uji**: `/root/venv/bin/python scripts/kd_test.py` (parquet sintetis berlayout NAS; tanpa NAS/DB).
+
 ## Multi-tenant: banyak perusahaan, banyak divisi (sejak 2026-10-06)
 
 Kebutuhan: CMS dipakai banyak perusahaan, tiap perusahaan punya divisi-divisi; laporan, pengguna,

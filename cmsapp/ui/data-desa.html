@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Data Desa Kemendagri — sdrive</title>
+<link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#f3f5f9;--fg:#18202e;--mut:#64748b;--line:#e2e7ef;--acc:#2563eb;--acc-soft:#2563eb1a;--warn:#b45309;--warn-bg:#fef3c7;--card:#fff;--ok:#15803d;--bad:#b91c1c;
+ --s0:#2563eb;--s1:#d97706;--s2:#16a34a;--s3:#9333ea;--s4:#dc2626;--s5:#0891b2;--s6:#0d9488;--s7:#db2777;--s8:#65a30d;--s9:#475569;--gap:#cbd5e1;--m1:#dbeafe;--m2:#93c5fd;--m3:#3b82f6;--m4:#1d4ed8;--m5:#1e3a8a}
+@media(prefers-color-scheme:dark){:root{--bg:#0f141c;--fg:#e6ebf2;--mut:#8d97a9;--line:#263144;--acc:#4c8dff;--acc-soft:#4c8dff26;--warn:#f0a35e;--warn-bg:#3a2a12;--card:#171e29;--ok:#4ade80;--bad:#f87171;
+ --s0:#60a5fa;--s1:#fbbf24;--s2:#4ade80;--s3:#c084fc;--s4:#f87171;--s5:#22d3ee;--s6:#2dd4bf;--s7:#f472b6;--s8:#a3e635;--s9:#94a3b8;--gap:#334155;--m1:#1e3a8a;--m2:#1d4ed8;--m3:#3b82f6;--m4:#93c5fd;--m5:#dbeafe}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
+header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+header b{flex:1;min-width:140px}a{color:var(--acc)}
+main{max-width:1180px;margin:0 auto;padding:12px 14px 60px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 12px}
+.tabs button{border:1px solid var(--line);background:var(--card);color:var(--fg);padding:7px 14px;border-radius:999px;cursor:pointer;font:inherit}
+.tabs button.cur{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font-size:15px}.mut{color:var(--mut)}.small{font-size:12px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}@media(max-width:820px){.grid2{grid-template-columns:1fr}}
+select,input,button.b,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 9px;min-width:0}
+textarea{width:100%;font-family:ui-monospace,monospace;font-size:13px}
+button.b{cursor:pointer;background:var(--card)}button.b:hover{border-color:var(--acc)}button.p{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:0 0 auto}.row .fill{flex:1 1 160px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--acc-soft);border-radius:999px;padding:2px 4px 2px 10px;font-size:12.5px}
+.chip i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.chip button{border:none;background:none;color:var(--mut);cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+.ind{max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px 8px}
+.ind details{margin:2px 0}.ind summary{cursor:pointer;font-weight:600;padding:3px 0}
+.ind label{display:flex;gap:8px;align-items:flex-start;padding:2px 0;cursor:pointer}.ind label span.u{color:var(--mut);font-size:11.5px}
+.note{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 10px;font-size:12.5px;margin:6px 0}
+.err{color:var(--bad)}
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px}@media(max-width:520px){.charts{grid-template-columns:1fr}}
+.cc{position:relative}.cc svg{width:100%;height:auto;display:block}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;box-shadow:0 4px 14px #0002;z-index:3;white-space:nowrap}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin:2px 0 4px}.leg i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:4px;border-radius:2px}
+table.t{border-collapse:collapse;width:100%;font-size:12.5px}table.t th,table.t td{border-bottom:1px solid var(--line);padding:4px 8px;text-align:right;white-space:nowrap}
+table.t th:first-child,table.t td:first-child{text-align:left;white-space:normal}.tw{overflow:auto}
+.drv{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--bg)}
+.drv.on{border-color:var(--acc);background:var(--acc-soft)}.drv h4{margin:0;font-size:14px}
+.drv .adv{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;display:none}.drv.open .adv{display:block}
+.drv input[type=number]{width:96px}.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center;font-size:13px}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+.mapwrap{position:relative}.mapwrap svg{width:100%;height:auto;max-height:560px;background:var(--bg);border-radius:8px}
+.mapwrap path{stroke:var(--card);stroke-width:.4;cursor:pointer}.mapwrap path:hover{stroke:var(--fg);stroke-width:1.2}
+.lg{display:flex;gap:0;margin-top:6px;font-size:11.5px}.lg div{flex:1;padding:2px 4px;color:#000;text-align:center}
+.pos{color:var(--ok)}.neg{color:var(--bad)}
+.hide{display:none!important}
+</style></head><body>
+<header><b>📊 Data Desa Kemendagri</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
+<main>
+<div id="status"></div>
+<div class="tabs" id="tabs">
+ <button data-t="pilih" class="cur">1 · Wilayah &amp; indikator</button>
+ <button data-t="grafik">2 · Grafik historis</button>
+ <button data-t="peta">3 · Peta</button>
+ <button data-t="proyeksi">4 · Proyeksi 5 tahun</button>
+</div>
+
+<section id="t-pilih">
+ <div class="grid2">
+  <div class="card">
+   <h3>Wilayah</h3>
+   <div class="row" style="margin-bottom:6px">
+    <select id="sProv" class="fill"></select><select id="sKab" class="fill"></select>
+    <select id="sKec" class="fill"></select><select id="sKel" class="fill"></select>
+   </div>
+   <div class="row"><button class="b p" id="addReg">+ Tambahkan wilayah terpilih</button><button class="b" id="addNas">+ Nasional</button></div>
+   <div class="row" style="margin-top:8px"><input id="q" class="fill" placeholder="atau cari nama wilayah (min. 3 huruf)…"><button class="b" id="qGo">Cari</button></div>
+   <div id="qRes" class="small" style="margin-top:4px"></div>
+   <details id="kidBox" style="margin-top:10px"><summary><b>Pilih beberapa kecamatan / desa sekaligus…</b></summary>
+    <div class="small mut" style="margin:4px 0">Induk = wilayah terdalam yang dipilih di atas (kosong = provinsi). Centang yang diinginkan, lalu tambahkan <b>masing-masing</b> (satu garis per wilayah) atau <b>digabung jadi 1</b> (angka dijumlahkan).</div>
+    <div class="row"><span id="kidParent" class="mut small"></span><button class="b" id="kidLoad">Muat daftar</button><input id="kidQ" class="fill" placeholder="filter nama…"><button class="b" id="kidAll">Pilih semua tampil</button></div>
+    <div id="kidList" class="ind" style="max-height:220px;margin-top:6px"></div>
+    <div class="row" style="margin-top:6px"><button class="b p" id="kidSep">+ Tambahkan masing-masing</button><input id="kidName" class="fill" placeholder="nama gabungan (opsional)"><button class="b p" id="kidMerge">+ Tambahkan digabung jadi 1</button></div>
+   </details>
+   <div id="chips" class="row" style="margin-top:10px"></div>
+   <div id="mergeBar" class="row small hide" style="margin-top:6px"><span class="mut">Centang ≥2 wilayah di atas →</span><input id="mgName" class="fill" placeholder="nama gabungan (opsional)"><button class="b" id="mgGo">Gabungkan yang dicentang</button></div>
+   <div class="small mut" style="margin-top:6px">Maks. 12 unit. Tiap unit = satu wilayah <i>atau</i> satu gabungan. Wilayah tunggal memakai berkas tingkatnya sendiri; gabungan menjumlahkan anggotanya (wilayah induk &amp; anaknya tidak boleh digabung).</div>
+  </div>
+  <div class="card">
+   <h3>Indikator <span id="indCount" class="mut small"></span></h3>
+   <div class="row" style="margin-bottom:6px"><input id="indQ" class="fill" placeholder="cari indikator (mis. pendidikan, umur, tani)…"><button class="b" id="indClear">Kosongkan</button></div>
+   <div id="indList" class="ind"></div>
+   <div id="indSel" class="row" style="margin-top:8px"></div>
+  </div>
+ </div>
+ <div class="card"><h3>Ketersediaan data</h3><div id="avail" class="small"></div></div>
+ <div class="row"><button class="b p" id="goGraf">Lihat grafik historis →</button></div>
+</section>
+
+<section id="t-grafik" class="hide">
+ <div class="card">
+  <div class="row">
+   <label>Tampilkan <select id="gMode"><option value="abs">Jumlah (jiwa)</option><option value="pct">% dari jumlah penduduk</option></select></label>
+   <button class="b" id="gCsv">⬇ CSV</button><span id="gMsg" class="mut small"></span>
+  </div>
+  <div id="gNote"></div>
+ </div>
+ <div id="gCharts" class="charts"></div>
+ <div class="card"><h3>Tabel data</h3><div class="tw" id="gTable"></div></div>
+</section>
+
+<section id="t-peta" class="hide">
+ <div class="card">
+  <div class="row">
+   <label>Anak wilayah dari <select id="mParent"></select></label>
+   <label>Indikator <select id="mInd"></select></label>
+   <label>Periode <select id="mPer"></select></label>
+   <label>Nilai <select id="mMode"><option value="abs">Jumlah</option><option value="pct">% penduduk</option></select></label>
+  </div>
+  <div id="mNote"></div>
+ </div>
+ <div class="grid2">
+  <div class="card"><h3 id="mTitle">Peta</h3><div class="mapwrap"><div id="mapBox"></div><div id="mapTip" class="tip hide"></div></div><div id="mapLg" class="lg"></div></div>
+  <div class="card"><h3>Peringkat</h3><div id="mRank" style="max-height:520px;overflow:auto"></div></div>
+ </div>
+</section>
+
+<section id="t-proyeksi" class="hide">
+ <div class="note" id="pNote">Proyeksi = ekstrapolasi tren data historis + asumsi skenario yang Anda atur. Ini <b>bukan ramalan</b>, dan angka pengaruh driver bawaan adalah <b>asumsi awal</b> (bukan hasil estimasi statistik) — sesuaikan bobotnya atau pakai rumus sendiri bila punya dasar yang lebih baik.</div>
+ <div class="grid2">
+  <div class="card">
+   <h3>Tren dasar</h3>
+   <div class="small mut" style="margin-bottom:6px">Default <b>Otomatis</b>: laju pertumbuhan dihitung dari data historis. Ubah per indikator bila perlu.</div>
+   <div id="trends"></div>
+  </div>
+  <div class="card">
+   <h3>Skenario: tambahkan faktor</h3>
+   <div class="small mut" style="margin-bottom:6px">Nyalakan faktor yang ingin diuji, isi nilai skenarionya. Rumus tersembunyi — buka “Lanjutan” untuk bobot atau menulis rumus sendiri. Tiap faktor dihitung <b>mandiri</b> lalu dijumlahkan, jadi kontribusinya bisa dibaca terpisah.</div>
+   <div id="drivers"></div>
+   <div class="row"><button class="b" id="addFormula">+ Tambah rumus sendiri</button></div>
+  </div>
+ </div>
+ <div class="row" style="margin:6px 0 12px"><button class="b p" id="runProj">▶ Hitung proyeksi 5 tahun</button><button class="b" id="pCsv" disabled>⬇ CSV</button><span id="pMsg" class="mut small"></span></div>
+ <div id="pOut"></div>
+</section>
+</main>
+
+<script>
+const $=(s,e=document)=>e.querySelector(s),$$=(s,e=document)=>[...e.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=(v,d=0)=>v==null||!isFinite(v)?'–':new Intl.NumberFormat('id-ID',{maximumFractionDigits:d}).format(v);
+const cmp=v=>v==null?'–':new Intl.NumberFormat('id-ID',{notation:'compact',maximumFractionDigits:1}).format(v);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const PAL=()=>[0,1,2,3,4,5,6,7,8,9].map(i=>css('--s'+i));
+async function api(path,opt){
+  const o={credentials:'same-origin',...(opt||{})};
+  if(o.body&&typeof o.body!=='string'){o.body=JSON.stringify(o.body);}
+  if(o.body)o.headers={'Content-Type':'application/json','X-CMS':'1'};
+  const r=await fetch('/api/kd'+path,o);
+  if(r.status===401){location.href='/';throw new Error('belum login');}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+const store={get(k,d){try{return JSON.parse(localStorage.getItem('kd.'+k))??d}catch(e){return d}},set(k,v){try{localStorage.setItem('kd.'+k,JSON.stringify(v))}catch(e){}}};
+
+// ------------------------------------------------------------------ state
+let META=null, regions=store.get('regions',[]), keys=store.get('keys',['jumlah_penduduk']), DATA=null, PROJ=null, GMODE='abs';
+let drivers=store.get('drivers',null), trends=store.get('trends',{}), baselines={};
+const IND=()=>Object.fromEntries(META.indicators.map(i=>[i.key,i]));
+const nameOf=code=>(regions.find(r=>r.code===code)||{}).name||code;
+
+// ------------------------------------------------------------------ tab
+function tab(t){
+  $$('#tabs button').forEach(b=>b.classList.toggle('cur',b.dataset.t===t));
+  ['pilih','grafik','peta','proyeksi'].forEach(x=>$('#t-'+x).classList.toggle('hide',x!==t));
+  if(t==='grafik')loadGraf(); if(t==='peta')initMap(); if(t==='proyeksi')initProj();
+}
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)tab(b.dataset.t)};
+$('#goGraf').onclick=()=>tab('grafik');
+
+// ------------------------------------------------------------------ pilih wilayah
+async function fillSel(id,parent,ph){
+  const el=$(id); el.innerHTML=`<option value="">${ph}</option>`;
+  if(parent===null){return}
+  try{const r=await api('/regions?parent='+encodeURIComponent(parent));
+    el.innerHTML=`<option value="">${ph}</option>`+r.items.map(i=>`<option value="${esc(i.code)}">${esc(i.name)}</option>`).join('');}catch(e){}
+}
+async function initRegionSelects(){
+  await fillSel('#sProv','','— Provinsi —');
+  fillSel('#sKab',null,'— Kab/Kota —');fillSel('#sKec',null,'— Kecamatan —');fillSel('#sKel',null,'— Desa/Kel —');
+}
+$('#sProv').onchange=async e=>{fillSel('#sKec',null,'— Kecamatan —');fillSel('#sKel',null,'— Desa/Kel —');await fillSel('#sKab',e.target.value||null,'— Kab/Kota —')};
+$('#sKab').onchange=async e=>{fillSel('#sKel',null,'— Desa/Kel —');await fillSel('#sKec',e.target.value||null,'— Kecamatan —')};
+$('#sKec').onchange=async e=>{await fillSel('#sKel',e.target.value||null,'— Desa/Kel —')};
+function selectedCode(){return $('#sKel').value||$('#sKec').value||$('#sKab').value||$('#sProv').value||''}
+async function addRegion(code){
+  if(regions.some(r=>r.code===code))return;
+  if(regions.length>=12){alert('Maksimal 12 unit');return}
+  let info; try{info=(await api('/baselines?region='+encodeURIComponent(code||'nasional'))).region}catch(e){alert(e.message);return}
+  regions.push({code:info.code,name:info.name,label:info.label,path:info.path||[]});
+  saveSel(); renderChips(); baselines={};
+}
+$('#addReg').onclick=()=>{const c=selectedCode();if(!c){alert('Pilih provinsi (atau lebih rinci) dulu');return}addRegion(c)};
+$('#addNas').onclick=()=>addRegion('');
+$('#qGo').onclick=doSearch; $('#q').onkeydown=e=>{if(e.key==='Enter')doSearch()};
+async function doSearch(){
+  const q=$('#q').value.trim(); if(q.length<3){$('#qRes').textContent='Ketik minimal 3 huruf';return}
+  $('#qRes').textContent='mencari…';
+  try{const r=await api('/search?q='+encodeURIComponent(q));
+    $('#qRes').innerHTML=r.items.length?r.items.map(i=>`<div><a href="#" data-c="${esc(i.code)}">${esc(i.name)}</a> <span class="mut">${esc(i.label)} · ${esc((i.path||[]).join(' › '))}</span></div>`).join(''):'Tidak ada hasil';
+  }catch(e){$('#qRes').innerHTML=`<span class="err">${esc(e.message)}</span>`}
+}
+$('#qRes').onclick=e=>{const a=e.target.closest('a[data-c]');if(a){e.preventDefault();addRegion(a.dataset.c)}};
+function renderChips(){
+  $('#chips').innerHTML=regions.length?regions.map((r,i)=>`<span class="chip"><input type="checkbox" data-m="${i}" title="centang utk digabung" ${r.sel?'checked':''}><i style="background:${PAL()[i%10]}"></i>${r.members?'⛓ ':''}${esc(r.name)} <span class="mut">${esc(r.label)}</span>${r.members?`<button data-un="${i}" title="pecah jadi wilayah terpisah" style="font-size:12px">pecah</button>`:''}<button data-i="${i}" title="hapus">×</button></span>`).join(''):'<span class="mut small">Belum ada wilayah dipilih.</span>';
+  $('#mergeBar').classList.toggle('hide',regions.length<2);
+}
+$('#chips').onclick=e=>{const b=e.target.closest('button');if(!b)return;baselines={};
+  if(b.dataset.un!=null){const r=regions[+b.dataset.un];regions.splice(+b.dataset.un,1,...r.members.map(m=>({...m})))}
+  else if(b.dataset.i!=null)regions.splice(+b.dataset.i,1); else return;
+  regions=regions.slice(0,12);saveSel();renderChips()};
+$('#chips').onchange=e=>{const c=e.target.closest('input[data-m]');if(c)regions[+c.dataset.m].sel=c.checked};
+function flatMembers(r){return r.members?r.members:[{code:r.code,name:r.name,label:r.label,path:r.path||[]}]}
+function overlapMsg(codes){for(const a of codes)for(const b of codes)if(a!==b&&(a===''||b.startsWith(a+'.')))return `wilayah bertumpuk: ${a||'nasional'} mencakup ${b}`;return ''}
+function makeGroup(list,name){
+  const mem=list.flatMap(flatMembers),codes=mem.map(m=>m.code), dup=new Set(codes).size!==codes.length;
+  const msg=dup?'ada wilayah ganda':overlapMsg(codes); if(msg){alert('Tidak bisa digabung — '+msg);return null}
+  if(codes.includes('')){alert('Nasional tidak bisa digabung dengan wilayah lain');return null}
+  const nm=(name||'').trim()||('Gabungan: '+mem.slice(0,3).map(m=>m.name).join(', ')+(mem.length>3?` +${mem.length-3}`:''));
+  return {code:codes.join('+'),name:nm,label:`Gabungan ${mem.length} wilayah`,path:[],members:mem};
+}
+$('#mgGo').onclick=()=>{const pick=regions.filter(r=>r.sel); if(pick.length<2){alert('Centang minimal 2 wilayah');return}
+  const g=makeGroup(pick,$('#mgName').value); if(!g)return;
+  const first=regions.findIndex(r=>r.sel); regions=regions.filter(r=>!r.sel); regions.splice(Math.min(first,regions.length),0,g);
+  $('#mgName').value='';baselines={};saveSel();renderChips()};
+// pemilih anak wilayah (banyak sekaligus)
+let KID=[];
+function kidParentCode(){const c=selectedCode();return c.split('.').length>=4?null:c}
+function kidParentName(){const sel=[$('#sKel'),$('#sKec'),$('#sKab'),$('#sProv')].find(x=>x.value);return sel?(sel.options[sel.selectedIndex]||{}).text||sel.value:'Nasional'}
+function kidLevelLabel(c){return ['Provinsi','Kab/Kota','Kecamatan','Desa/Kelurahan'][c.split('.').length-1]}
+$('#kidLoad').onclick=async()=>{const p=kidParentCode(); if(p===null){alert('Desa tidak punya anak wilayah — pilih induk yang lebih tinggi');return}
+  $('#kidParent').textContent='memuat…';
+  try{KID=(await api('/regions?parent='+encodeURIComponent(p))).items.map(i=>({...i,on:false}));$('#kidParent').textContent=`Anak dari ${kidParentName()} (${KID.length})`;renderKid()}catch(e){$('#kidParent').textContent=e.message}};
+function kidShown(){const q=$('#kidQ').value.trim().toLowerCase();return KID.filter(k=>!q||k.name.toLowerCase().includes(q))}
+function renderKid(){$('#kidList').innerHTML=kidShown().map(k=>`<label><input type="checkbox" data-kc="${esc(k.code)}" ${k.on?'checked':''}><div>${esc(k.name)} <span class="u">${k.penduduk==null?'':fmt(k.penduduk)+' jiwa'}</span></div></label>`).join('')||'<span class="mut small">Klik “Muat daftar”.</span>'}
+$('#kidQ').oninput=renderKid;
+$('#kidList').onchange=e=>{const c=e.target.closest('input[data-kc]');if(c)KID.find(k=>k.code===c.dataset.kc).on=c.checked};
+$('#kidAll').onclick=()=>{const sh=kidShown(),all=sh.every(k=>k.on);sh.forEach(k=>k.on=!all);renderKid()};
+const kidPick=()=>KID.filter(k=>k.on).map(k=>({code:k.code,name:k.name,label:kidLevelLabel(k.code),path:[kidParentName()]}));
+$('#kidSep').onclick=()=>{const pk=kidPick().filter(k=>!regions.some(r=>r.code===k.code)); if(!pk.length){alert('Centang wilayah dulu (atau sudah ada di daftar)');return}
+  if(regions.length+pk.length>12){alert(`Maksimal 12 unit (tersisa ${12-regions.length})`);return}
+  regions.push(...pk);baselines={};saveSel();renderChips()};
+$('#kidMerge').onclick=()=>{const pk=kidPick(); if(pk.length<2){alert('Centang minimal 2 wilayah untuk digabung');return}
+  if(regions.length>=12){alert('Maksimal 12 unit');return}
+  const g=makeGroup(pk,$('#kidName').value); if(!g)return; regions.push(g);$('#kidName').value='';baselines={};saveSel();renderChips()};
+function saveSel(){store.set('regions',regions);store.set('keys',keys)}
+
+// ------------------------------------------------------------------ pilih indikator
+function renderInd(){
+  const q=$('#indQ').value.trim().toLowerCase(), by={};
+  META.indicators.forEach(i=>{ if(!q||(i.label+' '+i.group).toLowerCase().includes(q))(by[i.group]=by[i.group]||[]).push(i)});
+  const html=META.groups.filter(g=>by[g]).map(g=>`<details ${q||g==='Kependudukan'||by[g].some(i=>keys.includes(i.key))?'open':''}><summary>${esc(g)} <span class="mut small">(${by[g].length})</span></summary>`+
+    by[g].map(i=>`<label><input type="checkbox" data-k="${i.key}" ${keys.includes(i.key)?'checked':''}><div>${esc(i.label)} <span class="u">${i.kind==='ratio'?'· '+esc(i.unit):''}</span></div></label>`).join('')+'</details>').join('');
+  $('#indList').innerHTML=html||'<span class="mut">Tidak ada indikator cocok.</span>';
+  renderIndSel();
+}
+function renderIndSel(){
+  const m=IND(); $('#indCount').textContent=`· ${keys.length} dipilih (maks 12)`;
+  $('#indSel').innerHTML=keys.map(k=>`<span class="chip">${esc(m[k]?.label||k)}<button data-k="${k}">×</button></span>`).join('');
+}
+$('#indList').onchange=e=>{const c=e.target.closest('input[data-k]');if(!c)return;
+  if(c.checked){ if(keys.length>=12){c.checked=false;alert('Maksimal 12 indikator');return} keys.push(c.dataset.k)} else keys=keys.filter(k=>k!==c.dataset.k);
+  saveSel();renderIndSel()};
+$('#indSel').onclick=e=>{const b=e.target.closest('button[data-k]');if(b){keys=keys.filter(k=>k!==b.dataset.k);saveSel();renderInd()}};
+$('#indQ').oninput=renderInd; $('#indClear').onclick=()=>{keys=[];saveSel();renderInd()};
+
+// ------------------------------------------------------------------ chart SVG
+function niceTicks(lo,hi,n=5){
+  if(lo===hi){const d=Math.abs(lo)*.05||1;lo-=d;hi+=d}
+  const raw=(hi-lo)/n,p=Math.pow(10,Math.floor(Math.log10(raw))),f=raw/p,st=(f<1.5?1:f<3?2:f<7?5:10)*p;
+  const a=Math.floor(lo/st)*st,b=Math.ceil(hi/st)*st,out=[];for(let v=a;v<=b+st/2;v+=st)out.push(+v.toFixed(10));return out;
+}
+/* cfg: {series:[{id,name,color,dash,points:[{x,y,l}],band:[{x,lo,hi}],dots}], xs:[{x,l}], yfmt, h} */
+function lineChart(cfg){
+  const W=640,Hh=cfg.h||300,m={l:58,r:14,t:12,b:34},fg=css('--fg'),mut=css('--mut'),line=css('--line');
+  const all=cfg.series.flatMap(s=>[...s.points.map(p=>p.y),...(s.band||[]).flatMap(b=>[b.lo,b.hi])]).filter(v=>v!=null&&isFinite(v));
+  if(!all.length)return '<div class="mut small">Tidak ada data.</div>';
+  let lo=Math.min(...all),hi=Math.max(...all);const pad=(hi-lo)*.08||Math.abs(hi)*.02||1;lo-=pad;hi+=pad;
+  if(cfg.zero&&lo>0&&lo<hi*.5)lo=0; if(!cfg.neg&&lo<0&&Math.min(...all)>=0)lo=0;
+  const yt=niceTicks(lo,hi),y0=yt[0],y1=yt[yt.length-1];
+  const xmin=Math.min(...cfg.xs.map(x=>x.x)),xmax=Math.max(...cfg.xs.map(x=>x.x));
+  const X=x=>m.l+(xmax===xmin?(W-m.l-m.r)/2:(x-xmin)/(xmax-xmin)*(W-m.l-m.r)),Y=y=>Hh-m.b-(y-y0)/(y1-y0||1)*(Hh-m.t-m.b);
+  let s=`<svg viewBox="0 0 ${W} ${Hh}" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif" font-size="11">`;
+  s+=yt.map(v=>`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line}"/><text x="${m.l-6}" y="${Y(v)+4}" text-anchor="end" fill="${mut}">${esc((cfg.yfmt||cmp)(v))}</text>`).join('');
+  const step=Math.ceil(cfg.xs.length/8);
+  s+=cfg.xs.map((x,i)=>i%step?'':`<text x="${X(x.x)}" y="${Hh-m.b+16}" text-anchor="middle" fill="${mut}">${esc(x.l)}</text>`).join('');
+  if(cfg.split!=null)s+=`<line x1="${X(cfg.split)}" x2="${X(cfg.split)}" y1="${m.t}" y2="${Hh-m.b}" stroke="${mut}" stroke-dasharray="2 4"/><text x="${X(cfg.split)+4}" y="${m.t+10}" fill="${mut}">proyeksi →</text>`;
+  cfg.series.forEach(se=>{
+    if(se.band&&se.band.length){const up=se.band.map(b=>`${X(b.x)},${Y(b.hi)}`),dn=[...se.band].reverse().map(b=>`${X(b.x)},${Y(b.lo)}`);
+      s+=`<polygon points="${up.concat(dn).join(' ')}" fill="${se.color}" opacity=".13"/>`}
+    const pts=se.points.filter(p=>p.y!=null);
+    if(pts.length>1)s+=`<polyline fill="none" stroke="${se.color}" stroke-width="2.2" ${se.dash?`stroke-dasharray="${se.dash}"`:''} points="${pts.map(p=>X(p.x)+','+Y(p.y)).join(' ')}"/>`;
+    if(se.dots!==false)s+=pts.map(p=>`<circle cx="${X(p.x)}" cy="${Y(p.y)}" r="3.4" fill="${se.color}"/>`).join('');
+  });
+  s+=`<rect class="hit" x="${m.l}" y="${m.t}" width="${W-m.l-m.r}" height="${Hh-m.t-m.b}" fill="transparent"/></svg>`;
+  return s;
+}
+function hover(box,cfg){ // tooltip: titik x terdekat, semua seri
+  const svg=box.querySelector('svg'),hit=svg?.querySelector('.hit'),tip=box.querySelector('.tip');if(!hit)return;
+  const W=640,m={l:58,r:14},xmin=Math.min(...cfg.xs.map(x=>x.x)),xmax=Math.max(...cfg.xs.map(x=>x.x));
+  const mv=ev=>{const r=svg.getBoundingClientRect(),px=(ev.clientX-r.left)/r.width*W;
+    const xv=xmin+(px-m.l)/(W-m.l-m.r)*(xmax-xmin);let best=cfg.xs.reduce((a,b)=>Math.abs(b.x-xv)<Math.abs(a.x-xv)?b:a);
+    const rows=cfg.series.map(se=>{const p=se.points.find(p=>Math.abs(p.x-best.x)<1e-6);return p&&p.y!=null?`<div><span style="color:${se.color}">●</span> ${esc(se.name)}: <b>${esc((cfg.tfmt||cfg.yfmt||fmt)(p.y))}</b></div>`:''}).join('');
+    tip.innerHTML=`<b>${esc(best.l)}</b>${rows}`;tip.classList.remove('hide');
+    const bx=box.getBoundingClientRect();tip.style.left=Math.min(ev.clientX-bx.left+12,bx.width-tip.offsetWidth-4)+'px';tip.style.top=Math.max(0,ev.clientY-bx.top-10)+'px'};
+  hit.onmousemove=mv;hit.ontouchstart=hit.ontouchmove=e=>mv(e.touches[0]);hit.onmouseleave=()=>tip.classList.add('hide');
+}
+function chartCard(title,sub,cfg,extra=''){
+  const id='c'+Math.random().toString(36).slice(2,8);
+  const leg=cfg.series.filter(s=>s.name).map(s=>`<span><i style="background:${s.color};${s.dash?'opacity:.6':''}"></i>${esc(s.name)}</span>`).join('');
+  return {html:`<div class="card cc" id="${id}"><div class="row"><h3 style="flex:1;margin:0">${esc(title)}</h3><button class="b small" data-png="${id}" title="Simpan gambar PNG">⬇ PNG</button></div>${sub?`<div class="small mut">${esc(sub)}</div>`:''}<div class="leg">${leg}</div>${lineChart(cfg)}<div class="tip hide"></div>${extra}</div>`,id,cfg,title};
+}
+function mount(cards){cards.forEach(c=>{const b=document.getElementById(c.id);if(b)hover(b,c.cfg)})}
+document.addEventListener('click',e=>{const b=e.target.closest('button[data-png]');if(!b)return;
+  const card=document.getElementById(b.dataset.png),svg=card.querySelector('svg');
+  const xml=new XMLSerializer().serializeToString(svg),img=new Image(),bg=css('--card');
+  img.onload=()=>{const c=document.createElement('canvas');c.width=1280;c.height=Math.round(1280*img.height/img.width)+60;const x=c.getContext('2d');
+    x.fillStyle=bg;x.fillRect(0,0,c.width,c.height);x.fillStyle=css('--fg');x.font='bold 26px system-ui';x.fillText(card.querySelector('h3').textContent,20,36);
+    x.drawImage(img,0,60,1280,c.height-60);c.toBlob(bl=>{const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='grafik.png';a.click()})};
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(xml);
+});
+
+// ------------------------------------------------------------------ grafik historis
+async function loadGraf(){
+  const note=$('#gNote'),box=$('#gCharts');
+  if(!regions.length||!keys.length){note.innerHTML='<div class="note">Pilih minimal 1 wilayah dan 1 indikator di langkah 1.</div>';box.innerHTML='';$('#gTable').innerHTML='';return}
+  note.innerHTML='';$('#gMsg').textContent='memuat…';
+  try{DATA=await api('/series?regions='+regions.map(r=>encodeURIComponent(r.code||'nasional')).join(',')+'&keys='+keys.join(','));}catch(e){$('#gMsg').innerHTML=`<span class="err">${esc(e.message)}</span>`;return}
+  $('#gMsg').textContent='';drawGraf();
+}
+function drawGraf(){
+  if(!DATA)return; const m=IND(), P=DATA.periods, pct=$('#gMode').value==='pct';
+  const xs=P.map(p=>({x:p.t,l:p.label})), cards=[];
+  const short=DATA.series.filter(s=>s.values.filter(v=>v!=null).length<2).length;
+  let nt=`Periode tersedia: ${P.map(p=>p.label).join(', ')}.`;
+  if(P.length<3)nt+=' Riwayat masih pendek — tren/proyeksi akan sangat tidak pasti.';
+  $('#gNote').innerHTML=`<div class="note">${esc(nt)}${short?` ${short} deret hanya punya 1 titik data.`:''}</div>`;
+  keys.forEach(k=>{
+    const ind=m[k],usePct=pct&&ind.kind==='count';
+    const ser=regions.map((r,i)=>{const s=DATA.series.find(z=>z.indicator===k&&z.region.code===r.code);if(!s)return null;
+      return {id:r.code,name:r.name,color:PAL()[i%10],points:P.map((p,j)=>({x:p.t,y:usePct?s.pct[j]:s.values[j],l:p.label}))}}).filter(Boolean);
+    const c=chartCard(ind.label,usePct?'% dari jumlah penduduk':ind.kind==='ratio'?ind.unit:'jiwa',{series:ser,xs,yfmt:usePct||ind.kind==='ratio'?v=>fmt(v,1):cmp,tfmt:v=>fmt(v,usePct||ind.kind==='ratio'?2:0)});
+    cards.push(c);
+  });
+  $('#gCharts').innerHTML=cards.map(c=>c.html).join(''); mount(cards);
+  let h='<table class="t"><tr><th>Wilayah · indikator</th>'+P.map(p=>`<th>${esc(p.label)}</th>`).join('')+'</tr>';
+  DATA.series.forEach(s=>{const ind=m[s.indicator];h+=`<tr><td>${esc(nameOf(s.region.code))} · ${esc(ind.label)}</td>`+s.values.map((v,j)=>`<td>${pct&&ind.kind==='count'?(s.pct[j]==null?'–':fmt(s.pct[j],2)+'%'):fmt(v,ind.kind==='ratio'?2:0)}</td>`).join('')+'</tr>'});
+  $('#gTable').innerHTML=h+'</table>';
+}
+$('#gMode').onchange=drawGraf;
+function csvDownload(name,rows){
+  const body=rows.map(r=>r.map(c=>{c=c==null?'':String(c);return /[",\n;]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+body],{type:'text/csv'}));a.download=name;a.click();
+}
+$('#gCsv').onclick=()=>{ if(!DATA)return;const m=IND();
+  csvDownload('data-historis.csv',[['kode_wilayah','wilayah','indikator','satuan',...DATA.periods.map(p=>p.label),...DATA.periods.map(p=>p.label+' (% penduduk)')],
+   ...DATA.series.map(s=>[s.region.code,nameOf(s.region.code),m[s.indicator].label,m[s.indicator].unit,...s.values,...s.pct])])};
+
+// ------------------------------------------------------------------ peta
+let MAPSTATE={};
+function initMap(){
+  const pars=[{code:'',name:'Nasional (provinsi)'}];
+  regions.forEach(r=>{ if(r.code&&!r.code.includes('+')&&r.code.split('.').length<4&&!pars.some(p=>p.code===r.code))pars.push({code:r.code,name:r.name+' ('+r.label+')'});
+    const up=r.code.split('.').slice(0,-1).join('.'); if(r.code&&!r.code.includes('+')&&up&&!pars.some(p=>p.code===up))pars.push({code:up,name:'Induk '+r.name+' ('+up+')'});});
+  const cur=$('#mParent').value; $('#mParent').innerHTML=pars.map(p=>`<option value="${esc(p.code)}">${esc(p.name)}</option>`).join(''); if(cur&&pars.some(p=>p.code===cur))$('#mParent').value=cur;
+  const m=META.indicators, ci=$('#mInd').value||keys[0]||'jumlah_penduduk';
+  $('#mInd').innerHTML=m.map(i=>`<option value="${i.key}">${esc(i.group)} — ${esc(i.label)}</option>`).join(''); $('#mInd').value=ci;
+  const per=META.periods.filter(p=>p.levels.length).map(p=>p.label).reverse();
+  const cp=$('#mPer').value; $('#mPer').innerHTML=per.map(p=>`<option>${p}</option>`).join(''); if(cp)$('#mPer').value=cp;
+  drawMap();
+}
+['mParent','mInd','mPer','mMode'].forEach(id=>$('#'+id).onchange=drawMap);
+const MCOL=()=>[css('--m1'),css('--m2'),css('--m3'),css('--m4'),css('--m5')];
+async function drawMap(){
+  const parent=$('#mParent').value,key=$('#mInd').value,pct=$('#mMode').value==='pct'&&IND()[key].kind==='count';
+  $('#mNote').innerHTML='';$('#mTitle').textContent='memuat…';
+  let cv,gj;
+  try{cv=await api(`/children_values?parent=${encodeURIComponent(parent)}&key=${key}&period=${encodeURIComponent($('#mPer').value)}`);}catch(e){$('#mTitle').textContent='Peta';$('#mNote').innerHTML=`<div class="note">${esc(e.message)}</div>`;return}
+  try{gj=await api(`/geojson?parent=${encodeURIComponent(parent)}`)}catch(e){gj={available:false,hint:e.message}}
+  const vals=cv.rows.map(r=>pct?r.pct:r.value),ok=vals.filter(v=>v!=null&&isFinite(v)).sort((a,b)=>a-b);
+  const q=[1,2,3,4].map(i=>ok.length?ok[Math.min(ok.length-1,Math.floor(i*ok.length/5))]:0),cols=MCOL();
+  const colOf=v=>v==null||!isFinite(v)?css('--gap'):cols[q.filter(t=>v>=t).length];
+  const ind=IND()[key]; $('#mTitle').textContent=`${ind.label} — ${cv.label||''} (${cv.period||'-'})`;
+  const f=v=>pct||ind.kind==='ratio'?fmt(v,2)+(pct?'%':''):fmt(v,0);
+  const byCode=Object.fromEntries(cv.rows.map(r=>[r.code,r])); MAPSTATE={byCode,f,pct};
+  // peringkat
+  const rk=cv.rows.map(r=>({...r,v:pct?r.pct:r.value})).sort((a,b)=>(b.v??-1)-(a.v??-1)),mx=Math.max(1,...rk.map(r=>r.v||0));
+  $('#mRank').innerHTML=`<table class="t">${rk.slice(0,200).map((r,i)=>`<tr><td>${i+1}. <a href="#" data-drill="${esc(r.code)}">${esc(r.name)}</a><div class="bar"><i style="width:${(r.v||0)/mx*100}%"></i></div></td><td>${r.v==null?'–':f(r.v)}</td></tr>`).join('')}</table>${rk.length>200?`<div class="small mut">…${rk.length-200} lainnya</div>`:''}`;
+  // peta
+  if(!gj.available){
+    $('#mapBox').innerHTML='<div class="mut" style="padding:30px;text-align:center">Peta belum tersedia untuk tingkat ini.</div>';$('#mapLg').innerHTML='';
+    $('#mNote').innerHTML=`<div class="note">GeoJSON belum tersedia — ${esc(gj.hint||'')}. Peringkat di kanan tetap dapat dipakai.</div>`;return}
+  const feats=gj.geojson.features; let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  const eachPt=(c,fn)=>{if(typeof c[0]==='number')fn(c);else c.forEach(z=>eachPt(z,fn))};
+  feats.forEach(ft=>ft.geometry&&eachPt(ft.geometry.coordinates,p=>{x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1])}));
+  const k=Math.cos(((y0+y1)/2)*Math.PI/180),W=800,sc=W/((x1-x0)*k||1),Hh=Math.max(120,Math.min(900,(y1-y0)*sc));
+  const P=p=>((p[0]-x0)*k*sc).toFixed(1)+','+((y1-p[1])*sc).toFixed(1);
+  const ring=r=>'M'+r.map(P).join('L')+'Z';
+  const dpath=g=>!g?'':g.type==='Polygon'?g.coordinates.map(ring).join(''):g.type==='MultiPolygon'?g.coordinates.map(pl=>pl.map(ring).join('')).join(''):'';
+  $('#mapBox').innerHTML=`<svg viewBox="0 0 ${W} ${Hh.toFixed(0)}" xmlns="http://www.w3.org/2000/svg">${feats.map(ft=>{
+    const d=ft.properties._digits,code=Object.keys(byCode).find(c=>c.replace(/\./g,'')===d),r=byCode[code];
+    return `<path d="${dpath(ft.geometry)}" fill="${colOf(r?(pct?r.pct:r.value):null)}" data-c="${esc(code||'')}" data-n="${esc(r?.name||d)}"/>`}).join('')}</svg>`;
+  const lab=[0,...q].map((v,i)=>`<div style="background:${cols[i]}">${i===0?'<'+f(q[0]):i===4?'≥'+f(q[3]):f(q[i-1])+'–'+f(q[i])}</div>`);
+  $('#mapLg').innerHTML=lab.join('');
+  const miss=cv.rows.length-feats.filter(ft=>Object.keys(byCode).some(c=>c.replace(/\./g,'')===ft.properties._digits)).length;
+  if(miss>0)$('#mNote').innerHTML=`<div class="note">${miss} wilayah tidak punya poligon di GeoJSON (tampil di peringkat saja).</div>`;
+}
+$('#mapBox').addEventListener('mousemove',e=>{const p=e.target.closest('path'),tip=$('#mapTip');if(!p){tip.classList.add('hide');return}
+  const r=MAPSTATE.byCode?.[p.dataset.c],bx=$('#mapBox').getBoundingClientRect();
+  tip.innerHTML=`<b>${esc(p.dataset.n)}</b><br>${r?esc(MAPSTATE.f(MAPSTATE.pct?r.pct:r.value)):'–'}`;tip.classList.remove('hide');tip.style.left=(e.clientX-bx.left+12)+'px';tip.style.top=(e.clientY-bx.top-10)+'px'});
+$('#mapBox').addEventListener('mouseleave',()=>$('#mapTip').classList.add('hide'));
+function drill(code){ if(!code)return;const sel=$('#mParent'); if(code.split('.').length<4){ if(![...sel.options].some(o=>o.value===code))sel.insertAdjacentHTML('beforeend',`<option value="${esc(code)}">${esc(MAPSTATE.byCode[code]?.name||code)}</option>`);sel.value=code;drawMap()}
+  else addRegion(code).then(()=>alert('Desa ditambahkan ke daftar wilayah (langkah 1).'))}
+document.addEventListener('click',e=>{const a=e.target.closest('a[data-drill]');if(a){e.preventDefault();drill(a.dataset.drill)}const p=e.target.closest('#mapBox path');if(p)drill(p.dataset.c)});
+
+// ------------------------------------------------------------------ proyeksi: UI driver
+function defaultDrivers(){return META.drivers.map(d=>({id:d.id,type:'preset',preset:d.id,name:d.label,enabled:false,baseline:d.baseline,target:d.baseline,phase:'ramp',weight:1,open:false}))}
+async function loadBaselines(){
+  if(!regions.length)return; const code=regions[0].code||'nasional';
+  try{const r=await api('/baselines?region='+encodeURIComponent(code));baselines=r.baselines||{};
+    drivers.forEach(d=>{ if(d.type==='preset'&&baselines[d.preset]!=null&&!d.touched){d.baseline=baselines[d.preset];if(!d.enabled)d.target=d.baseline}});}catch(e){}
+}
+async function initProj(){
+  if(!drivers)drivers=defaultDrivers();
+  // sinkronkan bila katalog driver berubah
+  const have=new Set(drivers.map(d=>d.id)); META.drivers.forEach(d=>{if(!have.has(d.id))drivers.push(defaultDrivers().find(x=>x.id===d.id))});
+  await loadBaselines(); renderTrends(); renderDrivers();
+}
+function renderTrends(){
+  const m=IND(); $('#trends').innerHTML=keys.length?keys.map(k=>{const t=trends[k]||{method:'auto'};
+    return `<div class="row" style="margin-bottom:6px"><div class="fill">${esc(m[k].label)}</div>
+     <select data-tk="${k}"><option value="auto" ${t.method==='auto'?'selected':''}>Otomatis</option><option value="compound" ${t.method==='compound'?'selected':''}>Pertumbuhan majemuk</option><option value="linear" ${t.method==='linear'?'selected':''}>Linear</option><option value="flat" ${t.method==='flat'?'selected':''}>Datar (tanpa tren)</option><option value="manual" ${t.method==='manual'?'selected':''}>Laju manual</option></select>
+     <input type="number" step="0.1" data-tg="${k}" placeholder="% / th" value="${t.growth_pct??''}" style="width:90px;${t.method==='manual'?'':'display:none'}"></div>`}).join(''):'<span class="mut small">Pilih indikator di langkah 1.</span>';
+}
+$('#trends').onchange=e=>{const k=e.target.dataset.tk||e.target.dataset.tg;if(!k)return;const t=trends[k]=trends[k]||{method:'auto'};
+  if(e.target.dataset.tk)t.method=e.target.value; else t.growth_pct=e.target.value===''?null:+e.target.value; store.set('trends',trends);renderTrends()};
+function drvSave(){store.set('drivers',drivers.map(({open,...d})=>d))}
+function renderDrivers(){
+  const cat=Object.fromEntries(META.drivers.map(d=>[d.id,d]));
+  $('#drivers').innerHTML=drivers.map((d,i)=>{
+    const c=cat[d.preset]; const un=d.type==='preset'?c.unit:'';
+    const base=d.type==='preset'?`<div class="kv"><span>Acuan saat ini</span><span><input type="number" step="${c.step}" data-i="${i}" data-f="baseline" value="${d.baseline??''}"> ${esc(un)} ${baselines[d.preset]!=null&&!d.touched?'<span class="mut small">(dari data)</span>':''}</span>
+      <span>Nilai skenario</span><span><input type="number" step="${c.step}" data-i="${i}" data-f="target" value="${d.target??''}"> ${esc(un)}</span>
+      <span>Berlaku</span><span><select data-i="${i}" data-f="phase"><option value="ramp" ${d.phase==='ramp'?'selected':''}>bertahap sampai tahun ke-5</option><option value="step" ${d.phase==='step'?'selected':''}>langsung dari tahun ke-1</option></select></span></div>`
+      :`<div class="kv"><span>Rumus</span><span><textarea rows="2" data-i="${i}" data-f="formula" placeholder="mis. base * (1 + 0.01 * dx * w)">${esc(d.formula||'')}</textarea></span>
+      <span>Acuan (x0)</span><span><input type="number" step="any" data-i="${i}" data-f="baseline" value="${d.baseline??0}"></span>
+      <span>Nilai skenario (x)</span><span><input type="number" step="any" data-i="${i}" data-f="target" value="${d.target??0}"></span>
+      <span>Berlaku pada</span><span class="small"><select data-i="${i}" data-f="targetsMode"><option value="all" ${d.targets?.length?'':'selected'}>semua indikator terpilih</option><option value="sel" ${d.targets?.length?'selected':''}>hanya yang dipilih…</option></select></span></div>
+      ${d.targets?.length||d.targetsMode==='sel'?`<div class="row small" style="margin-top:4px">${keys.map(k=>`<label><input type="checkbox" data-i="${i}" data-tk2="${k}" ${d.targets?.includes(k)?'checked':''}> ${esc(IND()[k].label)}</label>`).join('')}</div>`:''}
+      <div class="small mut" style="margin-top:6px">Variabel: <code>base</code> (tren dasar tahun ke-k), <code>v0</code> (nilai terakhir), <code>k</code> (1–5), <code>g</code> (laju tren/th), <code>x</code>, <code>x0</code>, <code>dx</code>, <code>w</code> (bobot), <code>prev</code> (hasil rumus tahun lalu), serta kode indikator (mis. <code>jumlah_penduduk</code>). Fungsi: ${META.formula_funcs.join(', ')}.<br><button class="b small" data-i="${i}" data-chk="1">Cek rumus</button> <span id="chk${i}"></span></div>`;
+    return `<div class="drv ${d.enabled?'on':''} ${d.open?'open':''}"><div class="row"><label class="fill row" style="gap:8px"><input type="checkbox" data-i="${i}" data-f="enabled" ${d.enabled?'checked':''}><h4>${esc(d.name)}</h4></label>
+      <button class="b small" data-i="${i}" data-tog="1">Lanjutan ▾</button>${d.type==='formula'?`<button class="b small" data-i="${i}" data-del="1">Hapus</button>`:''}</div>
+      ${d.type==='preset'?`<div class="small mut">${esc(c.help)}</div>`:''}${base}
+      <div class="adv"><div class="kv"><span>Bobot (×)</span><span><input type="number" step="0.1" data-i="${i}" data-f="weight" value="${d.weight??1}"> <span class="mut small">pengali pengaruh; 1 = bawaan</span></span>
+      ${d.type==='preset'?`<span>Elastisitas</span><span><input type="number" step="0.05" data-i="${i}" data-f="elasticity" value="${d.elasticity??''}" placeholder="bawaan"> <span class="mut small">kosong = pakai tabel bawaan per jenis indikator</span></span>`:''}</div>
+      ${d.type==='preset'?`<div class="small mut" style="margin-top:6px">Bawaan: ${Object.entries(c.el).map(([k,v])=>`${esc(k==='*'?'semua':k.replace('_',' '))} ${v}`).join(' · ')} — <b>asumsi awal</b>. Efek: ${c.effect==='rate_add'?'menambah laju pertumbuhan tahunan':'menggeser level sekali'}.</div>`:''}</div></div>`}).join('');
+}
+$('#drivers').onchange=e=>{const t=e.target,i=+t.dataset.i;if(isNaN(i))return;const d=drivers[i];
+  if(t.dataset.tk2){d.targets=d.targets||[];d.targets=t.checked?[...new Set([...d.targets,t.dataset.tk2])]:d.targets.filter(k=>k!==t.dataset.tk2);drvSave();return}
+  const f=t.dataset.f; if(!f)return;
+  if(f==='enabled'){d.enabled=t.checked;renderDrivers()} else if(f==='targetsMode'){d.targets=t.value==='all'?[]:(d.targets||[]);d.targetsMode=t.value;renderDrivers()}
+  else if(['baseline','target','weight','elasticity'].includes(f)){d[f]=t.value===''?undefined:+t.value;if(f==='baseline')d.touched=true;if(f==='target'&&!d.enabled){d.enabled=true;renderDrivers()}}
+  else d[f]=t.value; drvSave()};
+$('#drivers').onclick=async e=>{const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i,d=drivers[i];
+  if(b.dataset.tog){d.open=!d.open;renderDrivers()}
+  else if(b.dataset.del){drivers.splice(i,1);drvSave();renderDrivers()}
+  else if(b.dataset.chk){const o=$('#chk'+i);try{const r=await api('/formula/check',{method:'POST',body:{formula:d.formula||''}});o.innerHTML=`<span class="pos">✓ valid (contoh hasil ${fmt(r.sample,2)})</span>`}catch(err){o.innerHTML=`<span class="err">${esc(err.message)}</span>`}}};
+$('#addFormula').onclick=()=>{const n=drivers.filter(d=>d.type==='formula').length+1;
+  drivers.push({id:'f'+Date.now().toString(36),type:'formula',name:'Rumus sendiri '+n,enabled:true,formula:'base * (1 + 0.01 * dx * w)',baseline:0,target:1,phase:'ramp',weight:1,open:true,targets:[]});drvSave();renderDrivers()};
+
+// ------------------------------------------------------------------ proyeksi: hitung & tampilkan
+$('#runProj').onclick=runProj;
+async function runProj(){
+  if(!regions.length||!keys.length){$('#pMsg').innerHTML='<span class="err">Pilih wilayah &amp; indikator dulu (langkah 1).</span>';return}
+  const body={regions:regions.map(r=>r.code||'nasional'),keys,horizon:5,trend:trends,
+    drivers:drivers.filter(d=>d.enabled).map(({open,touched,targetsMode,...d})=>d)};
+  $('#pMsg').textContent='menghitung…';$('#runProj').disabled=true;
+  try{PROJ=await api('/project',{method:'POST',body});$('#pMsg').textContent='';drawProj();$('#pCsv').disabled=false}
+  catch(e){$('#pMsg').innerHTML=`<span class="err">${esc(e.message)}</span>`}
+  $('#runProj').disabled=false;
+}
+function drawProj(){
+  const out=$('#pOut'), cards=[]; let h='';
+  PROJ.regions.forEach((rg,ri)=>{
+    h+=`<h3 style="margin:14px 0 6px">${esc(nameOf(rg.region.code))} <span class="mut small">${esc(rg.region.label)}</span></h3>`;
+    if(rg.missing?.length)h+=`<div class="note">Tanpa data historis: ${rg.missing.map(k=>esc(IND()[k].label)).join(', ')} — dilewati.</div>`;
+    if(!rg.results.length)h+='<div class="note">Tidak ada indikator yang bisa diproyeksikan untuk wilayah ini.</div>';
+    h+='<div class="charts">';
+    rg.results.forEach(r=>{
+      const col=PAL()[0],c2=PAL()[1],hasDrv=r.contributions.some(c=>c.applied),last=r.observed[r.observed.length-1];
+      const xs=[...r.observed.map(o=>({x:o.t,l:o.label})),...r.baseline.path.map(p=>({x:p.t,l:p.label}))];
+      const join=[{x:last.t,y:last.v}];
+      const ser=[{name:'Historis',color:css('--fg'),points:r.observed.map(o=>({x:o.t,y:o.v,l:o.label}))},
+       {name:'Tren dasar',color:css('--mut'),dash:'6 4',dots:false,points:[...join,...r.baseline.path.map(p=>({x:p.t,y:p.v}))],band:hasDrv?null:[{x:last.t,lo:last.v,hi:last.v},...r.baseline.path.map(p=>({x:p.t,lo:p.lo,hi:p.hi}))]}];
+      if(hasDrv)ser.push({name:'Skenario',color:c2,points:[...join,...r.scenario.path.map(p=>({x:p.t,y:p.v}))],band:[{x:last.t,lo:last.v,hi:last.v},...r.scenario.path.map(p=>({x:p.t,lo:p.lo,hi:p.hi}))]});
+      const s=r.summary,dp=s.delta_pct,cls=v=>v>0?'pos':v<0?'neg':'';
+      const warn=r.baseline.warnings.map(w=>`<div class="note">${esc(w)}</div>`).join('');
+      const cf=r.contributions.length?`<table class="t"><tr><th>Faktor</th><th>Efek pada ${esc(r.scenario.path[r.scenario.path.length-1].label)}</th></tr>${r.contributions.map(c=>`<tr><td>${esc(c.name)}${c.applied?'':` <span class="mut small">(${esc(c.note)})</span>`}</td><td class="${cls(c.delta_end)}">${c.delta_end>0?'+':''}${fmt(c.delta_end,r.kind==='ratio'?2:0)}</td></tr>`).join('')}</table>`:'';
+      const tb=`<div class="tw"><table class="t"><tr><th></th>${r.baseline.path.map(p=>`<th>${esc(p.label)}</th>`).join('')}</tr><tr><td>Tren dasar</td>${r.baseline.path.map(p=>`<td>${fmt(p.v,r.kind==='ratio'?2:0)}</td>`).join('')}</tr>${hasDrv?`<tr><td><b>Skenario</b></td>${r.scenario.path.map(p=>`<td><b>${fmt(p.v,r.kind==='ratio'?2:0)}</b></td>`).join('')}</tr>`:''}<tr class="mut"><td>Rentang (indikatif)</td>${(hasDrv?r.scenario:r.baseline).path.map(p=>`<td>${fmt(p.lo,0)}–${fmt(p.hi,0)}</td>`).join('')}</tr></table></div>`;
+      const sub=`Tren ${({compound:'majemuk',linear:'linear',flat:'datar',manual:'manual'})[r.baseline.method]||r.baseline.method} ${r.baseline.growth_pct==null?'':fmt(r.baseline.growth_pct,2)+'%/th'} · ${r.baseline.points_used} titik data · keyakinan ${r.baseline.confidence}`;
+      const c=chartCard(r.label,sub,{series:ser,xs,split:last.t+.0001,yfmt:r.kind==='ratio'?v=>fmt(v,1):cmp,tfmt:v=>fmt(v,r.kind==='ratio'?2:0)},
+        `${warn}<div class="small" style="margin:6px 0">Akhir proyeksi: <b>${fmt(hasDrv?s.scenario_end:s.base_end,r.kind==='ratio'?2:0)}</b>${hasDrv&&dp!=null?` (<span class="${cls(dp)}">${dp>0?'+':''}${fmt(dp,2)}% vs tren dasar</span>)`:''}${(hasDrv?s.cagr_scenario_pct:s.cagr_base_pct)!=null?` · ${fmt(hasDrv?s.cagr_scenario_pct:s.cagr_base_pct,2)}%/th`:''}</div>${tb}${cf}`);
+      cards.push(c);h+=c.html;
+    });
+    h+='</div>';
+  });
+  h+=`<div class="note" style="margin-top:12px">${(PROJ.regions[0]?.notes||[]).map(esc).join('<br>')}</div>`;
+  out.innerHTML=h; mount(cards);
+}
+$('#pCsv').onclick=()=>{ if(!PROJ)return;const rows=[['kode_wilayah','wilayah','indikator','jenis','periode','nilai','bawah','atas']];
+  PROJ.regions.forEach(rg=>rg.results.forEach(r=>{
+    r.observed.forEach(o=>rows.push([rg.region.code,nameOf(rg.region.code),r.label,'historis',o.label,o.v,'','']));
+    r.baseline.path.forEach(p=>rows.push([rg.region.code,nameOf(rg.region.code),r.label,'tren dasar',p.label,p.v,p.lo,p.hi]));
+    if(r.contributions.some(c=>c.applied))r.scenario.path.forEach(p=>rows.push([rg.region.code,nameOf(rg.region.code),r.label,'skenario',p.label,p.v,p.lo,p.hi]));
+    r.contributions.forEach(c=>c.delta.forEach((d,j)=>rows.push([rg.region.code,nameOf(rg.region.code),r.label,'kontribusi: '+c.name,r.baseline.path[j].label,d,'',''])));
+  }));csvDownload('proyeksi.csv',rows)};
+
+// ------------------------------------------------------------------ init
+(async function(){
+  try{META=await api('/meta')}catch(e){$('#status').innerHTML=`<div class="note">${esc(e.message)}</div>`;return}
+  if(!META.configured){$('#status').innerHTML=`<div class="note"><b>Sumber data belum terhubung.</b> ${esc(META.error||'')}<br>Set CMS_NAS_HOST, CMS_NAS_USER, CMS_NAS_PASS (NAS Synology) atau CMS_KD_LOCAL_DIR pada server, lalu muat ulang.</div>`;return}
+  const per=META.periods;
+  $('#avail').innerHTML=`<table class="t"><tr><th>Periode</th><th>Tingkat tersedia</th></tr>${per.map(p=>`<tr><td>${esc(p.label)}</td><td style="text-align:left">${p.levels.map(l=>META.levels.find(x=>x.id===l)?.label||l).join(', ')}</td></tr>`).join('')}</table><div class="mut" style="margin-top:6px">Wilayah dengan riwayat lebih panjang = tingkat yang tersedia di lebih banyak periode. Semester yang belum dikumpulkan ke NAS otomatis muncul begitu berkasnya ditambahkan.</div>`;
+  keys=keys.filter(k=>META.indicators.some(i=>i.key===k));
+  renderChips();renderInd();initRegionSelects();
+})();
+</script></body></html>

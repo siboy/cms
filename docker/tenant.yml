@@ -81,6 +81,11 @@ services:
       CMS_SMTP_PASS: ${CMS_SMTP_PASS:-}
       CMS_SMTP_FROM: ${CMS_SMTP_FROM:-}
       CMS_SMTP_TLS: ${CMS_SMTP_TLS:-1}
+      CMS_NAS_HOST: ${CMS_NAS_HOST:-}                # halaman /data-desa: NAS Synology berisi data Kemendagri (kosong = fitur nonaktif)
+      CMS_NAS_USER: ${CMS_NAS_USER:-}
+      CMS_NAS_PASS: ${CMS_NAS_PASS:-}
+      CMS_NAS_BASE: ${CMS_NAS_BASE:-/TIMDATA/kemendagri}
+      CMS_NAS_VERIFY: ${CMS_NAS_VERIFY:-1}
     volumes:
       - app_data:/data
     ports:

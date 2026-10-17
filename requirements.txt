@@ -11,3 +11,6 @@ cryptography>=41.0
 redis
 requests>=2.31
 packaging
+numpy
+pandas>=2.0
+pyarrow>=14      # halaman /data-desa (parquet Kemendagri)
