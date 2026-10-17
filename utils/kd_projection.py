@@ -19,6 +19,8 @@ from __future__ import annotations
 import ast
 import math
 
+from utils import kd_formulas
+
 HORIZON = 5
 MAX_GROWTH = 0.5                                           # batas laju tahunan hasil tren (±50%/th)
 
@@ -89,6 +91,7 @@ def label_t(t: float) -> str:
 _FUNCS = {"min": min, "max": max, "abs": abs, "sqrt": math.sqrt, "log": math.log, "exp": math.exp,
           "pow": math.pow, "round": round, "floor": math.floor, "ceil": math.ceil,
           "clip": lambda x, lo, hi: max(lo, min(hi, x))}
+_FUNCS.update(kd_formulas.FORMULA_FUNCS)                    # pustaka rumus AMDAL/UKL-UPL (rasional, usle, gauss_ground, ...)
 _CONSTS = {"pi": math.pi, "e": math.e}
 _BINOPS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b, ast.Mult: lambda a, b: a * b,
            ast.Div: lambda a, b: a / b, ast.Pow: lambda a, b: math.pow(a, b), ast.Mod: lambda a, b: a % b,
@@ -128,8 +131,9 @@ class Formula:
             if isinstance(n.value, bool) or not isinstance(n.value, (int, float)):
                 raise FormulaError("hanya angka yang boleh dipakai sebagai konstanta")
         elif isinstance(n, ast.Name):
-            if n.id not in _FUNCS:
-                self.names.add(n.id)
+            if n.id in _FUNCS:
+                raise FormulaError(f"'{n.id}' adalah fungsi — panggil dengan kurung, mis. {n.id}(...)")
+            self.names.add(n.id)
         elif isinstance(n, ast.BinOp) and type(n.op) in _BINOPS:
             self._check(n.left), self._check(n.right)
         elif isinstance(n, ast.UnaryOp) and isinstance(n.op, (ast.UAdd, ast.USub)):

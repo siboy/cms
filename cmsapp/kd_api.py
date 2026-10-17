@@ -12,6 +12,8 @@ from flask import Blueprint, current_app, jsonify, request
 
 from cmsapp import auth
 from utils import kd_catalog as cat
+from utils import kd_formulas as kfm
+from utils import kd_model as km
 from utils import kd_projection as kp
 from utils.kd_data import KDStore, LocalSource, NASSource, depth
 from utils.kd_nas import NASError, SynologyReader, period_label
@@ -240,3 +242,48 @@ def project():
         r.update(region=info, missing=missing)
         out.append(r)
     return jsonify(regions=out, periods=[p["label"] for p in data["periods"]])
+
+
+# ---------------------------------------------------------------- model multi-faktor
+@bp.errorhandler(km.ModelError)
+def _model_err(e):
+    return _fail(str(e), 400)
+
+
+@bp.get("/annual")
+@auth.require()
+def annual():
+    code = _codes([request.args.get("region", "")])[0]
+    key = request.args.get("key", "")
+    if key not in cat.INDICATORS:
+        return _fail("indikator tidak valid")
+    return jsonify(store().annual(code, key))
+
+
+@bp.post("/model")
+@auth.require()
+def model():
+    """Jalankan model proyeksi multi-faktor (kd_model.run). Seluruh data (target, faktor, kejadian) dikirim klien."""
+    b = request.get_json(silent=True)
+    if not isinstance(b, dict):
+        return _fail("body JSON wajib")
+    return jsonify(km.run(b))
+
+
+# ---------------------------------------------------------------- pustaka rumus AMDAL / UKL-UPL
+@bp.errorhandler(kfm.CalcError)
+def _calc_err(e):
+    return _fail(str(e), 400)
+
+
+@bp.get("/formulas")
+@auth.require()
+def formulas():
+    return jsonify(categories=kfm.CATEGORIES, items=kfm.public_catalog())
+
+
+@bp.post("/calc")
+@auth.require()
+def calc():
+    b = request.get_json(silent=True) or {}
+    return jsonify(kfm.calc(str(b.get("id", "")), b.get("inputs") or {}))

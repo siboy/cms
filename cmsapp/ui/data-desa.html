@@ -47,6 +47,15 @@ table.t th:first-child,table.t td:first-child{text-align:left;white-space:normal
 .lg{display:flex;gap:0;margin-top:6px;font-size:11.5px}.lg div{flex:1;padding:2px 4px;color:#000;text-align:center}
 .pos{color:var(--ok)}.neg{color:var(--bad)}
 .hide{display:none!important}
+.fr{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:6px;background:var(--card);cursor:pointer}.fr:hover{border-color:var(--acc)}.fr.cur{border-color:var(--acc);background:var(--acc-soft)}
+.fr b{display:block}.fr code,.fx code{font-size:12px;color:var(--mut);word-break:break-word}.fx{position:sticky;top:60px}
+.cat{border:1px solid var(--line);background:var(--card);color:var(--fg);padding:3px 10px;border-radius:999px;cursor:pointer;font:inherit;font-size:12.5px}.cat.cur{background:var(--acc);border-color:var(--acc);color:#fff}
+.fac{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;background:var(--bg)}.fac.off{opacity:.55}
+.fac .row{gap:6px}.fac input[type=number],.fac select{max-width:150px}.fac input.nm{min-width:160px;flex:1 1 160px}
+.meth label{display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--line);border-radius:8px;margin-bottom:5px;cursor:pointer}
+.meth label.sel{border-color:var(--acc);background:var(--acc-soft)}.meth small{color:var(--mut);display:block}
+details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:6px}details.mt summary{cursor:pointer;font-weight:600}
+.badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--acc-soft);color:var(--acc)}
 </style></head><body>
 <header><b>📊 Data Desa Kemendagri</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
 <main>
@@ -55,7 +64,9 @@ table.t th:first-child,table.t td:first-child{text-align:left;white-space:normal
  <button data-t="pilih" class="cur">1 · Wilayah &amp; indikator</button>
  <button data-t="grafik">2 · Grafik historis</button>
  <button data-t="peta">3 · Peta</button>
- <button data-t="proyeksi">4 · Proyeksi 5 tahun</button>
+ <button data-t="proyeksi">4 · Proyeksi cepat</button>
+ <button data-t="model">5 · Model multi-faktor</button>
+ <button data-t="rumus">6 · Pustaka rumus AMDAL/UKL-UPL</button>
 </div>
 
 <section id="t-pilih">
@@ -136,6 +147,56 @@ table.t th:first-child,table.t td:first-child{text-align:left;white-space:normal
  <div class="row" style="margin:6px 0 12px"><button class="b p" id="runProj">▶ Hitung proyeksi 5 tahun</button><button class="b" id="pCsv" disabled>⬇ CSV</button><span id="pMsg" class="mut small"></span></div>
  <div id="pOut"></div>
 </section>
+
+<section id="t-model" class="hide">
+ <div class="note">Model proyeksi tahunan untuk <b>satu variabel target</b> (mis. jumlah tenaga kerja) yang dipengaruhi <b>faktor</b> (data yang Anda unggah) dan <b>kejadian</b> (tol selesai, kawasan industri, perekrutan, insentif). Pilih metode statistik, klik proses, lalu baca keterangan metodologinya. Hasil adalah proyeksi bersyarat pada data &amp; asumsi Anda — bukan ramalan.</div>
+ <div class="grid2">
+  <div class="card">
+   <h3>1 · Variabel target</h3>
+   <div class="row"><input id="mtName" class="fill" placeholder="nama target, mis. Jumlah tenaga kerja" value="Jumlah tenaga kerja"><input id="mtUnit" style="width:90px" placeholder="satuan" value="jiwa"></div>
+   <div class="row" style="margin-top:6px"><button class="b" id="mtKd">Ambil dari Kemendagri…</button><select id="mtKdInd" class="fill"></select><label class="b" style="cursor:pointer">⬆ Unggah CSV<input id="mtFile" type="file" accept=".csv,.txt" hidden></label><button class="b" id="mtTpl">⬇ Contoh CSV</button></div>
+   <div class="small mut" style="margin:4px 0">Satu baris per tahun: <code>tahun,nilai</code> (boleh ditempel langsung). Kemendagri → nilai akhir tahun (S2) wilayah pertama di langkah 1; riwayatnya pendek, unggah deret lebih panjang (Sakernas/BPS) untuk hasil yang andal.</div>
+   <textarea id="mtData" rows="7" placeholder="2015,1200000&#10;2016,1235000&#10;…"></textarea>
+   <div id="mtInfo" class="small mut"></div>
+  </div>
+  <div class="card">
+   <h3>2 · Faktor yang memengaruhi</h3>
+   <div class="row"><label class="b" style="cursor:pointer">⬆ Unggah CSV faktor<input id="mfFile" type="file" accept=".csv,.txt" hidden></label><select id="mfKdInd" class="fill"></select><button class="b" id="mfKd">+ dari Kemendagri</button></div>
+   <div class="small mut" style="margin:4px 0">CSV lebar: kolom pertama <code>tahun</code>, kolom lain = satu faktor tiap kolom (mis. <code>penduduk_usia_kerja, pdrb, insentif_rp</code>). Centang untuk mengaktifkan; tiap faktor perlu cara menentukan nilainya di masa depan.</div>
+   <div id="mfList"></div>
+  </div>
+ </div>
+ <div class="card">
+  <h3>3 · Kejadian / intervensi <span class="mut small">(besarannya asumsi Anda — mesin tidak mengestimasinya)</span></h3>
+  <div class="row"><button class="b" data-ev="insentif">+ Insentif</button><button class="b" data-ev="tol">+ Tol selesai</button><button class="b" data-ev="rekrut">+ Perekrutan pemerintah</button><button class="b" data-ev="industri">+ Kawasan industri</button><button class="b" data-ev="lain">+ Lainnya</button></div>
+  <div id="meList" style="margin-top:8px"></div>
+ </div>
+ <div class="grid2">
+  <div class="card meth"><h3>4 · Metode</h3><div id="mmList"></div></div>
+  <div class="card">
+   <h3>Pengaturan</h3>
+   <div class="kv"><span>Horizon</span><span><select id="mhH"><option value="5">5 tahun</option><option value="10">10 tahun</option><option value="15">15 tahun</option><option value="20">20 tahun</option></select></span>
+    <span>Interval</span><span><select id="mhC"><option value="0.8">80%</option><option value="0.9" selected>90%</option><option value="0.95">95%</option></select></span>
+    <span>Bentuk regresi</span><span><select id="mhForm"><option value="auto">otomatis</option><option value="loglog">log-log (elastisitas)</option><option value="level">tingkat</option><option value="growth">pertumbuhan (Δln)</option></select></span>
+    <span>Basis rasio</span><span><select id="mhBasis"></select> <span class="mut small">metode rasio/komponen</span></span></div>
+   <div id="mhMembers" class="small" style="margin-top:6px"></div>
+   <div class="row" style="margin-top:12px"><button class="b p" id="mRun">▶ Proses proyeksi</button><button class="b" id="mCsv" disabled>⬇ CSV hasil</button><span id="mMsg" class="mut small"></span></div>
+  </div>
+ </div>
+ <div id="mOut"></div>
+</section>
+
+<section id="t-rumus" class="hide">
+ <div class="note">Rumus baku yang lazim dipakai di dokumen lingkungan (AMDAL, UKL-UPL, Andalalin). Rumusnya baku dan tercantum rujukannya; <b>nilai parameter yang bergantung wilayah/peraturan</b> (faktor emisi, baku mutu, standar pemakaian air, sampah per kapita) adalah isian Anda — nilai awal hanyalah rentang umum, <b>verifikasi dengan peraturan/kajian yang berlaku</b>. Model dispersi/hidrologi di sini bersifat <i>penapisan awal</i>, bukan pengganti model rinci (AERMOD, HEC-HMS, dst.).</div>
+ <div class="grid2">
+  <div>
+   <div class="row" style="margin-bottom:6px"><input id="rfQ" class="fill" placeholder="cari rumus (mis. rasional, bising, usle, npv)…"></div>
+   <div id="rfCats" class="row" style="margin-bottom:8px"></div>
+   <div id="rfList"></div>
+  </div>
+  <div class="fx"><div id="rfBox" class="card"><span class="mut">Pilih rumus di kiri.</span></div></div>
+ </div>
+</section>
 </main>
 
 <script>
@@ -166,8 +227,8 @@ const nameOf=code=>(regions.find(r=>r.code===code)||{}).name||code;
 // ------------------------------------------------------------------ tab
 function tab(t){
   $$('#tabs button').forEach(b=>b.classList.toggle('cur',b.dataset.t===t));
-  ['pilih','grafik','peta','proyeksi'].forEach(x=>$('#t-'+x).classList.toggle('hide',x!==t));
-  if(t==='grafik')loadGraf(); if(t==='peta')initMap(); if(t==='proyeksi')initProj();
+  ['pilih','grafik','peta','proyeksi','model','rumus'].forEach(x=>$('#t-'+x).classList.toggle('hide',x!==t));
+  if(t==='grafik')loadGraf(); if(t==='peta')initMap(); if(t==='proyeksi')initProj(); if(t==='model')initModel(); if(t==='rumus')initRumus();
 }
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)tab(b.dataset.t)};
 $('#goGraf').onclick=()=>tab('grafik');
@@ -451,7 +512,7 @@ function renderDrivers(){
       <span>Nilai skenario (x)</span><span><input type="number" step="any" data-i="${i}" data-f="target" value="${d.target??0}"></span>
       <span>Berlaku pada</span><span class="small"><select data-i="${i}" data-f="targetsMode"><option value="all" ${d.targets?.length?'':'selected'}>semua indikator terpilih</option><option value="sel" ${d.targets?.length?'selected':''}>hanya yang dipilih…</option></select></span></div>
       ${d.targets?.length||d.targetsMode==='sel'?`<div class="row small" style="margin-top:4px">${keys.map(k=>`<label><input type="checkbox" data-i="${i}" data-tk2="${k}" ${d.targets?.includes(k)?'checked':''}> ${esc(IND()[k].label)}</label>`).join('')}</div>`:''}
-      <div class="small mut" style="margin-top:6px">Variabel: <code>base</code> (tren dasar tahun ke-k), <code>v0</code> (nilai terakhir), <code>k</code> (1–5), <code>g</code> (laju tren/th), <code>x</code>, <code>x0</code>, <code>dx</code>, <code>w</code> (bobot), <code>prev</code> (hasil rumus tahun lalu), serta kode indikator (mis. <code>jumlah_penduduk</code>). Fungsi: ${META.formula_funcs.join(', ')}.<br><button class="b small" data-i="${i}" data-chk="1">Cek rumus</button> <span id="chk${i}"></span></div>`;
+      <div class="small mut" style="margin-top:6px">Variabel: <code>base</code> (tren dasar tahun ke-k), <code>v0</code> (nilai terakhir), <code>k</code> (1–5), <code>g</code> (laju tren/th), <code>x</code>, <code>x0</code>, <code>dx</code>, <code>w</code> (bobot), <code>prev</code> (hasil rumus tahun lalu), serta kode indikator (mis. <code>jumlah_penduduk</code>). Fungsi dasar: min, max, abs, sqrt, ln, log10, exp, pow, round, clip, sin, cos, plus <b>pustaka rumus AMDAL/UKL-UPL (${META.formula_funcs.length} fungsi tersedia)</b> (rasional, usle, gauss_ground, db_sum, npv, …) — lihat tab 6 untuk daftar & contoh pemanggilan.<br><button class="b small" data-i="${i}" data-chk="1">Cek rumus</button> <span id="chk${i}"></span></div>`;
     return `<div class="drv ${d.enabled?'on':''} ${d.open?'open':''}"><div class="row"><label class="fill row" style="gap:8px"><input type="checkbox" data-i="${i}" data-f="enabled" ${d.enabled?'checked':''}><h4>${esc(d.name)}</h4></label>
       <button class="b small" data-i="${i}" data-tog="1">Lanjutan ▾</button>${d.type==='formula'?`<button class="b small" data-i="${i}" data-del="1">Hapus</button>`:''}</div>
       ${d.type==='preset'?`<div class="small mut">${esc(c.help)}</div>`:''}${base}
@@ -518,6 +579,188 @@ $('#pCsv').onclick=()=>{ if(!PROJ)return;const rows=[['kode_wilayah','wilayah','
     if(r.contributions.some(c=>c.applied))r.scenario.path.forEach(p=>rows.push([rg.region.code,nameOf(rg.region.code),r.label,'skenario',p.label,p.v,p.lo,p.hi]));
     r.contributions.forEach(c=>c.delta.forEach((d,j)=>rows.push([rg.region.code,nameOf(rg.region.code),r.label,'kontribusi: '+c.name,r.baseline.path[j].label,d,'',''])));
   }));csvDownload('proyeksi.csv',rows)};
+
+
+// ------------------------------------------------------------------ model multi-faktor
+const MTH=[
+ ['auto','Otomatis (disarankan)','Menjalankan semua metode yang cukup datanya, uji-balik pada tahun terakhir, memilih galat terkecil — atau merata-ratakan bila data terlalu pendek.'],
+ ['trend','Tren waktu (log-linear / linear)','Hanya melihat pola target sendiri. Sederhana, baik untuk horizon pendek; tidak memakai faktor.'],
+ ['holt','Pemulusan eksponensial teredam (Holt)','Tren yang melandai seiring horizon; butuh ≥5 tahun. Tidak memakai faktor.'],
+ ['regression','Regresi multi-faktor (OLS / ridge)','Mengestimasi pengaruh tiap faktor dari data; butuh tahun tumpang-tindih ≥ jumlah faktor + 3.'],
+ ['ratio','Rasio / komponen','Target = faktor basis × rasio (mis. penduduk usia kerja × TPAK). Cara baku proyeksi ketenagakerjaan.'],
+ ['elasticity','Elastisitas rujukan','Pertumbuhan target = laju otonom + Σ elastisitas × pertumbuhan faktor. Cocok bila data pendek tapi Anda punya elastisitas dari kajian.'],
+ ['aritmatika','Aritmatika (baku perencanaan)','Pn = P0 + Ka·n. Pertambahan absolut tetap; dua titik ujung. Hanya memakai target.'],
+ ['geometrik','Geometrik (baku perencanaan)','Pn = P0(1+r)^n. Laju majemuk tetap; paling lazim di dokumen lingkungan.'],
+ ['eksponensial','Eksponensial (baku perencanaan)','Pn = P0·e^(rn). Pertumbuhan kontinu.'],
+ ['logistik','Logistik / Verhulst (daya tampung)','Pertumbuhan melandai ke penduduk jenuh Psat (dari 3 titik berjarak sama).'],
+ ['ensemble','Ensemble (rata-rata berbobot)','Menggabungkan beberapa metode; tahan terhadap salah-spesifikasi satu model.']];
+const FKIND=[['','(tanpa jenis)'],['penduduk_usia_kerja','penduduk usia kerja (e=1,0)'],['penduduk','penduduk total (e=0,7)'],['ekonomi','pertumbuhan ekonomi/PDRB (e=0,3)'],['investasi','investasi (e=0,15)'],['upah','upah (e=−0,1)']];
+let MD=store.get('model',null)||{target:{name:'Jumlah tenaga kerja',unit:'jiwa',text:''},factors:[],events:[],method:'auto',H:15,conf:0.9,form:'auto',basis:'',members:['trend','holt']};
+let MRES=null;
+const mSave=()=>{try{store.set('model',MD)}catch(e){}};
+function parseNum(x){x=String(x).trim().replace(/\s/g,'');if(x==='')return NaN;
+  if(x.includes(',')&&x.includes('.')){x=x.lastIndexOf(',')>x.lastIndexOf('.')?x.replace(/\./g,'').replace(',','.'):x.replace(/,/g,'')}
+  else if(x.includes(',')){x=/^\d{1,3}(,\d{3})+$/.test(x)?x.replace(/,/g,''):x.replace(',','.')}
+  else if((x.match(/\./g)||[]).length>1||/^\d{1,3}\.\d{3}$/.test(x)){x=x.replace(/\./g,'')}
+  return Number(x)}
+function parseCSV(text){
+  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim());if(!lines.length)return{head:[],rows:[]};
+  const del=[';','\t',','].find(d=>lines[0].includes(d))||',';
+  const cells=l=>{const o=[];let c='',q=false;for(const ch of l){if(ch==='"')q=!q;else if(ch===del&&!q){o.push(c);c=''}else c+=ch}o.push(c);return o.map(v=>v.trim())};
+  let rows=lines.map(cells),head=null;
+  if(isNaN(parseNum(rows[0][0]))){head=rows.shift()}
+  return{head,rows}}
+function pairsFromText(t){const out=[];for(const l of t.split('\n')){const m=l.trim().split(/[;,\t ]+/);if(m.length<2)continue;const y=parseInt(m[0]),v=parseNum(m[1]);if(y>=1900&&isFinite(v))out.push([y,v])}return out}
+function mInfo(){const p=pairsFromText($('#mtData').value);MD.target.text=$('#mtData').value;MD.target.name=$('#mtName').value;MD.target.unit=$('#mtUnit').value;
+  $('#mtInfo').textContent=p.length?`${p.length} titik · ${p[0][0]}–${p[p.length-1][0]} · terakhir ${fmt(p[p.length-1][1],2)}`:'belum ada data';mSave();return p}
+function initModel(){
+  const opts=META.indicators.map(i=>`<option value="${i.key}">${esc(i.label)}</option>`).join('');
+  if(!$('#mtKdInd').innerHTML){$('#mtKdInd').innerHTML=opts;$('#mfKdInd').innerHTML=opts;$('#mtKdInd').value=keys[0]||'jumlah_penduduk'}
+  $('#mtName').value=MD.target.name;$('#mtUnit').value=MD.target.unit;$('#mtData').value=MD.target.text;
+  $('#mhH').value=String(MD.H);$('#mhC').value=String(MD.conf);$('#mhForm').value=MD.form;
+  mInfo();renderFac();renderEv();renderMeth();
+}
+['mtName','mtUnit','mtData'].forEach(id=>document.addEventListener('input',e=>{if(e.target.id===id)mInfo()}));
+async function kdAnnual(key){
+  if(!regions.length)throw new Error('pilih wilayah di langkah 1');
+  const r=await api(`/annual?region=${encodeURIComponent(regions[0].code||'nasional')}&key=${key}`);
+  return r}
+$('#mtKd').onclick=async()=>{try{const key=$('#mtKdInd').value,r=await kdAnnual(key);
+  $('#mtData').value=r.points.map(p=>p.join(',')).join('\n');$('#mtName').value=META.indicators.find(i=>i.key===key).label+' — '+regions[0].name;
+  mInfo();$('#mtInfo').textContent+=r.partial.length?` · tahun ${r.partial.map(p=>p[0]).join(',')} baru punya S1 (dilewati)`:'';}catch(e){alert(e.message)}};
+function readFile(inp,cb){const f=inp.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{cb(String(rd.result));inp.value=''};rd.readAsText(f)}
+$('#mtFile').onchange=e=>readFile(e.target,t=>{const c=parseCSV(t);const p=c.rows.map(r=>[parseInt(r[0]),parseNum(r[1])]).filter(p=>p[0]>=1900&&isFinite(p[1]));
+  if(!p.length){alert('Format: kolom 1 = tahun, kolom 2 = nilai');return}$('#mtData').value=p.map(x=>x.join(',')).join('\n');if(c.head&&c.head[1])$('#mtName').value=c.head[1];mInfo()});
+$('#mtTpl').onclick=()=>csvDownload('contoh-target.csv',[['tahun','tenaga_kerja'],[2015,1200000],[2016,1235000],[2017,1269000]]);
+let FID=0;
+function addFactor(name,pts,kind){MD.factors.push({id:'f'+Date.now().toString(36)+(FID++),name,points:pts,kind:kind||'',enabled:true,mode:'trend',growth_pct:2,manualText:'',lag:0,elasticity:'',effect_form:'growth'});mSave();renderFac()}
+$('#mfFile').onchange=e=>readFile(e.target,t=>{const c=parseCSV(t);if(!c.head||c.head.length<2){alert('Baris pertama harus header: tahun,faktor1,faktor2,…');return}
+  let n=0;for(let j=1;j<c.head.length;j++){const pts=c.rows.map(r=>[parseInt(r[0]),parseNum(r[j])]).filter(p=>p[0]>=1900&&isFinite(p[1]));if(pts.length){addFactor(c.head[j],pts);n++}}
+  if(!n)alert('Tidak ada kolom angka yang terbaca')});
+$('#mfKd').onclick=async()=>{try{const key=$('#mfKdInd').value,r=await kdAnnual(key);if(!r.points.length){alert('Belum ada nilai akhir tahun (S2) untuk indikator ini');return}
+  const ind=META.indicators.find(i=>i.key===key);addFactor(ind.label+' — '+regions[0].name,r.points,key==='usia_produktif'?'penduduk_usia_kerja':key==='jumlah_penduduk'?'penduduk':'')}catch(e){alert(e.message)}};
+function renderFac(){
+  const el=$('#mfList');
+  el.innerHTML=MD.factors.length?MD.factors.map((f,i)=>{const ys=f.points.map(p=>p[0]);
+   return `<div class="fac ${f.enabled?'':'off'}"><div class="row"><input type="checkbox" data-fi="${i}" data-f="enabled" ${f.enabled?'checked':''}><input class="nm" data-fi="${i}" data-f="name" value="${esc(f.name)}"><span class="mut small">${f.points.length} titik ${Math.min(...ys)}–${Math.max(...ys)}</span><button class="b small" data-fdel="${i}">hapus</button></div>
+   <div class="row" style="margin-top:6px"><label class="small">masa depan <select data-fi="${i}" data-f="mode"><option value="trend" ${f.mode==='trend'?'selected':''}>ikuti tren</option><option value="constant" ${f.mode==='constant'?'selected':''}>konstan</option><option value="growth" ${f.mode==='growth'?'selected':''}>tumbuh % per th</option><option value="manual" ${f.mode==='manual'?'selected':''}>isi manual</option></select></label>
+    ${f.mode==='growth'?`<input type="number" step="0.1" data-fi="${i}" data-f="growth_pct" value="${f.growth_pct}" title="% per tahun">%`:''}
+    <label class="small">jeda <select data-fi="${i}" data-f="lag">${[0,1,2,3].map(l=>`<option value="${l}" ${f.lag==l?'selected':''}>${l} th</option>`).join('')}</select></label>
+    <label class="small">jenis <select data-fi="${i}" data-f="kind">${FKIND.map(k=>`<option value="${k[0]}" ${f.kind===k[0]?'selected':''}>${k[1]}</option>`).join('')}</select></label>
+    <label class="small">elastisitas <input type="number" step="0.05" data-fi="${i}" data-f="elasticity" value="${f.elasticity}" placeholder="rujukan"></label>
+    <label class="small">efek <select data-fi="${i}" data-f="effect_form"><option value="growth" ${f.effect_form==='growth'?'selected':''}>per % pertumbuhan</option><option value="unit" ${f.effect_form==='unit'?'selected':''}>% per 1 satuan (dummy/rupiah)</option></select></label></div>
+   ${f.mode==='manual'?`<textarea rows="2" data-fi="${i}" data-f="manualText" placeholder="tahun:nilai per baris, mis. 2027:1  (tahun tanpa isian memakai nilai sebelumnya)">${esc(f.manualText)}</textarea>`:''}</div>`}).join(''):'<span class="mut small">Belum ada faktor. Unggah CSV atau ambil dari Kemendagri.</span>';
+  const act=MD.factors.filter(f=>f.enabled);
+  $('#mhBasis').innerHTML=act.map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join('')||'<option value="">(tanpa faktor)</option>';
+  if(MD.basis&&act.some(f=>f.id===MD.basis))$('#mhBasis').value=MD.basis;
+}
+$('#mfList').onchange=e=>{const t=e.target,i=t.dataset.fi;if(i==null)return;const f=MD.factors[+i],k=t.dataset.f;
+  f[k]=t.type==='checkbox'?t.checked:(['growth_pct','lag'].includes(k)?+t.value:t.value);mSave();if(['enabled','mode','name'].includes(k))renderFac()};
+$('#mfList').onclick=e=>{const b=e.target.closest('button[data-fdel]');if(b){MD.factors.splice(+b.dataset.fdel,1);mSave();renderFac()}};
+const EVT={insentif:['Insentif (mis. subsidi upah / pajak)','pct_level',2,'% perubahan level tenaga kerja'],tol:['Jalan tol selesai','pct_level',3,'% perubahan level setelah tol beroperasi'],
+ rekrut:['Perekrutan pemerintah','abs_per_year',0,'jumlah orang direkrut per tahun'],industri:['Pembukaan kawasan industri','abs_add',3,'jumlah lapangan kerja baru (permanen)'],lain:['Kejadian lain','pct_level',0,'sesuai jenis']};
+const ETYPE=[['pct_level','% terhadap level'],['abs_add','tambahan tetap (orang)'],['abs_per_year','tambahan per tahun (orang)'],['pct_growth','tambahan laju % per th']];
+document.addEventListener('click',e=>{const b=e.target.closest('button[data-ev]');if(!b)return;const t=EVT[b.dataset.ev];
+  MD.events.push({id:'e'+Date.now().toString(36)+(FID++),name:t[0],type:t[1],start_year:new Date().getFullYear()+1,magnitude:'',ramp_years:t[2],end_year:'',uncertainty_pct:30,enabled:true,hint:t[3]});mSave();renderEv()});
+function renderEv(){$('#meList').innerHTML=MD.events.length?MD.events.map((v,i)=>`<div class="fac ${v.enabled?'':'off'}"><div class="row"><input type="checkbox" data-ei="${i}" data-f="enabled" ${v.enabled?'checked':''}><input class="nm" data-ei="${i}" data-f="name" value="${esc(v.name)}">
+  <label class="small">jenis <select data-ei="${i}" data-f="type">${ETYPE.map(t=>`<option value="${t[0]}" ${v.type===t[0]?'selected':''}>${t[1]}</option>`).join('')}</select></label>
+  <button class="b small" data-edel="${i}">hapus</button></div>
+  <div class="row" style="margin-top:6px"><label class="small">mulai <input type="number" data-ei="${i}" data-f="start_year" value="${v.start_year}" style="width:84px"></label>
+  <label class="small">besaran <input type="number" step="any" data-ei="${i}" data-f="magnitude" value="${v.magnitude}" placeholder="${esc(v.hint||'isi angka')}" style="width:120px"></label>
+  <label class="small">bertahap <input type="number" min="0" data-ei="${i}" data-f="ramp_years" value="${v.ramp_years}" style="width:60px"> th</label>
+  <label class="small">berakhir <input type="number" data-ei="${i}" data-f="end_year" value="${v.end_year}" placeholder="selamanya" style="width:96px"></label>
+  <label class="small">ketidakpastian ± <input type="number" min="0" max="100" data-ei="${i}" data-f="uncertainty_pct" value="${v.uncertainty_pct}" style="width:60px">%</label></div></div>`).join(''):'<span class="mut small">Belum ada kejadian. Tambahkan dari tombol di atas dan isi besarannya.</span>'}
+$('#meList').onchange=e=>{const t=e.target,i=t.dataset.ei;if(i==null)return;const v=MD.events[+i],k=t.dataset.f;v[k]=t.type==='checkbox'?t.checked:t.value;mSave();if(k==='enabled'||k==='type')renderEv()};
+$('#meList').onclick=e=>{const b=e.target.closest('button[data-edel]');if(b){MD.events.splice(+b.dataset.edel,1);mSave();renderEv()}};
+function renderMeth(){
+  $('#mmList').innerHTML=MTH.map(m=>`<label class="${MD.method===m[0]?'sel':''}"><input type="radio" name="mm" value="${m[0]}" ${MD.method===m[0]?'checked':''}><div><b>${m[1]}</b><small>${m[2]}</small></div></label>`).join('');
+  $('#mhMembers').innerHTML=MD.method==='ensemble'?'Anggota ensemble: '+['trend','holt','regression','ratio','elasticity','aritmatika','geometrik','eksponensial','logistik'].map(k=>`<label><input type="checkbox" data-mem="${k}" ${MD.members.includes(k)?'checked':''}> ${k}</label>`).join(' '):'';
+}
+$('#mmList').onchange=e=>{MD.method=e.target.value;mSave();renderMeth()};
+$('#mhMembers').onchange=e=>{const k=e.target.dataset.mem;MD.members=e.target.checked?[...new Set([...MD.members,k])]:MD.members.filter(x=>x!==k);mSave()};
+['mhH','mhC','mhForm','mhBasis'].forEach(id=>$('#'+id).onchange=()=>{MD.H=+$('#mhH').value;MD.conf=+$('#mhC').value;MD.form=$('#mhForm').value;MD.basis=$('#mhBasis').value;mSave()});
+function modelPayload(){
+  const fut=f=>{const o={mode:f.mode,growth_pct:+f.growth_pct||0};if(f.mode==='manual'){o.values={};for(const l of f.manualText.split('\n')){const m=l.split(/[:;,=\t ]+/);if(m.length>=2&&isFinite(parseNum(m[1])))o.values[parseInt(m[0])]=parseNum(m[1])}}return o};
+  return{target:{name:MD.target.name,unit:MD.target.unit,points:pairsFromText($('#mtData').value)},
+   factors:MD.factors.filter(f=>f.enabled).map(f=>({id:f.id,name:f.name,kind:f.kind,points:f.points,lag:f.lag,future:fut(f),effect_form:f.effect_form,elasticity:f.elasticity===''?null:+f.elasticity})),
+   events:MD.events.filter(v=>v.enabled).map(v=>({...v,magnitude:v.magnitude===''?null:+v.magnitude,start_year:+v.start_year,ramp_years:+v.ramp_years||0,end_year:v.end_year===''?null:+v.end_year,uncertainty_pct:+v.uncertainty_pct})),
+   method:MD.method,horizon:MD.H,options:{confidence:MD.conf,form:MD.form,ratio_basis:$('#mhBasis').value||MD.basis,members:MD.members}}}
+$('#mRun').onclick=async()=>{
+  const pl=modelPayload();
+  for(const v of pl.events){if(v.magnitude==null||isNaN(v.magnitude)){$('#mMsg').innerHTML=`<span class="err">Kejadian “${esc(v.name)}”: isi besaran (atau nonaktifkan).</span>`;return}}
+  $('#mMsg').textContent='memproses…';$('#mRun').disabled=true;
+  try{MRES=await api('/model',{method:'POST',body:pl});$('#mMsg').textContent='';drawModel();$('#mCsv').disabled=false}
+  catch(e){$('#mMsg').innerHTML=`<span class="err">${esc(e.message)}</span>`}
+  $('#mRun').disabled=false};
+function drawModel(){
+  const r=MRES,u=r.target.unit?' '+r.target.unit:'',pal=PAL(),f0=v=>fmt(v,Math.abs(v)<100?2:0);
+  const years=[...r.target.history.map(h=>h.year),...r.final.map(x=>x.year)],xs=[...new Set(years)].map(y=>({x:y,l:String(y)}));
+  const last=r.target.history[r.target.history.length-1];
+  const ser=[{name:'Historis',color:css('--fg'),points:r.target.history.map(h=>({x:h.year,y:h.value}))}];
+  const mcol={trend:pal[1],holt:pal[2],regression:pal[3],ratio:pal[5],elasticity:pal[4]};
+  Object.entries(r.methods).forEach(([k,m])=>{if(m.ok&&k!==r.chosen.method)ser.push({name:m.label,color:mcol[k]||pal[1],dash:'3 4',dots:false,points:[{x:last.year,y:last.value},...m.path.map(p=>({x:p.year,y:p.value}))]})});
+  const hasEv=r.events.length>0;
+  if(hasEv)ser.push({name:'Jalur dasar ('+r.chosen.label+')',color:css('--mut'),dash:'6 4',dots:false,points:[{x:last.year,y:last.value},...r.final.map(p=>({x:p.year,y:p.base}))]});
+  ser.push({name:hasEv?'Hasil akhir + kejadian':r.chosen.label,color:pal[0],points:[{x:last.year,y:last.value},...r.final.map(p=>({x:p.year,y:p.value}))],band:[{x:last.year,lo:last.value,hi:last.value},...r.final.map(p=>({x:p.year,lo:p.lo,hi:p.hi}))]});
+  const c=chartCard(r.target.name+' — proyeksi '+r.horizon+' tahun',`${r.chosen.label} · interval ${Math.round(r.confidence*100)}%`,{series:ser,xs,split:last.year+.0001,yfmt:cmp,tfmt:v=>fmt(v,0)});
+  const fin=r.final,pick=[0,Math.floor(fin.length/2)-1,fin.length-1].filter((v,i,a)=>v>=0&&a.indexOf(v)===i);
+  const end=fin[fin.length-1],d=(end.value/last.value-1)*100,cagr=(Math.pow(end.value/last.value,1/r.horizon)-1)*100;
+  let h=`<div class="card"><h3>Ringkasan</h3><div><b>${f0(last.value)}${u}</b> (${last.year}) → <b>${f0(end.value)}${u}</b> (${end.year}), rentang ${f0(end.lo)} – ${f0(end.hi)}.  <span class="${d>=0?'pos':'neg'}">${d>=0?'+':''}${fmt(d,1)}%</span> · ${fmt(cagr,2)}%/th</div>
+   <div class="small mut" style="margin-top:4px">Metode akhir: <b>${esc(r.chosen.label)}</b> — ${esc(r.chosen.why)}${r.chosen.weights?' Bobot: '+Object.entries(r.chosen.weights).map(([k,v])=>`${esc(k)} ${Math.round(v*100)}%`).join(', '):''}</div></div>`;
+  h+=r.warnings.length?`<div class="note">${r.warnings.map(esc).join('<br>')}</div>`:'';
+  h+=`<div class="charts" style="grid-template-columns:1fr">${c.html}</div>`;
+  h+=`<div class="card"><h3>Tabel proyeksi</h3><div class="tw"><table class="t"><tr><th>Tahun</th>${r.events.length?'<th>Jalur dasar</th>':''}<th>Hasil</th><th>Bawah</th><th>Atas</th></tr>${fin.map(p=>`<tr><td>${p.year}</td>${r.events.length?`<td>${f0(p.base)}</td>`:''}<td><b>${f0(p.value)}</b></td><td>${f0(p.lo)}</td><td>${f0(p.hi)}</td></tr>`).join('')}</table></div></div>`;
+  h+=`<div class="card"><h3>Perbandingan metode</h3><div class="tw"><table class="t"><tr><th>Metode</th><th>Status</th><th>Galat uji-balik (MAPE)</th><th>Akhir horizon</th></tr>${Object.entries(r.methods).map(([k,m])=>`<tr><td>${esc(m.label)}${k===r.chosen.method?' <span class="badge">dipakai</span>':''}</td><td style="text-align:left">${m.ok?'✓':'<span class="mut">'+esc(m.error||'')+'</span>'}</td><td>${m.mape==null?'–':fmt(m.mape,2)+'%'}</td><td>${m.ok&&m.path.length?f0(m.path[m.path.length-1].value):'–'}</td></tr>`).join('')}</table></div></div>`;
+  const rg=r.methods.regression;
+  if(rg&&rg.ok&&rg.coefs)h+=`<div class="card"><h3>Regresi — koefisien <span class="mut small">(R²=${rg.params.R2}, Durbin-Watson=${rg.params.DW}, n=${rg.params.n}, bentuk ${esc(rg.params.bentuk)})</span></h3><div class="tw"><table class="t"><tr><th>Faktor</th><th>Koefisien</th><th>Galat baku</th><th>t</th><th>p</th><th>VIF</th></tr>${rg.coefs.map(c=>`<tr><td>${esc(c.name)}</td><td>${fmt(c.coef,4)}</td><td>${c.se==null?'–':fmt(c.se,4)}</td><td>${c.t==null?'–':fmt(c.t,2)}</td><td>${c.p==null?'–':fmt(c.p,3)}</td><td>${c.vif==null?'–':fmt(c.vif,1)}</td></tr>`).join('')}</table></div></div>`;
+  if(r.events.length)h+=`<div class="card"><h3>Kontribusi kejadian</h3><div class="tw"><table class="t"><tr><th>Kejadian</th>${pick.map(i=>`<th>${fin[i].year}</th>`).join('')}</tr>${r.events.map(v=>`<tr><td>${esc(v.name)}</td>${pick.map(i=>`<td class="${v.delta[i]>=0?'pos':'neg'}">${v.delta[i]>=0?'+':''}${f0(v.delta[i])}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
+  h+=`<div class="card"><h3>Keterangan metodologi</h3>${r.methodology.map((m,i)=>`<details class="mt" ${i<2?'open':''}><summary>${esc(m.title)}</summary><div style="margin-top:6px">${esc(m.text)}</div>${m.ref?`<div class="small mut" style="margin-top:4px">Rujukan: ${esc(m.ref)}</div>`:''}</details>`).join('')}</div>`;
+  $('#mOut').innerHTML=h;mount([c]);
+}
+$('#mCsv').onclick=()=>{if(!MRES)return;const r=MRES,rows=[['tahun','jenis','nilai','bawah','atas']];
+  r.target.history.forEach(h=>rows.push([h.year,'historis',h.value,'','']));r.final.forEach(p=>{rows.push([p.year,'jalur dasar',p.base,p.base_lo,p.base_hi]);rows.push([p.year,'hasil akhir',p.value,p.lo,p.hi])});
+  Object.entries(r.methods).forEach(([k,m])=>m.ok&&m.path.forEach(p=>rows.push([p.year,'metode: '+m.label,p.value,p.lo,p.hi])));
+  rows.push([]);rows.push(['Keterangan metodologi']);r.methodology.forEach(m=>rows.push([m.title,m.text]));csvDownload('model-proyeksi.csv',rows)};
+
+
+// ------------------------------------------------------------------ pustaka rumus AMDAL / UKL-UPL
+let RF=null,RFcat='',RFsel=null;
+async function initRumus(){
+  if(!RF){try{RF=await api('/formulas')}catch(e){$('#rfList').innerHTML=`<div class="note">${esc(e.message)}</div>`;return}}
+  renderRfCats();renderRfList();
+}
+function renderRfCats(){$('#rfCats').innerHTML=[['','Semua']].concat(RF.categories.map(c=>[c,c])).map(c=>`<button class="cat ${RFcat===c[0]?'cur':''}" data-c="${esc(c[0])}">${esc(c[1])}</button>`).join('')}
+$('#rfCats').onclick=e=>{const b=e.target.closest('button[data-c]');if(b){RFcat=b.dataset.c;renderRfCats();renderRfList()}};
+$('#rfQ').oninput=()=>RF&&renderRfList();
+function renderRfList(){
+  const q=$('#rfQ').value.trim().toLowerCase();
+  const items=RF.items.filter(f=>(!RFcat||f.category===RFcat)&&(!q||(f.title+' '+f.id+' '+f.formula+' '+f.category).toLowerCase().includes(q)));
+  $('#rfList').innerHTML=items.map(f=>`<div class="fr ${RFsel===f.id?'cur':''}" data-id="${f.id}"><b>${esc(f.title)}</b><code>${esc(f.formula)}</code><div class="small mut">${esc(f.category)} · ${f.docs.map(esc).join(', ')}</div></div>`).join('')||'<span class="mut">Tidak ada rumus cocok.</span>';
+}
+$('#rfList').onclick=e=>{const c=e.target.closest('.fr');if(c){RFsel=c.dataset.id;renderRfList();renderRfBox()}};
+function renderRfBox(){
+  const f=RF.items.find(x=>x.id===RFsel);if(!f)return;
+  const inp=f.vars.map(v=>{const d=v.default==null?'':v.default,id='rv_'+v.name;
+    const ctl=v.type==='select'?`<select id="${id}">${v.options.map(o=>`<option value="${o[0]}" ${o[0]==d?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`
+      :v.type==='list'?`<textarea id="${id}" rows="2">${esc(d)}</textarea>`:`<input type="number" step="any" id="${id}" value="${esc(d)}" placeholder="isi">`;
+    return `<label style="display:block;margin-bottom:6px"><span class="small">${esc(v.label)} ${v.unit?`<span class="mut">(${esc(v.unit)})</span>`:''}</span>${ctl}${v.hint?`<div class="small mut">${esc(v.hint)}</div>`:''}</label>`}).join('');
+  $('#rfBox').innerHTML=`<h3>${esc(f.title)}</h3><div class="fx"><code style="font-size:13px">${esc(f.formula)}</code></div>
+   <div style="margin-top:10px">${inp}</div><div class="row"><button class="b p" id="rfGo">Hitung</button><span id="rfMsg" class="small"></span></div><div id="rfOut"></div>
+   <div class="small mut" style="margin-top:8px"><b>Rujukan:</b> ${esc(f.ref)}${f.note?`<br><b>Catatan:</b> ${esc(f.note)}`:''}</div>
+   ${f.expr?`<div class="small" style="margin-top:8px"><b>Di mesin rumus (tab 4 &amp; 5):</b> <code>${esc(f.expr)}</code> <button class="b small" id="rfCopy">Salin</button> <button class="b small" id="rfAdd">Jadikan rumus skenario</button></div>`:''}`;
+  $('#rfGo').onclick=rfCalc;
+  if($('#rfCopy'))$('#rfCopy').onclick=async()=>{try{await navigator.clipboard.writeText(f.expr);$('#rfMsg').textContent='disalin'}catch(e){prompt('Salin:',f.expr)}};
+  if($('#rfAdd'))$('#rfAdd').onclick=()=>{ if(!drivers)drivers=defaultDrivers();
+    drivers.push({id:'f'+Date.now().toString(36),type:'formula',name:f.title,enabled:true,formula:f.expr,baseline:0,target:1,phase:'ramp',weight:1,open:true,targets:[]});drvSave();tab('proyeksi')};
+}
+async function rfCalc(){
+  const f=RF.items.find(x=>x.id===RFsel),inputs={};
+  f.vars.forEach(v=>{inputs[v.name]=$('#rv_'+v.name).value});
+  $('#rfMsg').textContent='';
+  try{const r=await api('/calc',{method:'POST',body:{id:f.id,inputs}});
+    $('#rfOut').innerHTML=`<table class="t" style="margin-top:8px">${r.outputs.map(o=>`<tr><td>${esc(o.label)}</td><td><b>${fmt(o.value,Math.abs(o.value)<10?4:2)}</b> <span class="mut">${esc(o.unit)}</span></td></tr>`).join('')}</table>`}
+  catch(e){$('#rfMsg').innerHTML=`<span class="err">${esc(e.message)}</span>`}
+}
 
 // ------------------------------------------------------------------ init
 (async function(){

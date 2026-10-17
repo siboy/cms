@@ -49,7 +49,23 @@ lihat grafik historis per semester, peta choropleth anak-wilayah, lalu **proyeks
   lonjakan sekali) hanya perlu satu angka; rumus & bobot tersembunyi di “Lanjutan”. User bisa menulis **rumus sendiri**
   (parser aman berbasis `ast`, bukan `eval`; variabel `base v0 k g x x0 dx w prev` + kode indikator). Elastisitas bawaan
   = asumsi awal, bukan estimasi statistik — UI menyatakan ini. Keluaran bisa diunduh CSV/PNG.
-- **API**: `/api/kd/{meta,regions,search,series,children_values,geojson,baselines,formula/check,project}` (login wajib).
+- **Model multi-faktor** (tab 5, `utils/kd_model.py`, numpy saja): analis mengunggah CSV target + faktor (tahunan), mengaktifkan
+  faktor/kejadian (tol, kawasan industri, perekrutan, insentif), memilih metode — tren log-linear, Holt teredam, regresi
+  OLS/ridge (log-log/level/growth), rasio-komponen (penduduk usia kerja × TPAK), elastisitas rujukan, ensemble, atau otomatis
+  (uji-balik) — horizon 5–20 tahun. Keluaran: jalur + interval prediksi, MAPE uji-balik, koefisien/VIF/Durbin-Watson, kontribusi
+  tiap kejadian, dan teks metodologi yang disusun dari parameter yang dipakai. Kejadian = lapisan aditif atas jalur dasar
+  (besarannya asumsi pengguna, tidak diestimasi).
+- **Pustaka rumus AMDAL / UKL-UPL** (tab 6, `utils/kd_formulas.py`): 55 rumus baku bertema kependudukan (aritmatika/geometrik/
+  eksponensial/logistik), air bersih & air limbah (kebutuhan air, beban pencemar, neraca massa, Streeter-Phelps), sampah,
+  kualitas udara (pluma Gauss + Briggs, model kotak, konversi ppm↔µg/m³, koreksi O₂), kebisingan (dB, Leq, Ldn, penghalang),
+  lalu lintas (LHR, V/C, MKJI), hidrologi & erosi (Rasional, Mononobe, Kirpich, SCS-CN, Gumbel, Manning, Bols, USLE), GRK/karbon,
+  dan analisis biaya-manfaat (NPV/BCR/IRR). Tiap rumus: kalkulator berlabel+satuan, rujukan, catatan batas berlaku. Fungsi-
+  fungsinya juga bisa dipanggil di "rumus sendiri" mesin skenario (mis. `base + rasional(0.7, 100, 10)`). Parameter yang
+  bergantung wilayah/peraturan (faktor emisi, baku mutu, standar air, sampah per kapita) SELALU isian pengguna — modul ini
+  tidak menyimpan baku mutu. Model dispersi/hidrologi = penapisan awal, bukan pengganti AERMOD/HEC-HMS. Metode proyeksi
+  penduduk baku (aritmatika/geometrik/eksponensial/logistik) juga tersedia di Model multi-faktor, lengkap dgn simpangan
+  baku & koefisien korelasi.
+- **API**: `/api/kd/{meta,regions,search,series,annual,children_values,geojson,baselines,formula/check,project,model,formulas,calc}` (login wajib).
 - **Uji**: `/root/venv/bin/python scripts/kd_test.py` (parquet sintetis berlayout NAS; tanpa NAS/DB).
 
 ## Multi-tenant: banyak perusahaan, banyak divisi (sejak 2026-10-06)

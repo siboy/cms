@@ -405,6 +405,18 @@ class KDStore:
         return {"periods": [{"label": period_label(p), "t": period_time(p), "year": p[0], "sem": p[1]}
                             for p in allp], "series": res}
 
+    def annual(self, token: str, key: str) -> dict:
+        """Deret TAHUNAN dari semester: nilai akhir tahun (S2, 31 Des) per tahun. Tahun yang baru punya S1
+        dikembalikan terpisah (`partial`) agar tak tercampur makna. Utk model tahunan (kd_model)."""
+        sr = self.series([token], [key])
+        out, part = [], []
+        for p, v in zip(sr["periods"], sr["series"][0]["values"]):
+            if v is None:
+                continue
+            (out if p["sem"] == 2 else part).append([p["year"], v])
+        done = {y for y, _ in out}
+        return {"region": sr["series"][0]["region"], "points": out, "partial": [x for x in part if x[0] not in done]}
+
     def children_values(self, parent: str, key: str, period: tuple | None = None) -> dict:
         """Nilai satu indikator utk semua anak langsung `parent` di satu periode (utk peta & tabel peringkat)."""
         ind = cat.INDICATORS[key]

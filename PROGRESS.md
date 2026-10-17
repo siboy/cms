@@ -24,7 +24,7 @@ Ditolak: OnlyOffice/Collabora (batas koneksi, menghilangkan model blok/AI).
 | `utils/tablemodel.py` | Tabel mode form: grid <-> long-form (record per baris; header = jalur kolom; span/merge/raw), operasi edit murni. Uji: `scripts/tablemodel_test.py` |
 | `utils/blockstore.py` | Penyimpanan SQLite+MySQL satu kode: sisip/pindah/hapus(soft)/restore, tabel, gambar, versi, riwayat, pool, lock provider |
 | `cmsapp/` | Flask: `auth.py` (sesi, peran, penugasan bab), `api.py` (REST+SSE), `realtime.py` (RedisLocks, Hub, presence), `export.py`+`worker.py` (ekspor via antrian) |
-| `utils/kd_nas.py`, `kd_catalog.py`, `kd_data.py`, `kd_projection.py`, `cmsapp/kd_api.py`, `cmsapp/ui/data-desa.html` | Halaman `/data-desa`: data Kemendagri dari NAS (parquet), indikator, grafik, peta, proyeksi 5 th + skenario (lihat README). Uji: `scripts/kd_test.py` |
+| `utils/kd_nas.py`, `kd_catalog.py`, `kd_data.py`, `kd_projection.py`, `kd_model.py` (model multi-faktor), `kd_formulas.py` (pustaka rumus AMDAL/UKL-UPL), `cmsapp/kd_api.py`, `cmsapp/ui/data-desa.html` | Halaman `/data-desa`: data Kemendagri dari NAS (parquet), indikator, grafik, peta, proyeksi 5 th + skenario (lihat README). Uji: `scripts/kd_test.py` |
 | `scripts/docx_tool.py` | CLI engine (import/show/edit/insert/table/image/build/…); `--mysql` via env `CMS_DB_*` |
 | `scripts/cms_admin.py` | Admin: buat user (satu/CSV), `assign`, `chapters` |
 | `scripts/collab_deploy.sh` | Deploy/upgrade stack di server (idempoten) |

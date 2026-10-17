@@ -10,6 +10,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd  # noqa: E402
 
+from utils import kd_formulas as kf  # noqa: E402
+from utils import kd_model as km  # noqa: E402
 from utils import kd_projection as kp  # noqa: E402
 from utils.kd_data import KDStore, LocalSource, _guess_digits  # noqa: E402
 
@@ -88,6 +90,205 @@ def t_projection():
     check(abs(m["baseline"]["path"][0]["v"] / 1010 - 1.03) < 1e-9 and m["baseline"]["confidence"] == "manual", "tren manual")
     long = kp.project([{"key": "a", "cat": "penduduk", "points": [[2020 + i, 100 * 1.02 ** i] for i in range(6)]}])["results"][0]
     check(long["baseline"]["confidence"] == "baik" and abs(long["baseline"]["growth_pct"] - 2) < 0.01, "riwayat panjang -> regresi log")
+
+
+# ------------------------------------------------------------------ pustaka rumus AMDAL / UKL-UPL
+def t_formulas():
+    near = lambda a, b, tol=1e-3: abs(a - b) <= tol * max(1.0, abs(b))
+    # nilai hitung-tangan / pustaka baku
+    check(near(kf.rasional(0.8, 100, 10), 2.2224), "Rasional 0,8·100·10 ha = 2,2224 m³/s")
+    check(near(kf.mononobe(100, 2), 100 / 24 * 12 ** (2 / 3)), "Mononobe")
+    check(near(kf.kirpich(1000, 0.01), 23.44, 2e-3), "Kirpich L=1000 m S=0,01 ≈ 23,44 menit")
+    check(near(kf.scs_cn(100, 80), 50.54, 1e-3) and kf.scs_cn(10, 50) == 0.0, "SCS-CN P=100 CN=80 → 50,54 mm ; hujan kecil → 0")
+    check(near(kf.gumbel_k(100), 3.1367, 1e-3) and near(kf.gumbel_k(25), 2.0438, 1e-3), "faktor Gumbel T=100 → 3,137 ; T=25 → 2,044")
+    check(near(kf.manning(0.013, 1.0, 0.25, 0.001), 0.9654, 2e-3), "Manning")
+    check(near(kf.c_wtd(0.9, 2, 0.3, 8), 0.42), "C tertimbang")
+    check(near(kf.volume_limpasan(0.5, 100, 2), 1000.0), "V limpasan = 0,5·0,1 m·20.000 m² = 1.000 m³")
+    check(near(kf.usle(1500, 0.3, 1.5, 0.5, 1.0), 337.5), "USLE perkalian")
+    check(near(kf.bols_r(30, 15, 8), 6.119 * 30 ** 1.21 * 15 ** -0.47 * 8 ** 0.53), "Bols")
+    check(kf.ls_faktor(0, 10) > 0 and kf.ls_faktor(15, 50) > kf.ls_faktor(2, 50), "LS naik dgn kemiringan")
+    check(near(kf.db_sum(60, 60), 63.0103, 1e-4) and near(kf.db_sum(70, 50), 70.0432, 1e-4), "penjumlahan dB")
+    check(near(kf.bising_titik(85, 1, 2), 85 - 6.0206, 1e-4) and near(kf.bising_garis(75, 5, 10), 75 - 3.0103, 1e-4), "peluruhan jarak titik/garis")
+    check(near(kf.ldn(60, 50), 60.0, 1e-6), "Ldn(60,50) = 60")
+    check(near(kf.leq(60, 1, 60, 1), 60.0, 1e-9) and near(kf.leq(70, 1, 60, 9), 10 * math.log10((1e7 + 9e6) / 10), 1e-9), "Leq berbobot waktu")
+    check(near(kf.lp_dari_lw(100, 10), 100 - 20 - 11), "Lp dari Lw")
+    check(kf.peredam_penghalang(0, 0.3) == 0.0 and kf.peredam_penghalang(10, 0.1) == 24.0, "penghalang: terbuka 0 ; batas 24 dB")
+    check(near(kf.ppm_ke_ugm3(1, 64.06, 25, 101.325), 2618.4, 1e-3), "1 ppm SO₂ ≈ 2.62 mg/m³ pada 25 °C")
+    check(near(kf.ugm3_ke_ppm(kf.ppm_ke_ugm3(3.3, 46.01, 30, 100), 46.01, 30, 100), 3.3), "ppm↔µg/m³ bolak-balik")
+    check(near(kf.koreksi_o2(100, 11, 7), 140.0), "koreksi O₂")
+    check(near(kf.emisi_cerobong(360, 10000), 1.0), "360 mg/Nm³ × 10.000 Nm³/jam = 1 g/s")
+    check(near(kf.beban_pencemar(1000, 30), 30.0), "beban 1000 m³/h × 30 mg/L = 30 kg/h")
+    check(near(kf.campuran_sungai(2, 5, 1, 20), 10.0), "neraca massa campuran")
+    check(near(kf.kebutuhan_air(1000, 100, 20), 120.0), "kebutuhan air 1000 org × 100 L + 20% = 120 m³/h")
+    sp = kf.streeter_phelps(12, 1, 0.2, 0.5, 2)
+    check(near(sp["Dc"], 0.2 / 0.5 * 12 * math.exp(-0.2 * sp["tc"]), 1e-9) and sp["Dc"] >= sp["Dt"] - 1e-9, "Streeter-Phelps: defisit kritis = (kd/ka)L0e^(-kd tc) dan maksimum")
+    check(near(kf.karbon_biomassa(100, 0.47), 100 * 0.47 * 44 / 12), "biomassa → CO₂e")
+    check(near(kf.npv(10, -100, 60, 60), -100 + 60 / 1.1 + 60 / 1.21, 1e-9), "NPV")
+    check(near(kf.irr([-100, 60, 60]), 13.066, 2e-3), "IRR ≈ 13,07%")
+    check(near(kf.bcr(10, [0, 60, 60], [100, 0, 0]), (60 / 1.1 + 60 / 1.21) / 100, 1e-9), "BCR")
+    check(near(kf.cicilan(1000, 0, 10), 100.0) and near(kf.cicilan(1000, 10, 1), 1100.0), "anuitas")
+    check(near(kf.pop_geometrik(1000, 2, 5), 1000 * 1.02 ** 5) and near(kf.laju_geometrik(1000, 1000 * 1.02 ** 5, 5), 2.0, 1e-6), "geometrik dua arah")
+    check(near(kf.pop_eksponensial(1000, 3, 10), 1000 * math.exp(0.3)) and near(kf.laju_eksponensial(1000, 1000 * math.exp(0.3), 10), 3.0, 1e-6), "eksponensial dua arah")
+    # logistik: bangkitkan dari kurva sebenarnya lalu pulihkan Psat
+    Ps, r, a0 = 5000.0, 0.3, 4.0
+    P = lambda t, Ps=Ps, r=r, a0=a0: Ps / (1 + math.exp(a0 - r * t))
+    check(near(kf.psat_logistik(P(0), P(5), P(10)), Ps, 1e-6), "Psat logistik pulih dari 3 titik")
+    for bad in ((100, 110, 125),):
+        try:
+            kf.psat_logistik(*bad)
+            check(False, "logistik harus menolak pertumbuhan menaik")
+        except kf.CalcError:
+            check(True, "")
+    # pluma Gauss: bandingkan dgn perhitungan tangan (D perdesaan, x=1000 m)
+    sy, sz = 0.08 * 1000 / math.sqrt(1.1), 0.06 * 1000 / math.sqrt(2.5)
+    hand = 100 / (math.pi * 5 * sy * sz) * math.exp(-50 ** 2 / (2 * sz ** 2)) * 1e6
+    check(near(kf.gauss_ground(100, 5, 50, 1000, 4, 0), hand, 1e-9), "Gauss permukaan sumbu = rumus tangan")
+    check(kf.gauss_ground(100, 5, 50, 1000, 4, 0) > kf.gauss_ground(100, 10, 50, 1000, 4, 0), "angin kencang → lebih encer")
+    check(kf.briggs_rise(10, 1, 420, 300, 3) > 0 and kf.briggs_rise(10, 1, 290, 300, 3) == 0.0, "kenaikan pluma hanya bila gas lebih panas")
+    # katalog & kalkulator & integrasi mesin rumus
+    ids = [e["id"] for e in kf.CATALOG]
+    check(len(ids) == len(set(ids)) and len(ids) >= 50 and set(e["category"] for e in kf.CATALOG) <= set(kf.CATEGORIES), "katalog konsisten")
+    r = kf.calc("rasional", {"C": 0.8, "I": 100, "A": 10})
+    check(near(r["outputs"][0]["value"], 2.2224) and r["ref"] and r["formula"], "kalkulator memberi hasil+rumus+rujukan")
+    check(kf.calc("db_sum", {"L": "60, 60"})["outputs"][0]["value"] > 63, "isian daftar (list)")
+    try:
+        kf.calc("rasional", {"C": 0.8, "I": "x", "A": 10})
+        check(False, "isian non-angka harus ditolak")
+    except kf.CalcError:
+        check(True, "")
+    try:
+        kf.calc("emisi_kendaraan", {"N": 100, "jarak": 5, "EF": ""})
+        check(False, "faktor emisi wajib diisi (tidak ada nilai bawaan)")
+    except kf.CalcError as e:
+        check("Faktor emisi" in str(e), "pesan isian wajib")
+    for e in kf.CATALOG:                                              # semua contoh pemanggilan benar2 jalan di mesin rumus
+        ex = kf.expr_example(e["id"])
+        if ex:
+            out = kp.Formula(ex)
+            out.check_names(set())
+            check(math.isfinite(out({})), f"contoh rumus {ex} dapat dievaluasi")
+    run = kp.project([{"key": "a", "cat": "penduduk", "points": [[2023, 1000], [2024, 1010]]}],
+                     [{"type": "formula", "name": "air", "formula": "base + kebutuhan_air(base, 100, 20)", "target": 1}])["results"][0]
+    check(abs(run["scenario"]["path"][0]["v"] - run["baseline"]["path"][0]["v"] * (1 + 0.12)) < 1e-6, "fungsi pustaka dipakai di rumus skenario")
+    for bad in ("rasional", "rasional(1, 2)", "open('x')"):
+        try:
+            f = kp.Formula(bad)
+            f.check_names(set())
+            f({})
+            check(False, f"rumus salah lolos: {bad}")
+        except (kp.FormulaError, kf.CalcError, TypeError):
+            check(True, "")
+    # metode proyeksi penduduk baku di model
+    yrs = list(range(2014, 2024))
+    P_ = lambda d: [[y, v] for y, v in d.items()]
+    geo = {y: 5000 * 1.02 ** (y - 2014) for y in yrs}
+    rg = km.run({"target": {"name": "P", "points": P_(geo)}, "method": "geometrik", "horizon": 10})
+    check(near(rg["final"][-1]["value"], 5000 * 1.02 ** 19, 1e-9), "metode geometrik eksak pada data geometrik")
+    ra = km.run({"target": {"name": "P", "points": P_({y: 5000 + 100 * (y - 2014) for y in yrs})}, "method": "aritmatika", "horizon": 5})
+    check(near(ra["final"][-1]["value"], 5000 + 100 * 14, 1e-9), "metode aritmatika eksak pada data linear")
+    re_ = km.run({"target": {"name": "P", "points": P_({y: 5000 * math.exp(0.02 * (y - 2014)) for y in yrs})}, "method": "eksponensial", "horizon": 5})
+    check(near(re_["final"][-1]["value"], 5000 * math.exp(0.02 * 14), 1e-9), "metode eksponensial eksak")
+    lg = {2014 + 2 * i: P(2 * i) for i in range(6)}
+    rl = km.run({"target": {"name": "P", "points": P_(lg)}, "method": "logistik", "horizon": 10})
+    check(near(rl["methods"]["logistik"]["params"]["Psat"], Ps, 1e-4) and rl["final"][-1]["value"] < Ps, "logistik memulihkan Psat dan tidak melampauinya")
+    check(any(m["title"].startswith("Logistik") for m in rl["methodology"]) and "korelasi" in rl["methodology"][1]["text"], "keterangan metodologi baku")
+
+
+# ------------------------------------------------------------------ model multi-faktor
+def t_model():
+    import random
+    # distribusi t vs nilai tabel baku
+    check(abs(km.t_ppf(0.975, 10) - 2.2281) < 1e-3 and abs(km.t_ppf(0.975, 2) - 4.3027) < 1e-3, "kuantil t")
+    check(abs(km.t_cdf(2.228, 10) - 0.975) < 1e-3 and abs(km.t_cdf(0, 7) - 0.5) < 1e-12, "cdf t")
+    P = lambda d: [[y, v] for y, v in d.items()]
+    yrs = list(range(2010, 2024))
+    # regresi level tanpa derau: koefisien harus pulih persis
+    x1 = {y: 100 + 3 * (y - 2010) + (5 if y % 3 == 0 else 0) for y in yrs}
+    x2 = {y: 50 + 2 * ((y * 7) % 11) for y in yrs}
+    yv = {y: 2 + 0.5 * x1[y] - 0.3 * x2[y] for y in yrs}
+    base = {"target": {"name": "Y", "points": P(yv)}, "options": {"form": "level"}, "horizon": 5,
+            "factors": [{"id": "a", "name": "A", "points": P(x1), "future": {"mode": "growth", "growth_pct": 2}},
+                        {"id": "b", "name": "B", "points": P(x2), "future": {"mode": "constant"}}]}
+    r = km.run({**base, "method": "regression"})
+    co = {c["id"]: c["coef"] for c in r["methods"]["regression"]["coefs"]}
+    check(abs(co["a"] - 0.5) < 1e-6 and abs(co["b"] + 0.3) < 1e-6, f"OLS pulihkan koefisien {co}")
+    check(abs(r["methods"]["regression"]["params"]["R2"] - 1.0) < 1e-6, "R2=1 tanpa derau")
+    exp5 = 2 + 0.5 * (x1[2023] * 1.02 ** 5) - 0.3 * x2[2023]
+    check(abs(r["final"][-1]["value"] - exp5) < 1e-4, "prediksi regresi = persamaan dgn faktor masa depan")
+    check(r["chosen"]["method"] == "regression" and r["methodology"][0]["title"] == "Ringkasan", "keterangan metodologi")
+    # tren log-linear eksak
+    g = {y: 200 * 1.03 ** (y - 2010) for y in yrs}
+    r = km.run({"target": {"name": "G", "points": P(g)}, "method": "trend", "horizon": 15})
+    check(abs(r["final"][-1]["value"] / g[2023] - 1.03 ** 15) < 1e-6 and len(r["final"]) == 15, "tren 15 tahun eksak")
+    check(all(f["lo"] <= f["value"] <= f["hi"] for f in r["final"]), "pita membungkus nilai")
+    # Holt: deret linear sempurna -> terus naik, tidak meledak (teredam)
+    lin = {y: 100 + 10 * (y - 2010) for y in yrs}
+    r = km.run({"target": {"name": "L", "points": P(lin)}, "method": "holt", "horizon": 15})
+    path = [f["value"] for f in r["final"]]
+    check(path[0] > lin[2023] and path[-1] > path[0] and path[-1] < lin[2023] + 10 * 15 + 1, "Holt teredam melandai")
+    check(r["final"][-1]["hi"] - r["final"][-1]["lo"] >= r["final"][0]["hi"] - r["final"][0]["lo"], "pita melebar thd horizon")
+    # data pendek: metode yang tak mungkin gagal dgn pesan, auto tetap jalan
+    short = {"target": {"name": "S", "points": [[2022, 100], [2023, 104]]}, "horizon": 5}
+    r = km.run({**short, "method": "auto"})
+    check(r["chosen"]["method"] in ("trend", "ensemble") and any("pendek" in w or "hanya" in w for w in r["warnings"]), "data pendek tetap jalan + peringatan")
+    for m in ("holt", "regression"):
+        try:
+            km.run({**short, "method": m})
+            check(False, f"{m} seharusnya ditolak pada 2 titik")
+        except km.ModelError as e:
+            check(len(str(e)) > 10, "pesan galat jelas")
+    # regresi: terlalu banyak faktor utk data
+    many = {"target": {"name": "Y", "points": P({y: yv[y] for y in yrs[:5]})}, "method": "regression", "horizon": 3,
+            "factors": [{"id": f"f{i}", "name": f"F{i}", "points": P(x1), "future": {"mode": "constant"}} for i in range(4)]}
+    try:
+        km.run(many)
+        check(False, "faktor kebanyakan harus ditolak")
+    except km.ModelError as e:
+        check("regresi butuh" in str(e), "pesan faktor kebanyakan")
+    # rasio/komponen: TK = penduduk x TPAK konstan
+    pop = {y: 1000 * 1.02 ** (y - 2010) for y in yrs}
+    tk = {y: pop[y] * 0.65 for y in yrs}
+    r = km.run({"target": {"name": "TK", "points": P(tk)}, "method": "ratio", "horizon": 5, "options": {"ratio_basis": "pop"},
+                "factors": [{"id": "pop", "name": "Pend. usia kerja", "points": P(pop), "future": {"mode": "growth", "growth_pct": 2}}]})
+    check(abs(r["final"][-1]["value"] - pop[2023] * 1.02 ** 5 * 0.65) / (pop[2023] * 1.02 ** 5 * 0.65) < 0.01, "rasio konstan x basis")
+    # elastisitas: pertumbuhan penduduk 1:1 + kalibrasi
+    r = km.run({"target": {"name": "TK", "points": P(tk)}, "method": "elasticity", "horizon": 5,
+                "factors": [{"id": "pop", "name": "Pend", "kind": "penduduk_usia_kerja", "points": P(pop), "future": {"mode": "growth", "growth_pct": 2}}]})
+    check(abs(r["final"][-1]["value"] / tk[2023] - 1.02 ** 5) < 1e-6, "elastisitas 1.0 mengikuti basis (laju otonom terkalibrasi 0)")
+    try:
+        km.run({"target": {"name": "TK", "points": P(tk)}, "method": "elasticity",
+                "factors": [{"id": "z", "name": "Tak dikenal", "points": P(pop)}]})
+        check(False, "elastisitas tanpa nilai harus ditolak")
+    except km.ModelError as e:
+        check("elastisitas" in str(e), "faktor tanpa elastisitas diminta")
+    # kejadian: tiap jenis, aditif & independen
+    ev = lambda **k: {"name": "E", "start_year": 2025, "magnitude": 10, "ramp_years": 0, "uncertainty_pct": 0, **k}
+    bt = {"target": {"name": "G", "points": P(g)}, "method": "trend", "horizon": 5}
+    b0 = km.run(bt)["final"]
+    r1 = km.run({**bt, "events": [ev(type="pct_level")]})["final"]
+    check(abs(r1[1]["value"] / b0[1]["value"] - 1.10) < 1e-9 and r1[0]["value"] == b0[0]["value"], "pct_level mulai tahun yg ditetapkan")
+    r2 = km.run({**bt, "events": [ev(type="abs_per_year", magnitude=7, start_year=2026)]})["final"]
+    check(abs(r2[2]["value"] - b0[2]["value"] - 7) < 1e-9 and abs(r2[3]["value"] - b0[3]["value"] - 14) < 1e-9, "abs_per_year kumulatif")
+    r3 = km.run({**bt, "events": [ev(type="pct_level"), ev(type="abs_add", magnitude=5)]})["final"]
+    check(abs(r3[4]["value"] - (b0[4]["value"] * 1.10 + 5)) < 1e-9, "dua kejadian dijumlahkan")
+    r4 = km.run({**bt, "events": [ev(type="pct_level", end_year=2026, ramp_years=2)]})["final"]
+    check(abs(r4[1]["value"] / b0[1]["value"] - 1.05) < 1e-9 and abs(r4[2]["value"] / b0[2]["value"] - 1.10) < 1e-9 and r4[3]["value"] == b0[3]["value"], "ramp 2 th & berakhir")
+    r5 = km.run({**bt, "events": [ev(type="abs_add", uncertainty_pct=50)]})["final"]
+    w0, w5 = b0[1]["hi"] - b0[1]["lo"], r5[1]["hi"] - r5[1]["lo"]
+    check(abs((w5 - w0) - 10) < 1e-9, "ketidakpastian ±50% atas efek 10 melebarkan pita sebesar 10")
+    # ensemble & validasi
+    r = km.run({"target": {"name": "G", "points": P({y: g[y] * (1 + 0.01 * ((-1) ** y)) for y in yrs})}, "method": "ensemble",
+                "options": {"members": ["trend", "holt"]}, "horizon": 5})
+    check(r["chosen"]["method"] == "ensemble" and abs(sum(r["chosen"]["weights"].values()) - 1) < 1e-9, "ensemble bobot=1")
+    for bad in ({"target": {"points": [[2020, "x"], [2021, 1]]}}, {"target": {"points": [[2020, 1]]}},
+                {"target": {"points": P(g)}, "method": "ngawur"},
+                {"target": {"points": P(g)}, "events": [{"type": "pct_level", "magnitude": 1}]},
+                {"target": {"points": P(g)}, "factors": [{"id": "a", "name": "A", "points": P(g), "future": {"mode": "manual"}}], "method": "regression"}):
+        try:
+            km.run(bad)
+            check(False, f"input salah lolos: {str(bad)[:60]}")
+        except km.ModelError:
+            check(True, "")
 
 
 # ------------------------------------------------------------------ data + API (parquet sintetis)
@@ -229,6 +430,19 @@ def t_data_api():
         rp = c.post("/api/kd/project", json={"regions": ["33.03.05.1012+33.03.05.1005"], "keys": ["jumlah_penduduk"],
                                               "drivers": [{"preset": "birth_rate", "target": 20}]}).get_json()
         check(rp["regions"][0]["region"]["level"] == "gabungan" and rp["regions"][0]["results"][0]["summary"]["delta"] > 0, "proyeksi atas gabungan")
+        an = c.get("/api/kd/annual?region=33.03.05.1012&key=jumlah_penduduk").get_json()
+        check(an["points"] == [[2024, 400.0]] and an["partial"] == [], f"deret tahunan S2 {an}")
+        P = lambda d: [[y, v] for y, v in d.items()]
+        mr = c.post("/api/kd/model", json={"target": {"name": "T", "points": P({y: 100 * 1.02 ** (y - 2010) for y in range(2010, 2024)})},
+                                           "method": "auto", "horizon": 15})
+        check(mr.status_code == 200 and len(mr.get_json()["final"]) == 15 and mr.get_json()["methodology"], "API model")
+        check(c.post("/api/kd/model", json={"target": {"points": [[2020, 1]]}}).status_code == 400, "API model input salah -> 400")
+        fl = c.get("/api/kd/formulas").get_json()
+        check(len(fl["items"]) >= 50 and fl["categories"], "API katalog rumus")
+        cc = c.post("/api/kd/calc", json={"id": "scs_cn", "inputs": {"P": 100, "CN": 80}}).get_json()
+        check(abs(cc["outputs"][0]["value"] - 50.54) < 0.01, "API kalkulator")
+        check(c.post("/api/kd/calc", json={"id": "scs_cn", "inputs": {"P": 100, "CN": 0}}).status_code == 400, "API kalkulator input salah → 400")
+        check(c.post("/api/kd/calc", json={"id": "tidak_ada", "inputs": {}}).status_code == 404, "API rumus tak dikenal → 404")
         chk = c.post("/api/kd/formula/check", json={"formula": "base * 2 + jumlah_penduduk"})
         check(chk.status_code == 200, "cek rumus ok")
         check(c.post("/api/kd/formula/check", json={"formula": "os.system('x')"}).status_code == 400, "cek rumus berbahaya")
@@ -237,5 +451,7 @@ def t_data_api():
 
 if __name__ == "__main__":
     t_projection()
+    t_formulas()
+    t_model()
     t_data_api()
     print(f"OK — {OK} pemeriksaan lulus")
