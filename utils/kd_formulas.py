@@ -801,9 +801,85 @@ def public_catalog() -> list[dict]:
         out.append({"id": e["id"], "title": e["title"], "category": e["category"], "formula": e["formula"], "vars": e["vars"],
                     "outs": [{"key": k, "label": l, "unit": u} for k, l, u in e["outs"]], "ref": e["ref"], "note": e["note"],
                     "docs": e["docs"], "expr": expr_example(e["id"]),
-                    "fn": ("gumbel_x" if e["id"] == "gumbel" else e["id"]) in FORMULA_FUNCS})
+                    "fn": ("gumbel_x" if e["id"] == "gumbel" else e["id"]) in FORMULA_FUNCS,
+                    "howto": {"use": HOWTO.get(e["id"], ("", ""))[0], "read": HOWTO.get(e["id"], ("", ""))[1], "steps": GENERIC_STEPS},
+                    "example": example_result(e["id"])})
     return out
 
 
 CATEGORIES = ["Kependudukan", "Air bersih & air limbah", "Limbah padat", "Kualitas udara", "Kebisingan", "Lalu lintas",
               "Hidrologi & erosi", "Gas rumah kaca & karbon", "Analisis biaya-manfaat"]
+
+
+# =============================================================================== petunjuk pemakaian tiap rumus
+# id -> (kapan dipakai, cara membaca hasil). Langkah umum ada di GENERIC_STEPS.
+HOWTO = {
+    "pop_aritmatika": ("Proyeksi penduduk saat pertambahan jiwa per tahun kira-kira tetap (wilayah kecil/stagnan).", "Pn = jumlah penduduk tahun ke-n. Ka dari (Pt − P0)/t; bandingkan dgn metode lain sebelum memilih."),
+    "pop_geometrik": ("Proyeksi penduduk bila tumbuh dengan persentase tetap per tahun — pilihan paling lazim di AMDAL/UKL-UPL.", "Hasil naik makin cepat bila r positif. Dapatkan r dari rumus 'Laju geometrik' bila punya dua data sensus."),
+    "pop_eksponensial": ("Variasi geometrik utk pertumbuhan kontinu; selisih kecil dari geometrik pada r kecil.", "Bandingkan dengan geometrik; keduanya hampir sama bila r < 3%."),
+    "pop_logistik": ("Penduduk dibatasi daya tampung (lahan/perumahan terbatas) sehingga pertumbuhan melandai.", "Hasil mendekati Psat tetapi tak melampauinya. Psat sangat menentukan: dasarkan pada kajian daya tampung."),
+    "psat_logistik": ("Memperkirakan penduduk jenuh dari tiga data berjarak tahun SAMA (mis. 2010, 2015, 2020).", "Valid hanya bila pertambahan antar titik menurun; bila ditolak, pakai metode geometrik/aritmatika."),
+    "laju_geometrik": ("Menghitung laju tahunan dari dua data penduduk (sensus/DKB) untuk dipakai di proyeksi geometrik.", "Hasil dalam % per tahun. Periode data lebih panjang → laju lebih stabil."),
+    "kepadatan": ("Gambaran tekanan penduduk terhadap lahan pada rona awal sosial.", "Jiwa per km²; bandingkan dgn rata-rata kecamatan/kabupaten."),
+    "kebutuhan_air": ("Kebutuhan air bersih proyek/permukiman/pekerja.", "m³/hari. Bagi 86,4 utk L/detik. Pemakaian per orang & kehilangan harus dari standar yang berlaku utk jenis kawasan."),
+    "debit_puncak": ("Mendimensikan pipa/reservoir: debit hari maksimum dan jam puncak dari debit rata-rata.", "Faktor 1,15–1,25 (hari maks.) dan 1,5–2,0 (jam puncak) lazim; ikuti pedoman yang dipakai."),
+    "limbah_domestik": ("Memperkirakan air limbah dari pemakaian air bersih.", "Umumnya 70–80% air bersih menjadi limbah; sisanya hilang (siram, uap)."),
+    "beban_pencemar": ("Beban massa pencemar dari debit × konsentrasi, mis. untuk membandingkan sebelum/sesudah IPAL.", "kg/hari. Beban, bukan konsentrasi, yang dipakai utk daya tampung badan air."),
+    "beban_per_kapita": ("Beban pencemar domestik dari jumlah penghuni/pekerja bila belum ada hasil laboratorium.", "kg/hari. Verifikasi nilai g/orang/hari dengan rujukan/kajian setempat."),
+    "efluen": ("Cek apakah efisiensi IPAL cukup memenuhi baku mutu efluen.", "'Efisiensi minimum' = efisiensi terendah agar memenuhi baku; bandingkan dgn kinerja IPAL."),
+    "volume_reaktor": ("Perkiraan awal volume bak/reaktor dari debit dan waktu tinggal.", "m³; dimensi rinci mengikuti kriteria desain unit proses."),
+    "campuran_sungai": ("Penapisan cepat: konsentrasi sungai setelah bercampur sempurna dengan buangan.", "Nilai batas bawah dampak (pencampuran penuh, tanpa peluruhan). Dekat titik buangan konsentrasi lebih tinggi — pakai tab 7 untuk sebarannya."),
+    "streeter_phelps": ("Oksigen terlarut di hilir buangan organik (BOD) — di mana titik terendah DO?", "'Defisit kritis' dan 'waktu kritis' menunjukkan titik terburuk; DO = jenuh − defisit. Kurangi kd/L0 (olah limbah) agar defisit turun."),
+    "timbulan_sampah": ("Timbulan sampah permukiman/pekerja proyek.", "kg/hari; ubah ke volume dgn densitas utk perencanaan TPS."),
+    "volume_sampah": ("Menentukan kapasitas penampung/TPS menurut interval pengangkutan.", "m³ yang harus tertampung; tambah margin keselamatan."),
+    "sampah_residu": ("Sampah yang tetap harus ke TPA setelah reduksi 3R/kompos.", "kg/hari residu; dasar menghitung usia TPA/biaya angkut."),
+    "gauss_ground": ("Penapisan konsentrasi permukaan di arah angin dari satu cerobong (kondisi tunak).", "µg/m³ di sumbu pluma. Coba beberapa jarak untuk menemukan puncak; untuk animasi dan banyak sumber pakai tab 7."),
+    "briggs_rise": ("Menghitung kenaikan pluma agar mendapat tinggi efektif H (= tinggi cerobong + Δh).", "Δh (m) ditambahkan ke tinggi fisik cerobong, lalu dipakai di rumus Gauss."),
+    "box_model": ("Penapisan sangat kasar utk sumber area/jalan: pencemar tercampur dalam kotak.", "µg/m³ perkiraan rata-rata; konservatif-kasar, bukan hasil akhir."),
+    "ppm_ke_ugm3": ("Menyamakan satuan hasil ukur gas (ppm) dgn baku mutu (µg/m³).", "Pakai massa molekul gas yang tepat dan suhu/tekanan lapangan; 25 °C & 1 atm adalah kondisi acuan."),
+    "emisi_kendaraan": ("Inventarisasi emisi lalu lintas dari jumlah kendaraan, jarak, dan faktor emisi.", "kg/hari polutan tertentu. Faktor emisi WAJIB dari rujukan resmi per jenis kendaraan."),
+    "emisi_cerobong": ("Mengubah hasil uji emisi (mg/Nm³) menjadi laju emisi (g/detik) untuk model dispersi.", "g/detik masuk ke tab 7 sebagai laju emisi sumber."),
+    "koreksi_o2": ("Menyamakan hasil uji emisi dengan kadar O₂ acuan pada baku mutu.", "Hasil terkoreksi dibandingkan dengan baku mutu emisi sumber tidak bergerak."),
+    "bising_titik": ("Memperkirakan tingkat bunyi di jarak tertentu dari mesin/genset.", "Turun ±6 dB tiap jarak ×2; abaikan pantulan sehingga cenderung konservatif."),
+    "bising_garis": ("Lalu lintas padat/konveyor dianggap sumber garis.", "Turun ±3 dB tiap jarak ×2 (lebih lambat daripada titik)."),
+    "lp_dari_lw": ("Mengubah daya bunyi mesin (dari spesifikasi) menjadi tingkat tekanan di jarak tertentu.", "dB(A) di penerima pada ruang bebas; sumber di tanah memakai −8 (tab 7)."),
+    "db_sum": ("Menjumlahkan beberapa sumber bising atau bising sumber + latar.", "Dua sumber sama = +3 dB; sumber 10 dB lebih kecil hampir tak menambah."),
+    "leq": ("Tingkat bunyi ekuivalen dari beberapa periode dgn level dan durasi berbeda.", "Leq dibandingkan dgn baku (mis. siang/malam). Masukkan pasangan dB, durasi."),
+    "ldn": ("Indeks siang-malam yang memberi penalti +10 dB pada malam hari.", "Hasil dalam dB(A); dipakai utk gangguan lingkungan permukiman."),
+    "peredam_penghalang": ("Redaman dinding/tanggul penghalang antara sumber dan penerima.", "Makin tinggi dinding/dekat sumber → redaman makin besar, batas praktis ±20–24 dB."),
+    "lhr_proyeksi": ("Memproyeksikan lalu lintas harian ke tahun rencana (Andalalin/AMDAL).", "Dipakai untuk menguji V/C dan kebisingan/emisi masa depan."),
+    "arus_smp": ("Mengubah jumlah kendaraan per jenis menjadi satuan mobil penumpang (smp).", "Q smp/jam utk dibagi kapasitas. Nilai emp wajib dari pedoman (MKJI)."),
+    "kapasitas_jalan": ("Kapasitas jalan perkotaan dari kapasitas dasar × faktor koreksi.", "smp/jam; semua faktor dari tabel MKJI sesuai kondisi jalan."),
+    "derajat_jenuh": ("Perbandingan arus dengan kapasitas (V/C) sebelum/sesudah proyek.", "Mendekati 1 berarti padat; bandingkan dgn ambang tingkat pelayanan yang berlaku."),
+    "rasional": ("Debit puncak limpasan DAS/tapak kecil (≤ ±300–500 ha) utk drainase.", "m³/detik. Naiknya C (lahan terbangun) menaikkan Q; dasar menghitung perubahan akibat proyek."),
+    "mononobe": ("Intensitas hujan dari hujan harian rencana dan waktu konsentrasi.", "mm/jam masuk ke rumus Rasional."),
+    "kirpich": ("Waktu konsentrasi (waktu limpasan sampai outlet) dari panjang dan kemiringan.", "menit; ubah ke jam (÷60) utk Mononobe."),
+    "c_wtd": ("Koefisien limpasan gabungan beberapa tutupan lahan (atap, jalan, taman).", "C tertimbang luas, dipakai di Rasional. Bandingkan sebelum/sesudah proyek."),
+    "scs_cn": ("Limpasan dalam mm dari satu hujan menurut jenis tanah dan tutupan (CN).", "Kedalaman limpasan; kalikan luas utk volume. CN naik = lebih kedap."),
+    "volume_limpasan": ("Volume limpasan dari satu hujan, dasar merancang kolam retensi.", "m³; bandingkan dgn kapasitas kolam/saluran."),
+    "gumbel": ("Hujan rencana periode ulang (mis. 25 tahun) dari data hujan maksimum tahunan.", "X (mm) = hujan harian rencana; dipakai di Mononobe. Butuh rata-rata & simpangan baku dari ≥10–20 tahun data."),
+    "manning": ("Kapasitas saluran/drainase: apakah mampu mengalirkan debit rencana?", "Q kapasitas (m³/detik) dibandingkan debit rencana Rasional."),
+    "bols_r": ("Erosivitas hujan bulanan (faktor R USLE) dari data hujan setempat.", "Jumlahkan 12 bulan utk R tahunan di rumus USLE."),
+    "ls_faktor": ("Faktor panjang-kemiringan lereng USLE.", "Lereng lebih curam/panjang → LS lebih besar → erosi lebih besar."),
+    "usle": ("Perkiraan erosi lahan sebelum/sesudah pembukaan lahan (RKUT).", "ton/ha/tahun; bandingkan dgn erosi yang dapat ditoleransi. Ubah C/P utk menguji konservasi."),
+    "emisi_aktivitas": ("Emisi GRK sederhana dari data aktivitas (BBM, listrik) × faktor emisi.", "Satuan hasil mengikuti satuan faktor emisi; faktor wajib dari rujukan resmi."),
+    "co2e": ("Menyatukan CO₂, CH₄, N₂O ke satu angka CO₂e.", "Pilih GWP sesuai pedoman yang dipakai (AR4/AR5/AR6) dan sebutkan dalam laporan."),
+    "karbon_biomassa": ("Emisi dari pembukaan lahan/penebangan vegetasi.", "ton CO₂e dari biomassa yang hilang; dasar kompensasi penanaman."),
+    "npv": ("Nilai kini arus kas bersih (manfaat − biaya) analisis biaya-manfaat lingkungan.", "NPV > 0 berarti manfaat melebihi biaya pada tingkat diskonto itu."),
+    "bcr": ("Rasio manfaat terhadap biaya yang sudah didiskonto.", "BCR > 1 layak. Isi manfaat & biaya per tahun, urutan sama panjang."),
+    "irr": ("Tingkat diskonto yang membuat NPV = 0.", "Bandingkan dgn tingkat diskonto acuan; IRR lebih tinggi = lebih menarik."),
+    "cicilan": ("Cicilan tetap utk investasi pengolahan limbah/peralatan.", "Biaya per periode; dipakai dalam arus kas biaya-manfaat."),
+}
+GENERIC_STEPS = ["Pilih rumus dan baca persamaannya.", "Isi setiap kotak dengan angka proyek Anda (satuan tertera). Nilai awal hanya contoh.",
+                 "Klik Hitung lalu catat hasil beserta satuannya.", "Cantumkan rumus & rujukan di dokumen; bila memakai nilai asumsi, nyatakan sumbernya."]
+
+
+def example_result(id: str):
+    e = BY_ID.get(id)
+    if not e or any(v["default"] is None for v in e["vars"]):
+        return None
+    try:
+        r = calc(id, {v["name"]: v["default"] for v in e["vars"]})
+    except (CalcError, KeyError):
+        return None
+    return {"inputs": {v["label"]: v["default"] for v in e["vars"]}, "outputs": r["outputs"]}

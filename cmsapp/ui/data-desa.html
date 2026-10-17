@@ -47,6 +47,12 @@ table.t th:first-child,table.t td:first-child{text-align:left;white-space:normal
 .lg{display:flex;gap:0;margin-top:6px;font-size:11.5px}.lg div{flex:1;padding:2px 4px;color:#000;text-align:center}
 .pos{color:var(--ok)}.neg{color:var(--bad)}
 .hide{display:none!important}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px}.sf{display:flex;flex-direction:column;gap:2px}.sf input[type=number],.sf input[type=text],.sf select,.sf textarea{width:100%}
+.sched{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.sched input[type=number]{width:84px}.sched select{max-width:170px}
+.sg.mit{border-left:4px solid var(--ok)}.sg.off .fgrid{display:none}.sg.off{opacity:.7}.li{border:1px dashed var(--line);border-radius:8px;padding:6px 8px;margin-top:6px}
+.vgrid{display:grid;gap:12px}.vc{padding:10px}.mapwrap2{position:relative}.vc canvas{background:var(--card)}
+.fgrid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start}.guide{margin:0 0 10px}.guide ol,.guide ul{margin:4px 0 4px 18px;padding:0}.guide li{margin:2px 0}
+@media(max-width:700px){.vgrid{grid-template-columns:1fr!important}}
 .fr{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:6px;background:var(--card);cursor:pointer}.fr:hover{border-color:var(--acc)}.fr.cur{border-color:var(--acc);background:var(--acc-soft)}
 .fr b{display:block}.fr code,.fx code{font-size:12px;color:var(--mut);word-break:break-word}.fx{position:sticky;top:60px}
 .cat{border:1px solid var(--line);background:var(--card);color:var(--fg);padding:3px 10px;border-radius:999px;cursor:pointer;font:inherit;font-size:12.5px}.cat.cur{background:var(--acc);border-color:var(--acc);color:#fff}
@@ -67,9 +73,14 @@ details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margi
  <button data-t="proyeksi">4 · Proyeksi cepat</button>
  <button data-t="model">5 · Model multi-faktor</button>
  <button data-t="rumus">6 · Pustaka rumus AMDAL/UKL-UPL</button>
+ <button data-t="sim">7 · Simulasi lingkungan</button>
 </div>
 
 <section id="t-pilih">
+<details class="mt guide" open><summary>📖 Petunjuk — langkah 1: pilih wilayah &amp; indikator</summary><ol class="small"><li>Pilih wilayah lewat dropdown berjenjang (provinsi → kab/kota → kecamatan → desa), atau ketik nama lalu <b>Cari</b>. Klik <b>+ Tambahkan wilayah terpilih</b>.</li>
+<li>Ingin banyak kecamatan/desa sekaligus? Buka “Pilih beberapa…”, centang, lalu tambahkan <b>masing-masing</b> (satu garis per wilayah) atau <b>digabung jadi 1</b> (angka dijumlahkan). Gabungan bisa dipecah lagi dengan tombol “pecah”.</li>
+<li>Centang indikator di kanan (maks. 12). Daftar dikelompokkan; ketik di kotak cari untuk menyaring.</li>
+<li>Lanjut ke tab 2 (grafik), 3 (peta), 4 (proyeksi cepat), 5 (model), 6 (rumus), atau 7 (simulasi).</li></ol><div class="small mut">Data = DKB Kemendagri per semester dari NAS. Wilayah punya riwayat sepanjang periode yang tersedia untuk tingkat wilayah itu (lihat tabel “Ketersediaan data”).</div></details>
  <div class="grid2">
   <div class="card">
    <h3>Wilayah</h3>
@@ -102,6 +113,8 @@ details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margi
 </section>
 
 <section id="t-grafik" class="hide">
+<details class="mt guide" open><summary>📖 Petunjuk — grafik historis</summary><ul class="small"><li>Satu grafik per indikator; tiap warna = satu wilayah/gabungan. Arahkan kursor/sentuh titik untuk melihat nilai.</li>
+<li>Pilih tampilan <b>Jumlah</b> atau <b>% dari jumlah penduduk</b> (membandingkan wilayah berbeda ukuran).</li><li>Unduh <b>PNG</b> per grafik atau <b>CSV</b> seluruh data untuk laporan. Bila hanya 2 titik, garisnya tidak boleh dibaca sebagai tren.</li></ul></details>
  <div class="card">
   <div class="row">
    <label>Tampilkan <select id="gMode"><option value="abs">Jumlah (jiwa)</option><option value="pct">% dari jumlah penduduk</option></select></label>
@@ -114,6 +127,8 @@ details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margi
 </section>
 
 <section id="t-peta" class="hide">
+<details class="mt guide" open><summary>📖 Petunjuk — peta &amp; peringkat</summary><ul class="small"><li>Pilih induk (nasional, kabupaten, …), indikator, periode, dan jenis nilai. Peta mewarnai anak-wilayahnya; klik wilayah untuk turun satu tingkat.</li>
+<li>Peta butuh berkas GeoJSON (belum tersedia di semua tingkat) — tanpa itu peringkat di kanan tetap dapat dipakai.</li></ul></details>
  <div class="card">
   <div class="row">
    <label>Anak wilayah dari <select id="mParent"></select></label>
@@ -130,6 +145,10 @@ details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margi
 </section>
 
 <section id="t-proyeksi" class="hide">
+<details class="mt guide" open><summary>📖 Petunjuk — proyeksi cepat &amp; skenario</summary><ol class="small"><li><b>Tren dasar</b>: biarkan “Otomatis” kecuali Anda punya alasan memakai linear/datar/laju manual.</li>
+<li><b>Skenario</b>: centang faktor (kelahiran, ekonomi, serapan kerja, …), isi “nilai skenario” lalu pilih berlaku bertahap atau langsung. Selisih dari “acuan” itulah yang memengaruhi proyeksi. Rumus disembunyikan; buka <i>Lanjutan</i> untuk bobot atau elastisitas.</li>
+<li><b>Rumus sendiri</b>: tambah, lalu tulis ekspresi, mis. <code>base * (1 + 0.01 * dx * w)</code>. Klik “Cek rumus”. Fungsi pustaka AMDAL (tab 6) juga boleh dipakai.</li>
+<li>Klik <b>Hitung</b>. Garis putus = tren dasar, garis tebal = skenario, bayangan = rentang indikatif. Tabel “Faktor” menunjukkan kontribusi tiap faktor di akhir horizon.</li></ol><div class="small mut">Pengaruh faktor bawaan adalah asumsi awal, bukan estimasi statistik.</div></details>
  <div class="note" id="pNote">Proyeksi = ekstrapolasi tren data historis + asumsi skenario yang Anda atur. Ini <b>bukan ramalan</b>, dan angka pengaruh driver bawaan adalah <b>asumsi awal</b> (bukan hasil estimasi statistik) — sesuaikan bobotnya atau pakai rumus sendiri bila punya dasar yang lebih baik.</div>
  <div class="grid2">
   <div class="card">
@@ -149,6 +168,11 @@ details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margi
 </section>
 
 <section id="t-model" class="hide">
+<details class="mt guide" open><summary>📖 Petunjuk — model multi-faktor</summary><ol class="small"><li><b>Target</b>: tempel/unggah deret tahunan (<code>tahun,nilai</code>) atau ambil dari Kemendagri. Idealnya ≥8–10 tahun.</li>
+<li><b>Faktor</b>: unggah CSV lebar (kolom 1 = tahun). Aktifkan yang relevan dan tetapkan nilai masa depannya (ikuti tren / konstan / tumbuh % / manual). Isi “jenis” bila ingin elastisitas rujukan.</li>
+<li><b>Kejadian</b>: tombol cepat (tol, kawasan industri, perekrutan, insentif). Isi tahun mulai, besaran (angka sesuai jenisnya: % atau orang), lama bertahap, ketidakpastian. Besaran adalah asumsi Anda.</li>
+<li><b>Metode</b>: “Otomatis” menguji-balik tiap metode pada tahun terakhir dan memilih galat terkecil. Regresi butuh tahun tumpang-tindih ≥ jumlah faktor + 3; bila data pendek pakai elastisitas/rasio.</li>
+<li>Klik <b>Proses</b>. Baca ringkasan, peringatan, tabel perbandingan metode (MAPE), kontribusi kejadian, dan <b>keterangan metodologi</b> untuk dikutip di laporan.</li></ol></details>
  <div class="note">Model proyeksi tahunan untuk <b>satu variabel target</b> (mis. jumlah tenaga kerja) yang dipengaruhi <b>faktor</b> (data yang Anda unggah) dan <b>kejadian</b> (tol selesai, kawasan industri, perekrutan, insentif). Pilih metode statistik, klik proses, lalu baca keterangan metodologinya. Hasil adalah proyeksi bersyarat pada data &amp; asumsi Anda — bukan ramalan.</div>
  <div class="grid2">
   <div class="card">
@@ -187,6 +211,10 @@ details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margi
 </section>
 
 <section id="t-rumus" class="hide">
+<details class="mt guide" open><summary>📖 Petunjuk — pustaka rumus</summary><ol class="small"><li>Cari atau pilih kategori, klik rumus. Panel kanan menampilkan rumus, isian berlabel &amp; bersatuan, dan <b>Cara pakai</b> (kapan dipakai, langkah, cara membaca).</li>
+<li>Isi angka (nilai awal hanyalah contoh), klik <b>Hitung</b>. Hasil tampil beserta satuan; ada juga contoh hasil dengan nilai awal.</li>
+<li>Rumus bernilai tunggal bisa dipanggil di “rumus sendiri” (tab 4/5): tombol <b>Jadikan rumus skenario</b>.</li>
+<li>Yang bergantung wilayah/peraturan (baku mutu, faktor emisi, dll.) wajib Anda isi dari sumber resmi.</li></ol></details>
  <div class="note">Rumus baku yang lazim dipakai di dokumen lingkungan (AMDAL, UKL-UPL, Andalalin). Rumusnya baku dan tercantum rujukannya; <b>nilai parameter yang bergantung wilayah/peraturan</b> (faktor emisi, baku mutu, standar pemakaian air, sampah per kapita) adalah isian Anda — nilai awal hanyalah rentang umum, <b>verifikasi dengan peraturan/kajian yang berlaku</b>. Model dispersi/hidrologi di sini bersifat <i>penapisan awal</i>, bukan pengganti model rinci (AERMOD, HEC-HMS, dst.).</div>
  <div class="grid2">
   <div>
@@ -196,6 +224,15 @@ details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margi
   </div>
   <div class="fx"><div id="rfBox" class="card"><span class="mut">Pilih rumus di kiri.</span></div></div>
  </div>
+</section>
+
+<section id="t-sim" class="hide">
+ <div class="note">Simulasi 2-D berwaktu dengan <b>peta panas beranimasi</b>: <b>pencemaran air</b> (buangan pabrik ke sungai + hujan), <b>pencemaran udara</b> (cerobong mengikuti arah &amp; kecepatan angin), dan <b>kebisingan</b>. Aktifkan mitigasi (IPAL, scrubber, cerobong tinggi, dinding, <b>sabuk hijau</b>) lalu bandingkan dengan kondisi tanpa mitigasi. Alat penapisan &amp; komunikasi — bukan pengganti model regulatori.</div>
+ <div id="simTabs" class="row" style="margin-bottom:8px"></div>
+ <details id="simGuide" class="mt guide" open></details>
+ <div class="card"><h3>Mulai cepat</h3><div id="simPresets" class="row"></div><div id="simRun" style="margin-top:10px"></div></div>
+ <div id="simOut"></div>
+ <div id="simForm" class="fgrid2"></div>
 </section>
 </main>
 
@@ -227,8 +264,8 @@ const nameOf=code=>(regions.find(r=>r.code===code)||{}).name||code;
 // ------------------------------------------------------------------ tab
 function tab(t){
   $$('#tabs button').forEach(b=>b.classList.toggle('cur',b.dataset.t===t));
-  ['pilih','grafik','peta','proyeksi','model','rumus'].forEach(x=>$('#t-'+x).classList.toggle('hide',x!==t));
-  if(t==='grafik')loadGraf(); if(t==='peta')initMap(); if(t==='proyeksi')initProj(); if(t==='model')initModel(); if(t==='rumus')initRumus();
+  ['pilih','grafik','peta','proyeksi','model','rumus','sim'].forEach(x=>$('#t-'+x).classList.toggle('hide',x!==t));
+  if(t==='grafik')loadGraf(); if(t==='peta')initMap(); if(t==='proyeksi')initProj(); if(t==='model')initModel(); if(t==='rumus')initRumus(); if(t==='sim')initSim();
 }
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)tab(b.dataset.t)};
 $('#goGraf').onclick=()=>tab('grafik');
@@ -746,6 +783,10 @@ function renderRfBox(){
     return `<label style="display:block;margin-bottom:6px"><span class="small">${esc(v.label)} ${v.unit?`<span class="mut">(${esc(v.unit)})</span>`:''}</span>${ctl}${v.hint?`<div class="small mut">${esc(v.hint)}</div>`:''}</label>`}).join('');
   $('#rfBox').innerHTML=`<h3>${esc(f.title)}</h3><div class="fx"><code style="font-size:13px">${esc(f.formula)}</code></div>
    <div style="margin-top:10px">${inp}</div><div class="row"><button class="b p" id="rfGo">Hitung</button><span id="rfMsg" class="small"></span></div><div id="rfOut"></div>
+   <details class="mt" style="margin-top:10px" open><summary>📖 Cara pakai</summary><div class="small" style="margin-top:6px"><b>Kapan dipakai:</b> ${esc(f.howto.use)}</div>
+    <ol class="small" style="margin:6px 0 6px 18px;padding:0">${f.howto.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>
+    <div class="small"><b>Cara membaca hasil:</b> ${esc(f.howto.read)}</div>
+    ${f.example?`<div class="small mut" style="margin-top:6px"><b>Contoh (nilai awal):</b> ${f.example.outputs.map(o=>`${esc(o.label)} = <b>${fmt(o.value,Math.abs(o.value)<10?3:1)}</b> ${esc(o.unit)}`).join(' · ')}</div>`:''}</details>
    <div class="small mut" style="margin-top:8px"><b>Rujukan:</b> ${esc(f.ref)}${f.note?`<br><b>Catatan:</b> ${esc(f.note)}`:''}</div>
    ${f.expr?`<div class="small" style="margin-top:8px"><b>Di mesin rumus (tab 4 &amp; 5):</b> <code>${esc(f.expr)}</code> <button class="b small" id="rfCopy">Salin</button> <button class="b small" id="rfAdd">Jadikan rumus skenario</button></div>`:''}`;
   $('#rfGo').onclick=rfCalc;
@@ -771,4 +812,5 @@ async function rfCalc(){
   keys=keys.filter(k=>META.indicators.some(i=>i.key===k));
   renderChips();renderInd();initRegionSelects();
 })();
-</script></body></html>
+</script>
+<script src="/data-desa/sim.js?v=1"></script></body></html>

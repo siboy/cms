@@ -83,6 +83,12 @@ def create_app(cfg=Config) -> Flask:
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
+    @app.get("/data-desa/sim.js")
+    def data_desa_sim_js():
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "sim-ui.js", mimetype="text/javascript")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     @app.get("/privacy-policy")
     def privacy_policy():
         """Kebijakan privasi — wajib ditautkan di Play Console (Data safety) kalau app dirilis publik."""

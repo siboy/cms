@@ -14,6 +14,8 @@ from cmsapp import auth
 from utils import kd_catalog as cat
 from utils import kd_formulas as kfm
 from utils import kd_model as km
+from utils import kd_sim as ksm
+from utils import kd_sim_schema as ksc
 from utils import kd_projection as kp
 from utils.kd_data import KDStore, LocalSource, NASSource, depth
 from utils.kd_nas import NASError, SynologyReader, period_label
@@ -287,3 +289,30 @@ def formulas():
 def calc():
     b = request.get_json(silent=True) or {}
     return jsonify(kfm.calc(str(b.get("id", "")), b.get("inputs") or {}))
+
+
+# ---------------------------------------------------------------- simulator lingkungan (air / udara / bising)
+@bp.errorhandler(ksm.SimError)
+def _sim_err(e):
+    return _fail(str(e), 400)
+
+
+@bp.get("/sim/info")
+@auth.require()
+def sim_info():
+    out = {}
+    for k, sch in ksc.SCHEMAS.items():
+        out[k] = {"id": k, "title": sch["title"], "unit": sch["unit"], "unit_long": sch["unit_long"], "groups": sch["groups"], "lists": sch["lists"],
+                  "presets": ksc.PRESETS[k], "guide": ksc.GUIDES[k], "metrics": ksc.METRICS[k]}
+    return jsonify(sims=out)
+
+
+@bp.post("/sim/run")
+@auth.require()
+def sim_run():
+    b = request.get_json(silent=True)
+    if not isinstance(b, dict) or b.get("sim") not in ksc.SCHEMAS:
+        return _fail("sim harus water | air | noise")
+    sim = b["sim"]
+    scen = ksm.build_scenarios(sim, b.get("params") or {}, b.get("compare"), b.get("variation"))
+    return jsonify(ksm.run(sim, scen, int(_num(b.get("frames"), 40))))

@@ -12,6 +12,8 @@ import pandas as pd  # noqa: E402
 
 from utils import kd_formulas as kf  # noqa: E402
 from utils import kd_model as km  # noqa: E402
+from utils import kd_sim as ks  # noqa: E402
+from utils import kd_sim_schema as ksc  # noqa: E402
 from utils import kd_projection as kp  # noqa: E402
 from utils.kd_data import KDStore, LocalSource, _guess_digits  # noqa: E402
 
@@ -92,6 +94,148 @@ def t_projection():
     check(long["baseline"]["confidence"] == "baik" and abs(long["baseline"]["growth_pct"] - 2) < 0.01, "riwayat panjang -> regresi log")
 
 
+# ------------------------------------------------------------------ simulator air / udara / bising
+def t_sim():
+    import numpy as np
+    near = lambda a, b, tol=1e-3: abs(a - b) <= tol * max(1.0, abs(b))
+    # ---- geometri
+    quad = ks._quad(10, -5, 10, 5, 20)                 # strip x 0..20, y -5..5? (garis tengah vertikal, lebar 20 => x 0..20)
+    check(near(float(ks.seg_quad_len(0, 0, 50, 0, quad)), 20.0), "irisan ruas-strip = lebar strip (20 m)")
+    check(float(ks.seg_quad_len(0, 100, 50, 100, quad)) == 0.0, "ruas di luar strip → 0")
+    check(near(float(ks.seg_quad_len(15, 0, 50, 0, quad)), 5.0), "ruas mulai di dalam strip")
+    ok, t = ks.seg_cross(0, 0, 10, 0, (5, -1), (5, 1))
+    check(bool(ok) and near(float(t), 0.5), "perpotongan dinding di t=0,5")
+    check(not bool(ks.seg_cross(0, 0, 10, 0, (15, -1), (15, 1))[0]), "dinding di luar ruas")
+    # ---- pengkodean
+    arr = np.random.RandomState(1).rand(7, 9) * 80 + 20
+    check(np.max(np.abs(ks.decode(ks.encode([arr], 20, 100)[0], 7, 9, 20, 100) - arr)) < 80 / 65535 + 1e-9, "encode/decode uint16 presisi")
+    # ---- validasi
+    for bad in ({"river": {"W": 0}}, {"source": {"x": 99999}}, {"river": {"L": "abc"}}, {"treat": {"eff_pct": {"mode": "const", "v": 150}}}):
+        try:
+            ks.run("water", [{"params": bad}], 4)
+            check(False, f"input salah lolos: {bad}")
+        except ks.SimError:
+            check(True, "")
+    # ---- AIR SUNGAI: tunak numerik vs solusi analitik (Ey tetap, k=0,2/hari, sumber di tengah)
+    wp = {"river": {"L": 2000, "W": 40, "h": 1.5, "u": 0.4, "k_day": 0.2, "C_bg": 0, "Ey": 0.05}, "source": {"x": 200, "y_frac": 0.5, "Qw": {"mode": "const", "v": 0.02},
+          "Cw": {"mode": "const", "v": 300}}, "grid": {"nx": 200, "ny": 40}, "time": {"T_min": 180}, "standard": {"C_baku": 1}, "monitors": []}
+    r = ks.run_water(wp, 6)
+    last = r["frames"][-1]
+    dxw, dyw = 2000 / 200, 40 / 40
+    M = 0.02 * 300
+    errs = []
+    for xc in (500, 900, 1400):
+        i = int(xc / dxw)
+        for jy in (20, 22, 26):
+            an = ks.water_steady_analytic((i + 0.5) * dxw, (jy + 0.5) * dyw, 200, 20.5 * dyw, M, 0.4, 1.5, 0.05, 40, 0.2 / 86400)
+            errs.append(abs(last[jy, i] - an) / an)
+    check(max(errs) < 0.12, f"air: solusi numerik tunak ≈ analitik (galat maks {max(errs):.3f})")
+    # kekekalan massa (k=0, sebelum plume mencapai hilir)
+    r0 = ks.run_water({**wp, "river": {**wp["river"], "k_day": 0}, "time": {"T_min": 40}}, 6)
+    mi, md = r0["mass"]["in"][-1], r0["mass"]["domain"][-1]
+    check(abs(md - mi) / mi < 0.03, f"air: massa terjaga (masuk {mi:.0f} g, di domain {md:.0f} g)")
+    # percampuran: panjang campuran teoritis & konsentrasi campuran penuh
+    m0 = ks.run_water({**wp, "time": {"T_min": 240}}, 4)["metrics"]
+    check(m0["mix_length_m"] > 0 and abs(m0["c_mix_theory"] - (0.4 * 40 * 1.5 * 0 + 0.02 * 300 / (0.4 * 40 * 1.5 + 0.02))) / m0["c_mix_theory"] < 0.05, "C campuran teoritis = neraca massa")
+    # mitigasi: IPAL menurunkan puncak ~ (1-eff); hujan mengubah; sabuk hijau menurunkan beban limpasan
+    base = {"standard": {"C_baku": 3}, "monitors": [{"name": "K", "x": 800, "y_frac": 0.5}]}
+    a = ks.run_water(base, 12)["metrics"]["peak"]
+    b = ks.run_water({**base, "treat": {"enabled": True, "eff_pct": {"mode": "const", "v": 90}}}, 12)["metrics"]["peak"]
+    check((b - 2) < (a - 2) * 0.15, f"IPAL 90% memangkas puncak tambahan ({a:.2f} → {b:.2f}; latar 2)")
+    rn = {"rain": {"enabled": True, "EMC_river": 60, "A_river_ha": 800, "I": 60}}
+    c1 = ks.run_water({**base, **rn}, 12)["metrics"]
+    c2 = ks.run_water({**base, **rn, "buffer": {"enabled": True, "width_m": 40, "coef": 0.05}}, 12)["metrics"]
+    check(c2["peak"] <= c1["peak"] + 1e-9, "sabuk hijau tepi sungai tak menaikkan puncak")
+    # hujan membesarkan debit sungai
+    check(c1["Q_river_final"] > 0 and ks.run_water({**base, **rn, "time": {"T_min": 60}}, 6)["series_extra"]["Q_river"][3] > ks.run_water(base, 6)["series_extra"]["Q_river"][3], "hujan menaikkan debit sungai")
+    # biaya terlalu besar ditolak (bukan membekukan server)
+    for sim_, bad_ in (("water", {"grid": {"nx": 400, "ny": 80}, "time": {"T_min": 1440}, "river": {"u": 3, "L": 200}, "source": {"x": 100}}),
+                       ("air", {"domain": {"nx": 160, "ny": 160}, "time": {"T_min": 1440, "dt_s": 10}, "sources": [dict(ksc.AIR["lists"][0]["items"][0], name=f"s{i}") for i in range(3)]})):
+        try:
+            ks.run(sim_, [{"params": bad_}], 60)
+            check(False, f"{sim_} berat harus ditolak")
+        except ks.SimError as e:
+            check("berat" in str(e), f"{sim_}: simulasi terlalu berat ditolak dgn pesan jelas")
+    # ---- UDARA: arah angin menentukan posisi plume; scrubber linear; cerobong tinggi menurunkan puncak
+    ap = {"domain": {"width_m": 6000, "height_m": 6000, "nx": 80, "ny": 80}, "time": {"T_min": 90}, "receptors": [{"name": "R", "x": 1500, "y": 0}]}
+    w = ks.run_air({**ap, "met": {"wind_dir": {"mode": "const", "v": 270}}}, 8)["metrics"]
+    check(w["peak_x"] > 500 and abs(w["peak_y"]) < 300, f"angin dari barat → puncak di timur ({w['peak_x']:.0f},{w['peak_y']:.0f})")
+    n_ = ks.run_air({**ap, "met": {"wind_dir": {"mode": "const", "v": 0}}}, 8)["metrics"]
+    check(n_["peak_y"] < -500 and abs(n_["peak_x"]) < 300, "angin dari utara → puncak di selatan")
+    base_peak = w["peak_envelope"]
+    sc_ = ks.run_air({**ap, "scrubber": {"enabled": True, "eff_pct": {"mode": "const", "v": 80}}}, 8)["metrics"]["peak_envelope"]
+    check(abs(sc_ / base_peak - 0.2) < 0.02, f"scrubber 80% → konsentrasi 20% ({sc_ / base_peak:.3f})")
+    hi = ks.run_air({**ap, "stack": {"enabled": True, "dH": 80}}, 8)["metrics"]["peak_envelope"]
+    check(hi < base_peak, "cerobong lebih tinggi menurunkan puncak permukaan")
+    # puff vs pluma Gauss tunak (sumbu, kelas D perdesaan, angin 3 m/s, angin pada tinggi efektif pluma)
+    for xr in (1500, 2500):
+        rr = ks.run_air({**ap, "time": {"T_min": 120}, "met": {"wind_speed": {"mode": "const", "v": 3}, "stability": 4, "wind_dir": {"mode": "const", "v": 270}},
+                         "receptors": [{"name": "R", "x": xr, "y": 0}]}, 6)
+        puff = rr["monitors"][0]["series"][-1]
+        us0 = 3 * (40 / 10) ** 0.15
+        He = 40 + ks.plume_rise(12, 2, 420, 300, us0, 4)
+        uh = 3 * (He / 10) ** 0.15
+        sy, sz = ks.sigma_pg(np.array([float(xr)]), 4, 0)
+        an = 50 * 1e6 / (math.pi * uh * sy[0] * sz[0]) * math.exp(-He * He / (2 * sz[0] ** 2))
+        check(0.75 < puff / an < 1.25, f"puff ≈ pluma Gauss tunak di x={xr} m (rasio {puff / an:.2f})")
+    # sabuk hijau: lebar 20 > 5 > 0 menurunkan reseptor di belakangnya (monoton)
+    def belt(wd):
+        return {**ap, "receptors": [{"name": "R", "x": 1500, "y": 0}], "met": {"wind_dir": {"mode": "const", "v": 270}},
+                "belts": [{"enabled": True, "x1": 600, "y1": -2500, "x2": 600, "y2": 2500, "width": {"mode": "const", "v": wd}, "height": 30, "lad": 3.0, "vd_cm_s": 5.0}]}
+    v0_, v5_, v20_ = (ks.run_air(belt(wd), 8)["monitors"][0]["series"][-1] for wd in (0, 5, 20))
+    check(v0_ > v5_ > v20_ > 0, f"sabuk hijau 0 > 5 > 20 m menurunkan polutan ({v0_:.2f} > {v5_:.2f} > {v20_:.2f})")
+    # ---- BISING: kesesuaian dgn rumus kalkulator & mitigasi
+    npn = {"domain": {"width_m": 400, "height_m": 400, "nx": 81, "ny": 81}, "prop": {"ambient_db": 0, "alpha_db_km": 0, "ground_k": 11, "hr": 1.0},
+           "sources": [{"name": "S", "type": "point", "x": 0, "y": 0, "Lw": {"mode": "const", "v": 100}, "hs": 1.0, "mitigable": True}],
+           "receptors": [{"name": "R50", "x": 50, "y": 0}, {"name": "R100", "x": 100, "y": 0}], "time": {"T_min": 10}}
+    nr = ks.run_noise(npn, 2)
+    got = {m["name"]: m["final"] for m in nr["monitors"]}
+    xs_ = np.linspace(-200, 200, 81)
+    check(near(got["R50"], kf.lp_dari_lw(100, 50), 2e-3) and near(got["R100"], kf.lp_dari_lw(100, 100), 2e-3), "bising titik = Lw − 20log r − 11 (sesuai kalkulator)")
+    check(abs((got["R50"] - got["R100"]) - 6.02) < 0.02, "jarak ×2 → −6 dB")
+    two = ks.run_noise({**npn, "sources": npn["sources"] * 1 + [dict(npn["sources"][0], name="S2")]}, 2)["monitors"][0]["final"]
+    check(abs(two - got["R50"] - 3.01) < 0.02, "dua sumber sama → +3 dB")
+    en = ks.run_noise({**npn, "enclosure": {"enabled": True, "dB": {"mode": "const", "v": 10}}}, 2)["monitors"][0]["final"]
+    check(abs((got["R50"] - en) - 10) < 0.02, "peredam 10 dB → −10 dB")
+    wall = {**npn, "walls": [{"enabled": True, "x1": 20, "y1": -80, "x2": 20, "y2": 80, "height": 4}]}
+    wl = ks.run_noise(wall, 2)["monitors"][0]["final"]
+    check(wl < got["R50"] - 3, f"dinding menurunkan level di belakangnya ({got['R50']:.1f} → {wl:.1f})")
+    nb = lambda wd: {**npn, "belts": [{"enabled": True, "x1": 30, "y1": -80, "x2": 30, "y2": 80, "width": {"mode": "const", "v": wd}, "density": 1.0, "alpha_db_m": 0.1, "max_db": 10}]}
+    l0, l5, l20 = (ks.run_noise(nb(wd), 2)["monitors"][0]["final"] for wd in (0, 5, 20))
+    check(abs(l0 - got["R50"]) < 1e-6 and l0 > l5 > l20 and abs((l0 - l5) - 0.5) < 0.05 and abs((l0 - l20) - 2.0) < 0.1, f"sabuk hijau 5 m ≈ −0,5 dB ; 20 m ≈ −2 dB ({l0:.2f},{l5:.2f},{l20:.2f})")
+    nd = lambda d: {**npn, "belts": [{"enabled": True, "x1": 30, "y1": -80, "x2": 30, "y2": 80, "width": {"mode": "const", "v": 20}, "density": d, "alpha_db_m": 0.1, "max_db": 10}]}
+    check(ks.run_noise(nd(0), 2)["monitors"][0]["final"] > ks.run_noise(nd(1.0), 2)["monitors"][0]["final"], "tingkat penghijauan 0 → tanpa redaman")
+    # jadwal: pohon tumbuh → level turun seiring waktu
+    gr = ks.run_noise({**npn, "belts": [{"enabled": True, "x1": 30, "y1": -80, "x2": 30, "y2": 80, "width": {"mode": "ramp", "v0": 0, "v1": 40},
+                                         "density": 1.0, "alpha_db_m": 0.1, "max_db": 20}]}, 6)["monitors"][0]["series"]
+    check(all(gr[i] >= gr[i + 1] - 1e-9 for i in range(len(gr) - 1)) and gr[0] - gr[-1] > 3, "penghijauan tumbuh → level turun terhadap waktu")
+    # ---- orkestrasi & pemadatan
+    out = ks.run("noise", [{"name": "tanpa", "params": npn}, {"name": "dengan", "params": wall}], 6)
+    check(len(out["scenarios"]) == 2 and out["vmax"] >= out["vmin"] and out["scenarios"][0].get("static") and len(out["scenarios"][0]["frames"]) == 1, "run(): 2 skenario, skala sama, bingkai statis dipadatkan")
+    out = ks.run("water", [{"name": "A", "params": {}}, {"name": "B", "params": ks.apply_variation({}, "treat", {"enabled": True, "eff_pct": {"mode": "const", "v": 50}})}], 8)
+    check(len(out["scenarios"][0]["frames"]) == 8 and out["scenarios"][0]["metrics"]["peak"] > out["scenarios"][1]["metrics"]["peak"], "run(): bingkai dinamis & perbandingan skenario")
+    sc_ = ks.build_scenarios("noise", {"walls": [{"enabled": True, "x1": 40, "y1": -60, "x2": 40, "y2": 60, "height": 3}]}, "mitigation", None)
+    check(len(sc_) == 2 and sc_[0]["params"]["walls"][0]["enabled"] is False and sc_[1]["params"]["walls"][0]["enabled"] is True, "bandingkan tanpa/dengan mitigasi")
+    try:
+        ks.build_scenarios("noise", {}, "mitigation", None)
+        check(False, "bandingkan tanpa mitigasi aktif harus ditolak")
+    except ks.SimError:
+        check(True, "")
+    vs = ks.build_scenarios("noise", {"belts": [{"enabled": False, "x1": 30, "y1": -80, "x2": 30, "y2": 80, "width": {"mode": "const", "v": 5}, "density": 1.0, "alpha_db_m": 0.1, "max_db": 10}]},
+                            None, {"path": "belts.0.width", "values": [0, 5, 20], "label": "lebar sabuk"})
+    check(len(vs) == 3 and vs[2]["params"]["belts"][0]["enabled"] is True and vs[2]["params"]["belts"][0]["width"] == {"mode": "const", "v": 20.0}, "variasi: jadwal diganti konstan & mitigasi diaktifkan otomatis")
+    vr = ks.run("noise", vs, 4)
+    lv = [s_["metrics"]["peak"] for s_ in vr["scenarios"]]
+    check(len(lv) == 3, "variasi 3 lebar sabuk berjalan")
+    vi = ks.build_scenarios("water", {}, None, {"path": "treat.eff_pct", "values": [0, 50, 90], "label": "IPAL"})
+    pk = [r_["metrics"]["peak"] for r_ in ks.run("water", vi, 6)["scenarios"]]
+    check(pk[0] > pk[1] > pk[2], f"variasi efisiensi IPAL 0/50/90% menurunkan puncak ({pk[0]:.2f}>{pk[1]:.2f}>{pk[2]:.2f})")
+    for sim in ("water", "air", "noise"):
+        for pre in ksc.PRESETS[sim]:
+            ks.run(sim, [{"name": pre["name"], "params": pre["params"]}], 6)
+        check(len(ksc.GUIDES[sim]) >= 4 and ksc.SCHEMAS[sim]["groups"], f"skema + petunjuk {sim} tersedia & semua contoh jalan")
+
+
 # ------------------------------------------------------------------ pustaka rumus AMDAL / UKL-UPL
 def t_formulas():
     near = lambda a, b, tol=1e-3: abs(a - b) <= tol * max(1.0, abs(b))
@@ -148,6 +292,10 @@ def t_formulas():
     # katalog & kalkulator & integrasi mesin rumus
     ids = [e["id"] for e in kf.CATALOG]
     check(len(ids) == len(set(ids)) and len(ids) >= 50 and set(e["category"] for e in kf.CATALOG) <= set(kf.CATEGORIES), "katalog konsisten")
+    pc = kf.public_catalog()
+    check(all(e["howto"]["use"] and e["howto"]["read"] and e["howto"]["steps"] for e in pc), "setiap rumus punya petunjuk pakai (kapan, langkah, cara baca)")
+    ras = next(e for e in pc if e["id"] == "rasional")["example"]
+    check(ras and abs(ras["outputs"][0]["value"] - 1.9446) < 1e-3, "contoh hasil dgn nilai awal otomatis")
     r = kf.calc("rasional", {"C": 0.8, "I": 100, "A": 10})
     check(near(r["outputs"][0]["value"], 2.2224) and r["ref"] and r["formula"], "kalkulator memberi hasil+rumus+rujukan")
     check(kf.calc("db_sum", {"L": "60, 60"})["outputs"][0]["value"] > 63, "isian daftar (list)")
@@ -437,6 +585,14 @@ def t_data_api():
                                            "method": "auto", "horizon": 15})
         check(mr.status_code == 200 and len(mr.get_json()["final"]) == 15 and mr.get_json()["methodology"], "API model")
         check(c.post("/api/kd/model", json={"target": {"points": [[2020, 1]]}}).status_code == 400, "API model input salah -> 400")
+        si = c.get("/api/kd/sim/info").get_json()["sims"]
+        check(set(si) == {"water", "air", "noise"} and all(si[k]["guide"] and si[k]["presets"] and si[k]["metrics"] for k in si), "API sim/info")
+        sr_ = c.post("/api/kd/sim/run", json={"sim": "noise", "params": {}, "frames": 4})
+        check(sr_.status_code == 200 and sr_.get_json()["scenarios"][0]["frames"], "API sim/run")
+        sr2 = c.post("/api/kd/sim/run", json={"sim": "water", "params": {"treat": {"enabled": True}}, "compare": "mitigation", "frames": 6}).get_json()
+        check(len(sr2["scenarios"]) == 2 and sr2["scenarios"][0]["name"].startswith("Tanpa"), "API sim/run: tanpa vs dengan mitigasi")
+        check(c.post("/api/kd/sim/run", json={"sim": "water", "params": {"river": {"W": -1}}}).status_code == 400, "API sim/run: input salah → 400")
+        check(c.post("/api/kd/sim/run", json={"sim": "xx"}).status_code == 400, "API sim/run: simulator salah → 400")
         fl = c.get("/api/kd/formulas").get_json()
         check(len(fl["items"]) >= 50 and fl["categories"], "API katalog rumus")
         cc = c.post("/api/kd/calc", json={"id": "scs_cn", "inputs": {"P": 100, "CN": 80}}).get_json()
@@ -451,6 +607,7 @@ def t_data_api():
 
 if __name__ == "__main__":
     t_projection()
+    t_sim()
     t_formulas()
     t_model()
     t_data_api()

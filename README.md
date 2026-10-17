@@ -65,7 +65,19 @@ lihat grafik historis per semester, peta choropleth anak-wilayah, lalu **proyeks
   tidak menyimpan baku mutu. Model dispersi/hidrologi = penapisan awal, bukan pengganti AERMOD/HEC-HMS. Metode proyeksi
   penduduk baku (aritmatika/geometrik/eksponensial/logistik) juga tersedia di Model multi-faktor, lengkap dgn simpangan
   baku & koefisien korelasi.
-- **API**: `/api/kd/{meta,regions,search,series,annual,children_values,geojson,baselines,formula/check,project,model,formulas,calc}` (login wajib).
+- **Simulasi lingkungan** (tab 7, `utils/kd_sim.py` + `kd_sim_schema.py` + `cmsapp/ui/sim-ui.js`): tiga simulator 2-D berwaktu dengan
+  heatmap beranimasi (putar/jeda/geser waktu, skala linear/log, garis batas baku mutu, PNG/CSV/rekam WebM):
+  (1) **air sungai** — adveksi-dispersi 2-D (MUSCL+RK2) dari titik buangan pabrik, peluruhan orde-1, hujan (hidrograf limpasan:
+  debit sungai & buangan naik, beban EMC masuk), IPAL dan sabuk riparian sebagai mitigasi; divalidasi terhadap solusi analitik
+  tunak (metode bayangan) dan kekekalan massa; (2) **udara cerobong** — puff Gauss berwaktu mengikuti arah & kecepatan angin yang
+  boleh berubah, kenaikan pluma Briggs, σ Pasquill-Gifford (Briggs), scrubber/cerobong lebih tinggi/sabuk hijau (deposisi ke daun
+  melalui lebar×LAD×vd, bagian pluma di bawah tajuk); divalidasi terhadap pluma Gauss tunak; (3) **kebisingan** — Lp = Lw − 20log r
+  − K − serapan udara, sumber titik/garis, dinding (Maekawa), sabuk hijau (redaman/m × kerapatan × lintasan), peredam mesin.
+  Variabel (laju emisi, angin, lebar sabuk yg tumbuh, …) bisa **konstan/bertahap/mendadak/kunci manual**; perbandingan
+  **tanpa vs dengan mitigasi** atau **variasi** satu variabel (mis. sabuk 0/5/20 m, maks 4 skenario) dengan skala warna sama.
+  Skema parameter, contoh, dan petunjuk penggunaan hidup di server (`/api/kd/sim/info`) sehingga formulir UI dibangun otomatis.
+  Parameter yang tak punya rujukan tunggal (vd, redaman/m vegetasi, koefisien penyisihan) = ASUMSI yang ditandai di UI.
+- **API**: `/api/kd/{meta,regions,search,series,annual,children_values,geojson,baselines,formula/check,project,model,formulas,calc,sim/info,sim/run}` (login wajib).
 - **Uji**: `/root/venv/bin/python scripts/kd_test.py` (parquet sintetis berlayout NAS; tanpa NAS/DB).
 
 ## Multi-tenant: banyak perusahaan, banyak divisi (sejak 2026-10-06)
