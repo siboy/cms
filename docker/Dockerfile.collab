@@ -8,7 +8,8 @@ RUN pip install \
       python-docx lxml pillow beautifulsoup4 \
       pymysql cryptography \
       redis requests \
-      flask gunicorn gevent packaging
+      flask gunicorn gevent packaging \
+      numpy pandas pyarrow
 
 WORKDIR /app
 COPY utils /app/utils

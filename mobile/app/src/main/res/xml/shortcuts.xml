@@ -5,8 +5,8 @@
         android:icon="@drawable/ic_cms"
         android:shortcutShortLabel="@string/ganti_perusahaan">
         <intent android:action="android.intent.action.VIEW"
-            android:targetPackage="id.databoks.cms"
-            android:targetClass="id.databoks.cms.TenantActivity">
+            android:targetPackage="team.sdrive.cms"
+            android:targetClass="team.sdrive.cms.TenantActivity">
             <extra android:name="reset" android:value="true"/>
         </intent>
     </shortcut>
