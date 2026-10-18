@@ -20,12 +20,20 @@ def export_dir() -> str:
     return d
 
 
+GUIDE_SOURCES = ("template_guide",)       # blok petunjuk dari template (data.source) -- default tidak ikut ekspor
+
+
+def strip_guide(blocks: list[dict]) -> list[dict]:
+    return [b for b in blocks if (b.get("data") or {}).get("source") not in GUIDE_SOURCES]
+
+
 def cache_path(doc_id: int, fp: str) -> str:
     return os.path.join(export_dir(), f"doc{doc_id}_{fp}.docx")
 
 
-def enqueue(r, store, doc_id: int, user: str) -> dict:
-    fp = store.fingerprint(doc_id)
+def enqueue(r, store, doc_id: int, user: str, guide: bool = False) -> dict:
+    """guide=True: sertakan blok petunjuk template (default tidak). Versi dgn/tanpa petunjuk di-cache terpisah."""
+    fp = store.fingerprint(doc_id) + ("g" if guide else "")
     path = cache_path(doc_id, fp)
     if os.path.isfile(path):
         jid = uuid.uuid4().hex
@@ -36,7 +44,7 @@ def enqueue(r, store, doc_id: int, user: str) -> dict:
     jid = uuid.uuid4().hex
     if not r.set(inflight_key, jid, nx=True, ex=600):          # sudah ada job untuk versi ini -> gabung
         return {"job": r.get(inflight_key), "status": "queued", "cached": False, "joined": True}
-    r.hset(JOB + jid, mapping={"status": "queued", "doc": doc_id, "fp": fp, "by": user, "t": int(time.time())})
+    r.hset(JOB + jid, mapping={"status": "queued", "doc": doc_id, "fp": fp, "by": user, "t": int(time.time()), "guide": int(guide)})
     r.expire(JOB + jid, 3600)
     r.lpush(QUEUE, jid)
     return {"job": jid, "status": "queued", "cached": False, "queue_len": r.llen(QUEUE)}
@@ -59,8 +67,11 @@ def run_job(r, store, jid: str):
     r.hset(JOB + jid, "status", "running")
     tmp = None
     try:
+        guide = h.get("guide") in ("1", 1)
         d = store.load_document(doc_id)
-        real_fp = store.fingerprint(doc_id)                     # dokumen bisa berubah saat antre; pakai yang terbaru
+        if not guide:
+            d["blocks"] = strip_guide(d["blocks"])
+        real_fp = store.fingerprint(doc_id) + ("g" if guide else "")                     # dokumen bisa berubah saat antre; pakai yang terbaru
         path = cache_path(doc_id, real_fp)
         if not os.path.isfile(path):
             tmp = path + f".{jid}.tmp"

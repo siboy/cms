@@ -30,6 +30,12 @@ def create_app(cfg=Config) -> Flask:
     from cmsapp.projects_api import bp as projects_bp
     app.register_blueprint(projects_bp)
 
+    from cmsapp.kd_api import bp as kd_bp
+    app.register_blueprint(kd_bp)
+
+    from cmsapp.templates_api import bp as tpl_bp
+    app.register_blueprint(tpl_bp)
+
     @app.after_request
     def _security_headers(resp):
         h = resp.headers
@@ -61,12 +67,42 @@ def create_app(cfg=Config) -> Flask:
         if not os.path.isfile(p):
             return jsonify(error="APK belum tersedia — jalankan 'make apk' di server"), 404
         from flask import send_file
-        return send_file(p, as_attachment=True, download_name="dupoin.apk",
+        return send_file(p, as_attachment=True, download_name="sdrive.apk",
                          mimetype="application/vnd.android.package-archive")
 
     @app.get("/manifest.webmanifest")
     def pwa_manifest():
         return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "manifest.webmanifest")
+
+    @app.get("/install-apk")
+    def install_apk_guide():
+        """Halaman instruksi instal APK Android (izinkan sumber tak dikenal) - ditautkan dari tombol 📱 APK."""
+        return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "install-apk.html")
+
+    @app.get("/data-desa")
+    def data_desa_page():
+        """Halaman data desa Kemendagri (indikator, grafik, peta, proyeksi 5 tahun). Login dicek oleh /api/kd/*."""
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "data-desa.html")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.get("/data-desa/sim.js")
+    def data_desa_sim_js():
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "sim-ui.js", mimetype="text/javascript")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.get("/templates")
+    def templates_page():
+        """Halaman template outline laporan AMDAL/UKL-UPL. Login & izin template_use dicek oleh /api/templates/*."""
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "templates.html")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.get("/privacy-policy")
+    def privacy_policy():
+        """Kebijakan privasi — wajib ditautkan di Play Console (Data safety) kalau app dirilis publik."""
+        return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "privacy-policy.html")
 
     @app.get("/app-icon.svg")
     def app_icon():

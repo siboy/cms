@@ -75,6 +75,9 @@ PERMISSIONS = [
      "desc": "Menambah & mengubah task di tab Gantt proyek."},
     {"key": "project_tasks_admin", "label": "Kelola Task Lanjutan",
      "desc": "Menghapus task, menandai (tag) orang di task, serta menyinkronkan ulang PIC Gantt."},
+    {"key": "template_use", "label": "Pakai Template Laporan",
+     "desc": "Membuka halaman Template, mencari template outline laporan AMDAL/UKL-UPL per jenis kegiatan, "
+             "dan menyalinnya jadi dokumen baru (fitur berlisensi: aktifkan hanya untuk grup yang berhak)."},
     {"key": "user_manage", "label": "Kelola Pengguna",
      "desc": "Menambah pengguna baru, mengaktifkan/menonaktifkan akun, mengubah profil pengguna lain, "
              "mengirim notifikasi."},

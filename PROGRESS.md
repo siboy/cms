@@ -5,7 +5,7 @@
 > Perbarui file ini (status, tanggal, centang, temuan baru) sebelum menutup sesi, lalu commit.
 > Jangan menaruh sandi/token di sini. Bahasa pengguna: Indonesia; gaya jawab ringkas (lihat preferensi pengguna).
 
-Terakhir diperbarui: **2026-09-30** (tahap 3 + editor tabel mode form + manajemen proyek + navigasi header proyek + template proyek).
+Terakhir diperbarui: **2026-10-12** (mulai persiapan rilis APK ke Play Store publik — targetSdk 36 + AAB + rename package + privacy policy; lihat §4 paling atas).
 
 ## 1. Tujuan
 Tim (target minimal **500–1000 koneksi**, realistisnya ~100–200 penulis aktif) + AI mengerjakan dokumen resmi
@@ -24,6 +24,8 @@ Ditolak: OnlyOffice/Collabora (batas koneksi, menghilangkan model blok/AI).
 | `utils/tablemodel.py` | Tabel mode form: grid <-> long-form (record per baris; header = jalur kolom; span/merge/raw), operasi edit murni. Uji: `scripts/tablemodel_test.py` |
 | `utils/blockstore.py` | Penyimpanan SQLite+MySQL satu kode: sisip/pindah/hapus(soft)/restore, tabel, gambar, versi, riwayat, pool, lock provider |
 | `cmsapp/` | Flask: `auth.py` (sesi, peran, penugasan bab), `api.py` (REST+SSE), `realtime.py` (RedisLocks, Hub, presence), `export.py`+`worker.py` (ekspor via antrian) |
+| `utils/kd_nas.py`, `kd_catalog.py`, `kd_data.py`, `kd_projection.py`, `kd_model.py` (model multi-faktor), `kd_formulas.py` (pustaka rumus AMDAL/UKL-UPL), `kd_sim.py`+`kd_sim_schema.py`+`ui/sim-ui.js` (simulasi air/udara/bising + heatmap animasi), `cmsapp/kd_api.py`, `cmsapp/ui/data-desa.html` | Halaman `/data-desa`: data Kemendagri dari NAS (parquet), indikator, grafik, peta, proyeksi 5 th + skenario (lihat README). Uji: `scripts/kd_test.py` |
+| `utils/tpl_outline.py`, `tpl_catalog.py`, `tpl_data/templates.json`, `cmsapp/templates_api.py`, `ui/templates.html`, `scripts/tpl_build.py`, `tpl_test.py` | Katalog template outline AMDAL/UKL-UPL per jenis kegiatan (`/templates`): outline konsensus dari dokumen contoh NAS amdalnet, cari kata kunci, salin jadi dokumen. Izin `template_use`. Lihat README |
 | `scripts/docx_tool.py` | CLI engine (import/show/edit/insert/table/image/build/…); `--mysql` via env `CMS_DB_*` |
 | `scripts/cms_admin.py` | Admin: buat user (satu/CSV), `assign`, `chapters` |
 | `scripts/collab_deploy.sh` | Deploy/upgrade stack di server (idempoten) |
@@ -49,6 +51,93 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
   `cms-app` ~250% CPU dari 5 core (server bersama layanan lain). Skenario terburuk: semua klien menerima semua event.
 
 ## 4. Next jobs (urut prioritas)
+- [ ] **Rencana: distribusi via Managed Google Play / private app (org-only), bukan Play Store publik (2026-10-12)**
+  — alasan: install APK sideload wajib user klik-klik "izinkan sumber tak dikenal" tiap HP baru (lihat
+  `/install-apk`), user minta hindari ini. Jalur ini install app lewat Play Store resmi di device yang
+  terdaftar Android Enterprise -> tidak ada prompt untrust sama sekali. Yang BELUM dikerjakan (belum ada
+  yang disentuh di sesi ini, baru riset):
+  1. **KOREKSI (2026-10-12, cek lanjutan)**: akun Play Console developer **personal pun bisa** publish
+     private app — tidak wajib tipe Organization. "Organization" di langkah #3 di bawah = ID enterprise
+     TARGET distribusi (identitas perusahaan penerima lewat Workspace/Android Enterprise-nya), bukan tipe
+     akun developer. Kalau akun yg dipakai daftar Play Console juga admin Workspace perusahaan, app bisa
+     auto-approve ke org itu tanpa isi ID manual. Alternatif: upload lewat Admin console Workspace (bukan
+     Play Console) -> Google otomatis buatkan akun developer org, gratis tanpa fee registrasi.
+  2. **Daftarkan device perusahaan ke Android Enterprise/EMM** (Google Workspace Admin console -> Devices
+     -> Mobile & endpoints, built-in management cukup kalau sudah pakai Workspace) — ini bagian yg
+     sebenarnya hilangkan prompt untrust; tanpa ini Managed Google Play tak muncul di device.
+  3. Di Play Console: Release -> Setup -> Advanced settings -> tab **Managed Google Play** -> Add
+     organization (Organization ID perusahaan). Upload cukup **AAB + judul** (`make aab` sudah ada, lihat
+     entri di atas) — TIDAK perlu screenshot/feature graphic krn tak tampil di listing publik.
+  4. App content questionnaire (privacy policy sudah ada di `/privacy-policy`, data safety checklist
+     sudah disusun di sesi 2026-10-12) kemungkinan tetap diminta Console meski private — belum pasti mana
+     yg di-skip, cek langsung di Console.
+  5. Closed testing 12 tester/14 hari: kemungkinan exempt utk akun Organization tapi sumber riset tidak
+     tegas — cek banner status Play Console setelah app dibuat.
+  - App **tidak bisa** sekaligus private-org & publik di Play Store (keputusan final, bukan sementara).
+  - Catatan: ini berarti keputusan "Persiapan rilis ke Play Store publik" di entri tepat di bawah ini
+    kemungkinan juga bergeser arah (private org, bukan publik) — rekonsiliasi saat eksekusi nanti.
+- [x] **Persiapan rilis APK ke Play Store publik (2026-10-12)** — membalik keputusan sesi 2026-10-11
+  ("TIDAK publish ke Play Store", lihat entri di bawah) karena user minta lanjut proses publish sungguhan.
+  - `mobile/app/build.gradle`: `compileSdk`/`targetSdk` 34 -> **36** (syarat Play Store: app baru/update
+    wajib target API 36 mulai 31 Agt 2026, sudah lewat per hari ini).
+  - `applicationId`/`namespace` **`id.databoks.cms` -> `team.sdrive.cms`** (ikut rebrand sdrive; package
+    Kotlin dipindah `java/id/databoks/cms/` -> `java/team/sdrive/cms/`, `shortcuts.xml` disesuaikan).
+    AMAN diganti sekarang krn belum pernah rilis publik ke Play Store (versionCode masih 2).
+  - **Target `make aab` baru** (Makefile) — `bundleRelease` -> `mobile/app/build/outputs/bundle/release/app-release.aab`,
+    dibutuhkan krn Play Store app baru wajib format AAB (bukan APK); `make apk` tetap ada khusus
+    sideload/distribusi langsung (tombol 📱 di web, `/cms.apk`).
+  - **Privacy policy** dibuat & di-hosting: `cmsapp/ui/privacy-policy.html`, route `GET /privacy-policy`
+    (`cmsapp/__init__.py`) — isi disusun dari baca kode `auth.py`/`projects_api.py` (data yg benar2
+    dikumpulkan: username/nama/email/no.WA/password-hash, konten dokumen/proyek, log IP+waktu login;
+    TIDAK ada SDK iklan/analitik pihak ketiga). URL utk Play Console: `https://<domain>/privacy-policy`.
+  - **Data Safety form** (Play Console -> App content): checklist jawaban per section dikirim ke chat user
+    (bukan file — diisi manual di Play Console), ringkasnya: collects data=Yes, personal info (name/email/
+    phone) + app activity utk account management & app functionality, encrypted in transit=Yes, tidak
+    share ke 3rd party, user bisa minta hapus data via admin tenant. **User HARUS cek ulang** sesuai fitur
+    CMS terbaru sebelum submit.
+  - Sisa syarat Play Store yg BELUM dikerjakan (lihat juga §4 bawah "Keputusan: TIDAK publish..."):
+    Play App Signing (aktifkan setelah upload AAB pertama), feature graphic 1024x500 + screenshot,
+    content rating questionnaire, target audience, closed testing 20 tester/14 hari (kalau akun developer
+    baru), verifikasi identitas developer di Play Console.
+- [x] **Deploy pertama ke ultra + domain publik sdrive.team + rebrand (2026-10-11)** — desain multi-tenant
+  (2026-10-06, lihat entri di bawah) pertama kali dipakai sungguhan: host produksi dipindah dari
+  `dbscraping` ke **PC ultra** (Tailscale `100.94.222.31`, WSL "Ubuntu-Sys" = host docker sebenarnya,
+  diakses `ssh ultra` lalu `ssh -p 2222 root@127.0.0.1` — detail pola akses+quoting+transfer file di
+  memori Claude `cms-sdrive-ultra-deploy.md`, BUKAN didokumentasikan di sini).
+  - Tenant **`utama`** (data lama dbscraping, migrasi via mysqldump+tar volume, diverifikasi row count
+    & jumlah file media cocok 100%) jadi hostname **`cms.sdrive.team`** (slug vs hostname SENGAJA beda —
+    kode perusahaan yg diketik user di APK = "cms"). Tenant **`chp`** (baru) jadi `chp.sdrive.team`.
+  - Domain `sdrive.team` (Hostinger, NS -> Cloudflare) + **Cloudflare Tunnel** (`cloudflared` systemd
+    service di ultra-wsl, token dari dashboard Zero Trust/Cloudflare One) — 1 connector melayani SEMUA
+    tenant via multi "Public Hostname", bukan 1 tunnel per tenant.
+  - **Rebrand "dupoin" -> "sdrive"**: title/header/manifest/APK/ikon (ikon baru huruf **S** + titik
+    aksen oranye, gradasi sama; `cmsapp/ui/app-icon.svg` pakai `<text>`, Android pisah jadi
+    `drawable/ic_cms.xml` [gradient background saja] + `drawable/ic_cms_fg.png` [S+dot transparan,
+    digenerate via Pillow lokal lalu di-copy, BUKAN digambar manual sbg vector path]).
+    `mobile/.../TenantActivity.kt` `BASE_DOMAIN` -> `sdrive.team`.
+  - **Keystore rilis sendiri** dibuat (`keytool`, PKCS12 — storePassword HARUS sama dgn keyPassword,
+    format ini tak dukung beda): `app/build.gradle` baca `CMS_KEYSTORE_PATH/PASSWORD/ALIAS` dari env
+    (fallback debug key kalau kosong), `make apk` kini `assembleRelease` (dulu `assembleDebug`) + mount
+    `CMS_KEYSTORE_DIR` (default `$HOME/cms-keystore`) + **auto docker-cp APK ke SEMUA container
+    `cms-*-app` yang jalan** (loop, bukan hardcode `cms-app` lagi). Sumber keystore di
+    `/root/cms-keystore/` (ultra-wsl); backup di PC agusd `C:\Users\agusd\cms-keystore-backup\`
+    (di luar repo git).
+  - **Halaman instruksi instal** `/install-apk` (`cmsapp/ui/install-apk.html`, route baru di
+    `cmsapp/__init__.py`) — 3 langkah izinkan "sumber tak dikenal" Android; tombol 📱 APK di header
+    (`index.html`) kini arahkan ke sini dulu (bukan langsung unduh).
+  - **Insiden**: APK rilis PERTAMA yang sempat disebar ke 2 tenant salah `BASE_DOMAIN` (lupa sinkron
+    `TenantActivity.kt` ke `/root/cms` di ultra-wsl sebelum `make apk` — `git push` dari PC TIDAK
+    otomatis update clone di sana, ultra-wsl tak punya akses `git fetch` ke GitHub). Ketauan dari
+    verifikasi string di dalam APK (`jar xf` dex + `strings`), bukan dari error. Sudah dibuild ulang
+    + diverifikasi benar + disebar ulang.
+  - Stack lama di dbscraping (`cmscollab`: cms-app/mysql/redis/worker) **di-stop** (bukan dihapus —
+    data/volume tetap ada utk rollback) setelah migrasi+verifikasi beres.
+  - Keputusan: TIDAK publish ke Play Store publik (app WebView generik berisiko kena kebijakan
+    "Minimum Functionality" krn user bisa connect ke URL manapun) — tetap distribusi APK langsung.
+  - **STATUS AKHIR SESI INI: PC ultra DIMATIKAN** (shutdown diminta user) — `cms.sdrive.team` &
+    `chp.sdrive.team` **DOWN** (502) sampai ultra dinyalakan manual lagi (perlu orang di tempat tekan
+    tombol power, belum ada Wake-on-LAN). Sesi berikutnya: cek ultra sudah nyala dulu sebelum asumsi
+    CMS jalan.
 - [x] **APK Android single multi-tenant + PWA (2026-10-06)** — `mobile/` = proyek Android lengkap
   (Kotlin): `TenantActivity` layar pilih perusahaan (kode tenant -> https://<kode>.<BASE_DOMAIN>, atau
   URL penuh termasuk http://IP:8879; tersimpan di SharedPreferences; ganti via app-shortcut tekan-tahan

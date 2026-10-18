@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>dupoin</title>
+<title>sdrive</title>
 <link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#1f6feb">
 <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
 <style>
@@ -82,7 +82,7 @@ header{backdrop-filter:blur(8px);box-shadow:0 1px 0 var(--line)}
 header b{letter-spacing:.2px}
 .blk,.rc,.dlg,.notifd,#bar{border-radius:var(--r);box-shadow:var(--sh)}
 .blk{transition:box-shadow .15s,border-color .15s}.blk:hover{box-shadow:var(--sh2)}
-.dlg{box-shadow:var(--sh2)}.mask{backdrop-filter:blur(2px)}
+.btnlink{display:inline-block;padding:4px 10px;border:1px solid var(--acc);border-radius:6px;color:var(--acc);text-decoration:none;font-size:.9em}.btnlink:hover{background:var(--acc);color:#fff}.dlg{box-shadow:var(--sh2)}.mask{backdrop-filter:blur(2px)}
 #side a{border-radius:7px;transition:background .12s,color .12s}#side a.cur{background:var(--acc-soft);outline:none;color:var(--acc);font-weight:600}
 .badge{border-radius:999px}
 .pbar{height:8px;border-radius:999px}.pbar i{border-radius:999px;transition:width .3s}
@@ -209,11 +209,12 @@ header b{letter-spacing:.2px}
  .repmenu button.cur{background:var(--acc);color:#fff;font-weight:600}
 }
 </style></head><body>
-<header><b style="display:flex;align-items:center;gap:7px"><img src="/app-icon.svg" style="height:22px;border-radius:5px" alt="">dupoin</b><span id="who"></span><span id="pres" title="online"></span>
+<header><b style="display:flex;align-items:center;gap:7px"><img src="/app-icon.svg" style="height:22px;border-radius:5px" alt="">sdrive</b><span id="who"></span><span id="pres" title="online"></span>
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
 <button id="bmenu" title="Menu" hidden>☰</button>
 <nav id="navbtns">
-<button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bproj" hidden>Proyek</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
+<button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bproj" hidden>Proyek</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button>
+<button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
 </nav></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script>
@@ -304,7 +305,7 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  const stok=qp.get('share');if(stok)return shareView(stok);
  try{me=(await api('GET','/me')).user}catch(e){return loginView()}
  pruneDrafts();
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bfiles').hidden=false;$('#bapk').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;$('#bapk').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));
  const dq=qp.get('doc');
  if(dq){await openDoc(+dq);const bq=qp.get('block');
@@ -366,10 +367,12 @@ $('#bpriv').onclick=()=>privilegeView();
 $('#bact').onclick=()=>activityView();
 $('#bdocs').onclick=()=>docsView();
 $('#bproj').onclick=()=>projectsView();
+$('#bdata').onclick=()=>{location.href='/data-desa'};
+$('#btpl').onclick=()=>{location.href='/templates'};
 $('#bfiles').onclick=()=>meFilesView();
 $('#bnotif').onclick=notifPanel;
 $('#bapk').onclick=async()=>{try{const r=await fetch('/cms.apk',{method:'HEAD'});
- if(r.ok)location.href='/cms.apk';else note('APK belum tersedia di server ini — jalankan `make apk` dulu',1)}
+ if(r.ok)location.href='/install-apk';else note('APK belum tersedia di server ini — jalankan `make apk` dulu',1)}
  catch(e){note('APK belum tersedia',1)}};
 $('#bout').onclick=async()=>{await api('POST','/logout');location.reload()};
 $('#bmenu').onclick=()=>$('#navbtns').classList.toggle('open');
@@ -447,6 +450,7 @@ async function workloadDlg(){let items=[],detail=false;
 function projectMenu(p,projects){const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>${esc(p.name)}</b>
  <button type=button id=mco>📑 Salin outline dokumen dari dokumen lain…</button>
+ ${hasPerm('template_use')?`<button type=button id=mtp>🧩 Buat dari template AMDAL / UKL-UPL…</button>`:''}
  <button type=button id=mct>👥 Salin tim dari dokumen lain…</button>
  <button type=button id=mts>💰 Set tim sales…</button>
  <button type=button id=mpic>🧑‍💼 Set PIC proyek…</button>
@@ -454,6 +458,7 @@ function projectMenu(p,projects){const m=document.createElement('div');m.classNa
  <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();
  m.querySelector('#mco').onclick=()=>{m.remove();cloneDocDlg(p,projects)};
+ m.querySelector('#mtp')?.addEventListener('click',()=>{location.href='/templates?project='+p.id});
  m.querySelector('#mct').onclick=()=>{m.remove();cloneTeamDlg(p,projects)};
  m.querySelector('#mts').onclick=()=>{m.remove();setProjectFieldDlg(p,'sales_team','Tim sales')};
  m.querySelector('#mpic').onclick=()=>{m.remove();setProjectFieldDlg(p,'pic','PIC proyek')};
@@ -1362,7 +1367,7 @@ async function adminView(){closeDoc();const [{users},{docs},groups,adset]=await 
  $('#nu').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await api('POST','/admin/users',{username:f.username.value,name:f.name.value,password:f.password.value,
    email:f.email.value,phone_wa:f.phone_wa.value,expertise:f.expertise.value,role:f.role.value});note('Pengguna dibuat');adminView()}catch(x){note(x.message,1)}};
  $('#ad').onchange=()=>assignView(users);if(docs.length)assignView(users)}
-async function assignView(users){const d=+$('#ad').value;const isAdmin=hasPerm('pic_assign');const canOutline=hasPerm('outline_manage');
+async function assignView(users){const d=+$('#ad').value;const isAdmin=hasPerm('pic_assign');const canOutline=hasPerm('outline_manage');const tl=toolsFor(b);
  const [{items},{map}]=await Promise.all([api('GET',`/docs/${d}/taggable`),api('GET',`/docs/${d}/pic-map`)]);
  const {assignments}=await api('GET',`/admin/docs/${d}/assign`).catch(()=>({assignments:[]}));
  const parts=['cover','front','body','lampiran'].map(p=>({scope:'part:'+p,label:'Bagian: '+p}));
@@ -1487,7 +1492,7 @@ $('#bshare').onclick=async()=>{const m=document.createElement('div');m.className
   m.querySelectorAll('[data-rv]').forEach(b=>b.onclick=async()=>{if(confirm('Cabut link ini? Yang memegangnya tak bisa membuka lagi.')){try{await api('DELETE',`/share-links/${b.dataset.rv}`);paint()}catch(e){note(e.message,1)}}})};
  m.onclick=e=>{if(e.target===m)m.remove()};
  try{await paint()}catch(e){m.remove();note(e.message,1)}};
-async function openDoc(id){doc=id;$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div><button id=stog title="Daftar isi">📑</button>';
+async function openDoc(id){doc=id;await loadTools();$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div><button id=stog title="Daftar isi">📑</button>';
  $('#stog').onclick=()=>$('#side').classList.toggle('open');
  $('#side').addEventListener('click',e=>{if(innerWidth<=800&&e.target.closest('a'))$('#side').classList.remove('open')});$('#bexp').hidden=!hasPerm('doc_export');$('#bopt').hidden=!hasPerm('outline_manage');$('#bgal').hidden=view_restricted_client();$('#bshare').hidden=!hasPerm('doc_share');
  await loadOutline();subscribe();hb=setInterval(async()=>{for(const b of Object.keys(locks)){try{await api('POST',`/blocks/${b}/lock`)}catch(e){}}
@@ -1553,17 +1558,30 @@ function bodyOf(b){
   d.textContent=L?`— ganti halaman: ${L.orientation==='landscape'?'Landscape':'Potrait'} ${typeof L.size==='object'?L.size.w_cm+'×'+L.size.h_cm+'cm':L.size} —`:'— pindah halaman —';
   d.style.color='var(--mut)';return d}
  const d=document.createElement('div');d.className='txt';d.append(mk2dom(b.text));return d}
+let KDTOOLS=null;
+async function loadTools(){if(KDTOOLS)return KDTOOLS;try{KDTOOLS=(await api('GET','/kd/tools')).tools.map(t=>({...t,re:t.patterns.map(p=>new RegExp(p,'i'))}))}catch(e){KDTOOLS=[]}return KDTOOLS}
+// heading/caption yang judulnya terkait mesin hitung/simulasi (pola dari server: utils/tpl_tools.py)
+function toolsFor(b){if(!KDTOOLS||!['heading','caption'].includes(b.kind))return[];
+ const t=(b.text||'').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,'');return KDTOOLS.filter(x=>x.re.some(r=>r.test(t)))}
+function toolDlg(b,tl){const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<div class=dlg><b>🧮 Alat hitung / simulasi untuk “${esc((b.text||'').replace(/\\(.)/g,'$1').slice(0,70))}”</b>
+  <small style="color:var(--mut)">Dibuka di tab baru. Hasilnya bisa disisipkan sebagai blok (tabel/paragraf/gambar) tepat setelah blok ini. Ini alat penapisan awal — parameter dan baku mutu tetap isian Anda.</small>
+  ${tl.map(t=>`<div style="border:1px solid var(--line);border-radius:6px;padding:8px;margin:6px 0"><b>${t.icon} ${esc(t.label)}</b><div style="font-size:.85em;color:var(--mut);margin:2px 0 6px">${esc(t.why)}</div>
+   <a class=btnlink target=_blank rel=noopener href="/data-desa?tool=${encodeURIComponent(t.id)}&doc=${doc}&after=${b.id}">Buka &amp; sisipkan ke dokumen ↗</a></div>`).join('')}
+  <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
+ document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()}}
 const GENLIST_LABELS={toc:'Daftar Isi',tof_tabel:'Daftar Tabel',tof_gambar:'Daftar Gambar'};
 const HIDEABLE_KINDS=['heading','table','image','caption'];
 function view(b){const el=document.createElement('div');el.className='blk'+(b.kind==='heading'?' h':'')+(b.locked_by?' locked':'');el.dataset.id=b.id;
  const canEdit=!!b.can_edit,gen=b.kind==='heading'&&(b.data||{}).generated,hidden=HIDEABLE_KINDS.includes(b.kind)&&(b.data||{}).hidden;
  const sdone=b.kind==='heading'&&!!(b.data||{}).section_done;
  const canOutline=hasPerm('outline_manage');
- el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${sdone?'<span class=badge style="background:#2da44e" title="Heading ditandai selesai diisi — dihitung penuh di progres task bab">✅ DONE</span>':''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
+ el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${sdone?'<span class=badge style="background:#2da44e" title="Heading ditandai selesai diisi — dihitung penuh di progres task bab">✅ DONE</span>':''}${tl.length?`<span class=badge title="Bagian ini bisa dibantu mesin hitung/simulasi: ${esc(tl.map(t=>t.label).join(', '))}">🧮 ${tl.length>2?tl.length+' alat terkait':esc(tl.map(t=>t.label).join(' · '))}</span>`:''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
  el.append(bodyOf(b));const a=document.createElement('div');a.className='acts';
  const btn=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
  if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
   btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
+ if(tl.length&&canEdit)btn('🧮 Hitung / simulasikan…',async()=>toolDlg(b,tl));
  if(b.kind==='heading'&&canEdit)btn(sdone?'✅ DONE (klik utk batalkan)':'☐ Tandai heading DONE',
   ()=>api('POST',`/blocks/${b.id}/section-done`,{done:!sdone,version:b.version}).then(()=>refreshBlock(b.id)));
  if(canOutline&&HIDEABLE_KINDS.includes(b.kind))btn(hidden?'👁 Tampilkan lagi':'🙈 Sembunyikan dari ekspor',()=>api('POST',`/blocks/${b.id}/hidden`,{hidden:!hidden,version:b.version}));
@@ -1891,9 +1909,10 @@ $('#bopt').onclick=async()=>{const m=document.createElement('div');m.className='
    <option value=global ${cur==='global'?'selected':''}>Global berurut (Tabel 1, 2, 3…) — saat ini</option>
    <option value=per_chapter ${cur==='per_chapter'?'selected':''}>Per bab (Tabel 2.1, 2.2…)</option>
   </select></label>
+ <label style="display:flex;gap:8px;align-items:flex-start"><input type=checkbox name=eg ${meta.export_guide?'checked':''} style="margin-top:3px"><span>Sertakan catatan “Petunjuk:” dari template saat ekspor DOCX<br><small style="color:var(--mut)">Bawaan: tidak ikut. Petunjuk hanya panduan pengisian, bukan isi laporan.</small></span></label>
  <small style="color:var(--mut)">Berlaku utk dokumen ini saja. Nomor halaman di Daftar Isi/Tabel/Gambar tetap diisi Word sendiri saat dibuka/Update Field.</small>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
- f.onsubmit=async e=>{e.preventDefault();try{await api('PATCH',`/docs/${doc}/meta`,{caption_numbering:f.cn.value});note('Opsi ekspor disimpan');m.remove()}catch(x){note(x.message,1)}}};
+ f.onsubmit=async e=>{e.preventDefault();try{await api('PATCH',`/docs/${doc}/meta`,{caption_numbering:f.cn.value,export_guide:f.eg.checked});note('Opsi ekspor disimpan');m.remove()}catch(x){note(x.message,1)}}};
 boot();
 </script></body></html>

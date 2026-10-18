@@ -315,7 +315,9 @@ def patch_doc_meta(doc_id):
     d = body()
     if "caption_numbering" in d and d["caption_numbering"] not in ("global", "per_chapter"):
         raise ValueError("caption_numbering: 'global' atau 'per_chapter'")
-    meta = S().set_doc_meta(doc_id, **{k: d[k] for k in ("caption_numbering",) if k in d})
+    if "export_guide" in d:
+        d["export_guide"] = bool(d["export_guide"])
+    meta = S().set_doc_meta(doc_id, **{k: d[k] for k in ("caption_numbering", "export_guide") if k in d})
     return jsonify(meta=meta)
 
 
@@ -1046,7 +1048,9 @@ def export_start(doc_id):
     if not r.set(f"cms:rl:export:{g.user['id']}", 1, nx=True, ex=5):
         return jsonify(error="tunggu beberapa detik"), 429
     S().log_activity(g.user["username"], "doc.export", target_type="document", target_id=doc_id, doc_id=doc_id)
-    return jsonify(export.enqueue(r, S(), doc_id, g.user["username"]))
+    d = request.get_json(silent=True) or {}                     # petunjuk template: default ikut opsi dokumen (default: tidak)
+    guide = bool(d["include_guide"]) if "include_guide" in d else bool(S().get_doc_meta(doc_id).get("export_guide"))
+    return jsonify(export.enqueue(r, S(), doc_id, g.user["username"], guide=guide))
 
 
 @bp.get("/exports/<jid>")

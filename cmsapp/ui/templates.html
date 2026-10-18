@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Template Laporan AMDAL &amp; UKL-UPL — sdrive</title>
+<link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#f3f5f9;--fg:#18202e;--mut:#64748b;--line:#e2e7ef;--acc:#2563eb;--acc-soft:#2563eb1a;--card:#fff;--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--warn-bg:#fef3c7}
+@media(prefers-color-scheme:dark){:root{--bg:#0f141c;--fg:#e6ebf2;--mut:#8d97a9;--line:#263144;--acc:#4c8dff;--acc-soft:#4c8dff26;--card:#171e29;--ok:#4ade80;--bad:#f87171;--warn:#f0a35e;--warn-bg:#3a2a12}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
+header{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+header b{flex:1;min-width:140px}a{color:var(--acc)}
+main{max-width:1180px;margin:0 auto;padding:12px 14px 60px}
+.mut{color:var(--mut)}.small{font-size:12px}.err{color:var(--bad)}.hide{display:none!important}
+input,select,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0}
+button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc)}button.p{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}button:disabled{opacity:.5;cursor:default}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.bar .q{flex:1 1 260px;font-size:15px;padding:9px 12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;font-size:13px}.chip.cur{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+.layout{display:grid;grid-template-columns:minmax(260px,380px) minmax(0,1fr);gap:14px;align-items:start}@media(max-width:860px){.layout{grid-template-columns:1fr}}
+.list{display:flex;flex-direction:column;gap:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer}.card:hover{border-color:var(--acc)}.card.cur{border-color:var(--acc);background:var(--acc-soft)}
+.card b{display:block}.card .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.badge{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--acc-soft);color:var(--acc)}.badge.gr{background:#15803d1f;color:var(--ok)}
+.detail{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;position:sticky;top:60px}
+.detail h2{margin:0 0 4px;font-size:18px}
+.tree{border:1px solid var(--line);border-radius:8px;padding:6px 4px;max-height:60vh;overflow:auto;background:var(--bg);margin:10px 0}
+.tree div{display:flex;gap:8px;align-items:baseline;padding:2px 8px;border-radius:5px}.tree div:hover{background:var(--acc-soft)}
+.tree .l1{font-weight:700;margin-top:6px}.tree .l2{padding-left:26px}.tree .l3{padding-left:46px;font-size:13px}.tree .l4{padding-left:66px;font-size:12.5px;color:var(--mut)}
+.tree div.n{cursor:pointer}.tree .ic{font-size:11px;color:var(--mut);white-space:nowrap}.tree .tw{display:inline-block;width:12px;color:var(--mut)}
+.tree .x{display:block;margin:2px 8px 8px 30px;padding:8px 10px;border-left:3px solid var(--acc);background:var(--card);border-radius:0 8px 8px 0;font-size:13px;font-weight:400}
+.x .tl{margin-top:8px;font-size:.92em}.x .tl .chip{display:inline-block;border:1px solid var(--acc);border-radius:10px;padding:1px 8px;margin:2px 2px 0 0}.x .g{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:6px 9px;margin-bottom:6px}.x .gc{display:block;margin-top:4px}
+.x .bp{margin:4px 0;padding:5px 8px;border:1px dashed var(--line);border-radius:6px}.x .cap{font-size:12px;color:var(--mut);margin:6px 0 2px}
+.x table{border-collapse:collapse;font-size:12px;margin:2px 0 6px;max-width:100%}.x th,.x td{border:1px solid var(--line);padding:3px 7px;text-align:left}.x th{background:var(--acc-soft)}.x td{height:16px;color:var(--mut)}
+.x .sh{font-size:11px;color:var(--mut)}.opts{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin:6px 0}.opts label{display:flex;gap:5px;align-items:center}
+.tree .t{flex:1}.tree .s{font-size:11px;color:var(--mut);white-space:nowrap}
+.note{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 10px;font-size:12.5px;margin:8px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.row .fill{flex:1 1 220px}
+.mask{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:20;padding:12px}
+.dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;width:min(460px,100%);display:flex;flex-direction:column;gap:10px}
+.dlg label{display:flex;flex-direction:column;gap:3px;font-size:13px}
+</style></head><body>
+<header><b>📑 Template Laporan AMDAL &amp; UKL-UPL</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
+<main>
+<div class="bar">
+ <input id="q" class="q" type="search" placeholder="Cari jenis kegiatan atau topik — mis. tambang, sawit, jalan, SPBU, rumah sakit…" autofocus>
+ <select id="cat"><option value="">Semua jenis kegiatan</option></select>
+</div>
+<div class="chips" id="kinds"></div>
+<div id="msg"></div>
+<div class="layout">
+ <div class="list" id="list"></div>
+ <div class="detail hide" id="detail"></div>
+</div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(method,path,body){
+  const o={method,credentials:'same-origin',headers:{}};
+  if(body!==undefined){o.body=JSON.stringify(body);o.headers={'Content-Type':'application/json'}}
+  if(method!=='GET')o.headers['X-CMS']='1';
+  const r=await fetch('/api'+path,o);
+  if(r.status===401){location.href='/';throw new Error('belum login')}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+const st={q:'',kind:'',cat:'',cur:null,min:0,me:null,project:+(new URLSearchParams(location.search).get('project'))||0};
+let timer;
+function can(k){return !!(st.me&&(st.me.is_super||(st.me.perms||[]).includes(k)))}
+
+async function boot(){
+  try{st.me=(await api('GET','/me')).user}catch(e){return}
+  $('#who').textContent=st.me.username;
+  if(!can('template_use')){$('#msg').innerHTML='<div class="note">Akun Anda belum berhak memakai fitur Template. Minta admin mengaktifkan izin "Pakai Template Laporan" di halaman Privilege.</div>';return}
+  await load();
+}
+async function load(){
+  const p=new URLSearchParams({q:st.q,kind:st.kind,category:st.cat});
+  let r;try{r=await api('GET','/templates?'+p)}catch(e){$('#msg').innerHTML=`<div class="err">${esc(e.message)}</div>`;return}
+  if(!$('#kinds').children.length){
+    $('#kinds').innerHTML=[{key:'',label:'Semua dokumen'},...r.kinds].map(k=>`<button class="chip" data-k="${esc(k.key)}">${esc(k.label)}</button>`).join('');
+    $('#cat').innerHTML='<option value="">Semua jenis kegiatan</option>'+r.categories.map(c=>`<option value="${esc(c.key)}">${esc(c.label)}</option>`).join('');
+  }
+  document.querySelectorAll('#kinds .chip').forEach(b=>b.classList.toggle('cur',b.dataset.k===st.kind));
+  $('#msg').innerHTML=r.total?'':'<div class="note">Katalog template belum dibangun di server ini (jalankan <code>scripts/tpl_build.py</code>).</div>';
+  $('#list').innerHTML=r.items.map(t=>`<div class="card${st.cur===t.id?' cur':''}" data-id="${esc(t.id)}"><b>${esc(t.title)}</b>
+   <div class="meta"><span class="badge">${esc(t.kind_label)}</span><span class="badge">${t.n_chapters} bab · ${t.n_nodes} bagian</span>
+   <span class="badge ${t.source==='baku'?'':'gr'}">${t.source==='baku'?'kerangka baku':'konsensus '+t.n_docs+' dokumen'}</span></div></div>`).join('')
+   ||'<p class="mut">Tidak ada template yang cocok. Coba kata kunci lain (mis. “tambang”, “jalan”, “pabrik”).</p>';
+  if(!st.cur&&r.items.length&&r.items.length<=1)open(r.items[0].id);
+}
+$('#kinds').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;st.kind=b.dataset.k;load()};
+$('#cat').onchange=e=>{st.cat=e.target.value;load()};
+$('#q').oninput=e=>{clearTimeout(timer);timer=setTimeout(()=>{st.q=e.target.value.trim();load()},200)};
+$('#list').onclick=e=>{const c=e.target.closest('.card');if(c)open(c.dataset.id)};
+
+let TOOLS={};
+function toolsHtml(n){return (n.tools||[]).length?`<div class="tl">🧮 <b>Terkait mesin hitung/simulasi:</b> ${n.tools.map(id=>TOOLS[id]?`<span class="chip" title="${esc(TOOLS[id].why)}">${TOOLS[id].icon} ${esc(TOOLS[id].label)}</span>`:'').join(' ')}<div class="small mut">Setelah disalin, tombol “🧮 Hitung / simulasikan…” muncul di bagian ini pada editor dan hasilnya bisa disisipkan sebagai blok.</div></div>`:''}
+function blocksHtml(n){
+  const g=n.g?`<div class="g">💡 ${esc(n.g)}${n.gc?`<span class="gc"><b>Untuk jenis kegiatan ini:</b> ${esc(n.gc)}</span>`:''}</div>`:'';
+  const bl=(n.b||[]).map(b=>{
+    if(b.k==='p')return `<div class="bp">${esc(b.t)} <span class="sh">· teks baku ${b.s}%</span></div>`;
+    if(b.k==='kv')return `<div class="cap">Tabel isian <span class="sh">· ${b.s}%</span></div><table>${b.labels.map((l,i)=>`<tr><td>${i+1}.</td><td>${esc(l)}</td><td>:</td><td></td></tr>`).join('')}</table>`;
+    return `${b.cap?`<div class="cap">Tabel: ${esc(b.cap)} <span class="sh">· ${b.s}%</span></div>`:`<div class="cap">Kerangka tabel <span class="sh">· ${b.s}%</span></div>`}
+      <table>${b.h.map(r=>`<tr>${r.map(c=>`<th>${esc(c)}</th>`).join('')}</tr>`).join('')}<tr>${b.h[0].map(()=>'<td></td>').join('')}</tr></table>`;
+  }).join('');
+  return g+bl+toolsHtml(n)||'<span class="mut">Belum ada petunjuk atau contoh isi untuk bagian ini.</span>';
+}
+async function open(id){
+  st.cur=id;document.querySelectorAll('.card').forEach(c=>c.classList.toggle('cur',c.dataset.id===id));
+  let r;try{r=await api('GET',`/templates/${encodeURIComponent(id)}?min_share=${st.min}`)}catch(e){$('#msg').innerHTML=`<div class="err">${esc(e.message)}</div>`;return}
+  const t=r.template,base=t.source==='baku';TOOLS=r.tools||{};
+  const nG=t.nodes.filter(n=>n.g).length,nB=t.nodes.reduce((a,n)=>a+(n.b||[]).length,0);
+  $('#detail').classList.remove('hide');
+  $('#detail').innerHTML=`<h2>${esc(t.title)}</h2>
+   <div class="mut small">${base?'Kerangka lazim (arsip hanya memuat formulir isian, bukan naskah KA) — cocokkan dengan format dalam peraturan yang berlaku.':
+    `Outline konsensus dari <b>${t.n_docs}</b> dokumen contoh yang sudah diajukan — hanya bagian yang lazim muncul. Angka % = porsi contoh yang memuat bagian itu.`}</div>
+   ${base?'':`<div class="row" style="margin-top:8px"><label class="small fill">Kerincian: <b id="mv">${st.min===0?'lengkap':'hanya yang ≥ '+st.min+'%'}</b>
+    <input id="min" type="range" min="0" max="90" step="5" value="${st.min}" style="width:100%"></label></div>`}
+   <div class="row small mut" style="margin-top:6px"><span class="fill">Klik sebuah bagian untuk melihat 💡 petunjuk dan 📝 contoh isinya (${nG} bagian berpetunjuk, ${nB} blok contoh).</span>
+    <button type="button" id="ex" class="small">Buka semua</button></div>
+   <div class="tree">${t.nodes.map((n,i)=>`<div class="n l${n.l}" data-i="${i}"><span class="tw">▸</span><span class="t">${esc(n.t)}</span>
+     <span class="ic">${(n.tools||[]).length?'🧮 ':''}${n.g?'💡':''}${(n.b||[]).length?' 📝'+n.b.length:''}</span>${n.s<100?`<span class="s">${n.s}%</span>`:''}</div>
+     <div class="x hide" id="x${i}">${blocksHtml(n)}</div>`).join('')}</div>
+   <div class="row"><span class="mut small fill">${t.nodes.length} bagian${t.n_nodes_all>t.nodes.length?' (dari '+t.n_nodes_all+')':''} — setelah disalin, semuanya blok biasa: edit, geser, atau hapus di editor.</span>
+   <button class="p" id="cp">Salin jadi dokumen</button></div>
+   <div class="note">${esc(r.disclaimer||'Template hanya kerangka dan contoh isi; penyusun tetap wajib menyesuaikan dengan peraturan yang berlaku dan karakter rencana kegiatan.')} Teks contoh disusun dari pola dokumen yang sudah diajukan; nama pemrakarsa &amp; wilayah diganti placeholder <code>[…]</code>.</div>`;
+  const rg=$('#min');if(rg){rg.oninput=()=>{st.min=+rg.value;$('#mv').textContent=st.min===0?'lengkap':'hanya yang ≥ '+st.min+'%'};rg.onchange=()=>open(id)}
+  const tog=(i,on)=>{const x=$('#x'+i);if(!x)return;x.classList.toggle('hide',on===undefined?!x.classList.contains('hide'):!on);
+    const row=document.querySelector(`.tree .n[data-i="${i}"] .tw`);if(row)row.textContent=x.classList.contains('hide')?'▸':'▾'};
+  $('.tree').onclick=e=>{const n=e.target.closest('.n');if(n)tog(n.dataset.i)};
+  let allOpen=false;$('#ex').onclick=()=>{allOpen=!allOpen;t.nodes.forEach((_,i)=>tog(i,allOpen));$('#ex').textContent=allOpen?'Tutup semua':'Buka semua'};
+  $('#cp').onclick=()=>copyDlg(t);
+}
+async function copyDlg(t){
+  let projects=[];
+  if(can('project_manage')){try{projects=(await api('GET','/projects')).projects}catch(e){}}
+  const m=document.createElement('div');m.className='mask';
+  m.innerHTML=`<form class="dlg"><b>Salin “${esc(t.title)}”</b>
+   <label>Judul dokumen<input name="title" value="${esc(t.title)}" required maxlength="200"></label>
+   ${projects.length?`<label>Tautkan ke proyek (opsional)<select name="pid"><option value="">— jangan, dokumen berdiri sendiri —</option>${projects.map(p=>`<option value="${p.id}"${p.id===st.project?' selected':''}>${esc(p.name)}</option>`).join('')}</select></label>
+   <label>Jenis laporan<select name="rt"><option value="draft">Draft</option><option value="interim">Interim</option><option value="final">Final</option></select></label>`:''}
+   <div class="opts"><label><input type="checkbox" name="gd" checked> Sertakan 💡 petunjuk (catatan di bawah tiap judul)</label>
+    <label><input type="checkbox" name="ct" checked> Sertakan 📝 teks baku &amp; kerangka tabel</label></div>
+   <span class="small mut">Dibuat dokumen baru berisi ${t.nodes.length} judul bagian. Catatan petunjuk tidak ikut ekspor DOCX (bisa diubah di Opsi ekspor dokumen). Anda otomatis jadi pengunggahnya.</span>
+   <div class="row" style="justify-content:flex-end"><button type="button" id="x">Batal</button><button class="p">Salin</button></div><span class="err small" id="e"></span></form>`;
+  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+  f.onsubmit=async e=>{e.preventDefault();const b=f.querySelector('button.p');b.disabled=true;
+    try{const r=await api('POST',`/templates/${encodeURIComponent(t.id)}/copy`,{title:f.title.value,min_share:st.min,include_guide:f.gd.checked,include_content:f.ct.checked,
+        project_id:f.pid&&f.pid.value?+f.pid.value:undefined,report_type:f.rt?f.rt.value:undefined});
+      location.href='/?doc='+r.doc_id;
+    }catch(x){m.querySelector('#e').textContent=x.message;b.disabled=false}};
+}
+boot();
+</script></body></html>

@@ -25,7 +25,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from . import tablemodel as tm
-from .docx_blocks import plain
+from .docx_blocks import esc as esc_markup, plain
 
 TEXT_KINDS = {"paragraph", "heading", "list_item"}
 KINDS = {"heading", "paragraph", "list_item", "caption", "table", "image", "note", "page_break"}
@@ -1820,6 +1820,41 @@ class BlockStore:
         new_doc_id, _idmap = self._clone_outline(src_doc_id, user)
         self.link_document(new_project_id, new_doc_id, report_type, label)
         return new_doc_id
+
+    def create_document_from_outline(self, title: str, nodes: list[dict], user: str = "",
+                                     guide: bool = False, content: bool = False) -> int:
+        """Dokumen baru dari template (utils/tpl_catalog). `nodes` = [{"l": 1-4, "t": judul, "g"?: petunjuk, "gc"?: petunjuk
+        khusus jenis kegiatan, "b"?: [blok isi]}, ...] berurutan. Selalu membuat heading; `guide` menambah catatan
+        'Petunjuk' (blok note, data.source=template_guide) di bawah heading; `content` menambah blok isi konsensus:
+        {"k":"p","t"} paragraf baku, {"k":"kv","labels"} tabel isian uraian, {"k":"t","h":[baris header],"cap"} kerangka tabel.
+        Semuanya blok biasa -- bisa diedit, digeser, atau dihapus seperti blok lain."""
+        if not nodes:
+            raise ValueError("outline kosong")
+        with self._tx() as c:
+            cur = self._x(c, "INSERT INTO cms_documents(filename, orig_path, media_dir, manifest, status, "
+                             "uploaded_by, uploaded_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                          (title or "Template", "", None, "{}", "split", user, _now(), _now()))
+            doc_id = cur.lastrowid
+        last = None
+        for n in nodes:
+            last = self.insert_block(doc_id, last, "heading", esc_markup(n["t"]), level=max(1, min(4, int(n["l"]))),
+                                     part="body", user=user)
+            if guide and n.get("g"):
+                txt = "Petunjuk: " + n["g"] + (" " + n["gc"] if n.get("gc") else "")
+                last = self.insert_block(doc_id, last, "note", esc_markup(txt), data={"source": "template_guide"}, user=user)
+            for b in (n.get("b") or []) if content else []:
+                k = b.get("k")
+                if k == "p":
+                    last = self.insert_block(doc_id, last, "paragraph", esc_markup(b["t"]), user=user)
+                elif k == "kv":
+                    rows = [[f"{i}.", esc_markup(lb), ":", ""] for i, lb in enumerate(b["labels"], 1)]
+                    last = self.add_table(doc_id, last, rows, header=False, user=user)[-1]
+                elif k == "t":
+                    hdr = [[esc_markup(c) for c in r] for r in b["h"]]
+                    rows = hdr + [[""] * len(hdr[0]) for _ in range(2)]
+                    last = self.add_table(doc_id, last, rows, header=True,
+                                          caption=esc_markup(b["cap"]) if b.get("cap") else None, user=user)[-1]
+        return doc_id
 
     def copy_team_to_document(self, dst_doc_id: int, src_doc_id: int) -> int:
         """Salin HANYA tim (cms_assign) dari `src_doc_id` ke `dst_doc_id` yang SUDAH ADA -- independen dari

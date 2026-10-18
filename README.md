@@ -1,4 +1,4 @@
-# dupoin — CMS kolaborasi DOCX
+# sdrive — CMS kolaborasi DOCX
 
 Dokumen `.docx` diekstrak ke database per **blok**, diedit bersama lewat web (lock per blok, real-time SSE,
 komentar per blok/bab), lalu diekspor lagi menjadi DOCX rapi. Detail arsitektur, status, dan daftar tugas: `PROGRESS.md`.
@@ -25,6 +25,109 @@ tenantnya sendiri (stack Docker terpisah per perusahaan — lihat bagian Multi-t
 Ganti perusahaan: tekan-tahan ikon app → "Ganti Perusahaan". Build: buka `mobile/` di Android
 Studio → Build APK. Webapp juga ber-manifest PWA (`/manifest.webmanifest`) — bisa "Add to Home
 Screen" tanpa APK. Detail: `mobile/README.md`.
+
+## Data Desa Kemendagri (`/data-desa`) — indikator, grafik, peta, proyeksi 5 tahun
+
+Halaman terpisah (tombol **📊 Data Desa** di header) untuk membaca data kependudukan DKB Kemendagri dari NAS Synology:
+pilih wilayah (nasional → provinsi → kab/kota → kecamatan → desa; hingga 12 unit. Unit = satu wilayah, atau **gabungan** beberapa wilayah yang dijumlahkan jadi satu — mis. 3 kecamatan masing-masing, atau digabung jadi 1; token API `33.03.09+33.03.14`) dan indikator
+(jumlah penduduk, pendidikan, umur, pekerjaan, agama, dst + turunan seperti usia produktif/rasio ketergantungan),
+lihat grafik historis per semester, peta choropleth anak-wilayah, lalu **proyeksi 5 tahun** dengan skenario.
+
+- **Sumber data** (`utils/kd_nas.py`, `utils/kd_data.py`): NAS `CMS_NAS_HOST/USER/PASS` (+ `CMS_NAS_BASE` default `/TIMDATA` + `CMS_NAS_KD_DIR` default `kemendagri`; dulu base
+  `/TIMDATA/kemendagri`; boleh `CMS_NAS_ENV_FILE` berformat `~/.hp_upload.env` utk dev) **atau** folder lokal berlayout sama
+  (`CMS_KD_LOCAL_DIR`). Periode ditemukan otomatis dari nama berkas `kemendagri_<level>_<YYYY>_sem<N>.parquet` di
+  `parquet/` (terbaru) dan `<YYYY>_sem<N>/parquet/` — semester baru muncul begitu berkasnya diunggah. Parquet di-cache di
+  `$CMS_DATA_DIR/kd_cache`. Riwayat per wilayah diambil dari berkas tingkat wilayah itu (periode lama mungkin hanya ada di
+  tingkat provinsi).
+- **Peta** butuh GeoJSON (data Kemendagri tidak membawa geometri): taruh `geojson/<level>.geojson` di NAS
+  (`desa_kelurahan` boleh dipecah `geojson/desa_kelurahan_<kode kab tanpa titik>.geojson`) atau di `CMS_KD_GEOJSON_DIR`.
+  Fitur dicocokkan ke wilayah lewat properti berisi kode (mis. `33.03.05.1012` / `3303051012`); tanpa GeoJSON halaman tetap
+  menampilkan peringkat.
+- **Proyeksi** (`utils/kd_projection.py`, murni Python): tren dasar otomatis (majemuk/linear/datar/laju manual) + driver
+  skenario yang dihitung **mandiri** lalu dijumlahkan, jadi kontribusi tiap faktor terbaca terpisah. Driver preset
+  (kelahiran, kematian, migrasi, pertumbuhan ekonomi/pengeluaran, serapan tenaga kerja, akses pendidikan, tambahan laju,
+  lonjakan sekali) hanya perlu satu angka; rumus & bobot tersembunyi di “Lanjutan”. User bisa menulis **rumus sendiri**
+  (parser aman berbasis `ast`, bukan `eval`; variabel `base v0 k g x x0 dx w prev` + kode indikator). Elastisitas bawaan
+  = asumsi awal, bukan estimasi statistik — UI menyatakan ini. Keluaran bisa diunduh CSV/PNG.
+- **Model multi-faktor** (tab 5, `utils/kd_model.py`, numpy saja): analis mengunggah CSV target + faktor (tahunan), mengaktifkan
+  faktor/kejadian (tol, kawasan industri, perekrutan, insentif), memilih metode — tren log-linear, Holt teredam, regresi
+  OLS/ridge (log-log/level/growth), rasio-komponen (penduduk usia kerja × TPAK), elastisitas rujukan, ensemble, atau otomatis
+  (uji-balik) — horizon 5–20 tahun. Keluaran: jalur + interval prediksi, MAPE uji-balik, koefisien/VIF/Durbin-Watson, kontribusi
+  tiap kejadian, dan teks metodologi yang disusun dari parameter yang dipakai. Kejadian = lapisan aditif atas jalur dasar
+  (besarannya asumsi pengguna, tidak diestimasi).
+- **Pustaka rumus AMDAL / UKL-UPL** (tab 6, `utils/kd_formulas.py`): 55 rumus baku bertema kependudukan (aritmatika/geometrik/
+  eksponensial/logistik), air bersih & air limbah (kebutuhan air, beban pencemar, neraca massa, Streeter-Phelps), sampah,
+  kualitas udara (pluma Gauss + Briggs, model kotak, konversi ppm↔µg/m³, koreksi O₂), kebisingan (dB, Leq, Ldn, penghalang),
+  lalu lintas (LHR, V/C, MKJI), hidrologi & erosi (Rasional, Mononobe, Kirpich, SCS-CN, Gumbel, Manning, Bols, USLE), GRK/karbon,
+  dan analisis biaya-manfaat (NPV/BCR/IRR). Tiap rumus: kalkulator berlabel+satuan, rujukan, catatan batas berlaku. Fungsi-
+  fungsinya juga bisa dipanggil di "rumus sendiri" mesin skenario (mis. `base + rasional(0.7, 100, 10)`). Parameter yang
+  bergantung wilayah/peraturan (faktor emisi, baku mutu, standar air, sampah per kapita) SELALU isian pengguna — modul ini
+  tidak menyimpan baku mutu. Model dispersi/hidrologi = penapisan awal, bukan pengganti AERMOD/HEC-HMS. Metode proyeksi
+  penduduk baku (aritmatika/geometrik/eksponensial/logistik) juga tersedia di Model multi-faktor, lengkap dgn simpangan
+  baku & koefisien korelasi.
+- **Simulasi lingkungan** (tab 7, `utils/kd_sim.py` + `kd_sim_schema.py` + `cmsapp/ui/sim-ui.js`): tiga simulator 2-D berwaktu dengan
+  heatmap beranimasi (putar/jeda/geser waktu, skala linear/log, garis batas baku mutu, PNG/CSV/rekam WebM):
+  (1) **air sungai** — adveksi-dispersi 2-D (MUSCL+RK2) dari titik buangan pabrik, peluruhan orde-1, hujan (hidrograf limpasan:
+  debit sungai & buangan naik, beban EMC masuk), IPAL dan sabuk riparian sebagai mitigasi; divalidasi terhadap solusi analitik
+  tunak (metode bayangan) dan kekekalan massa; (2) **udara cerobong** — puff Gauss berwaktu mengikuti arah & kecepatan angin yang
+  boleh berubah, kenaikan pluma Briggs, σ Pasquill-Gifford (Briggs), scrubber/cerobong lebih tinggi/sabuk hijau (deposisi ke daun
+  melalui lebar×LAD×vd, bagian pluma di bawah tajuk); divalidasi terhadap pluma Gauss tunak; (3) **kebisingan** — Lp = Lw − 20log r
+  − K − serapan udara, sumber titik/garis, dinding (Maekawa), sabuk hijau (redaman/m × kerapatan × lintasan), peredam mesin.
+  Variabel (laju emisi, angin, lebar sabuk yg tumbuh, …) bisa **konstan/bertahap/mendadak/kunci manual**; perbandingan
+  **tanpa vs dengan mitigasi** atau **variasi** satu variabel (mis. sabuk 0/5/20 m, maks 4 skenario) dengan skala warna sama.
+  Skema parameter, contoh, dan petunjuk penggunaan hidup di server (`/api/kd/sim/info`) sehingga formulir UI dibangun otomatis.
+  Parameter yang tak punya rujukan tunggal (vd, redaman/m vegetasi, koefisien penyisihan) = ASUMSI yang ditandai di UI.
+- **API**: `/api/kd/{meta,regions,search,series,annual,children_values,geojson,baselines,formula/check,project,model,formulas,calc,sim/info,sim/run}` (login wajib).
+- **Uji**: `/root/venv/bin/python scripts/kd_test.py` (parquet sintetis berlayout NAS; tanpa NAS/DB).
+
+## Template laporan AMDAL / UKL-UPL (`/templates`) — outline per jenis kegiatan, salin jadi dokumen
+
+Halaman terpisah (tombol **📑 Template** di header; juga di menu proyek → "Buat dari template…"). Pengguna mengetik kata kunci
+(mis. *tambang*, *sawit*, *SPBU*, *jalan*) lalu memilih template **KA / ANDAL / RKL-RPL / UKL-UPL**, melihat pratinjau outline
+(H1–H4 + persen contoh yang memuatnya), mengatur kerincian (lengkap ↔ ringkas), dan **Salin jadi dokumen**: hasilnya dokumen biasa
+berisi heading kosong yang bisa diedit per blok dan digeser seperti dokumen lain, opsional langsung ditaut ke proyek. Pelengkap
+"salin outline dari dokumen perusahaan" (menu proyek) — ini sumbernya katalog bawaan, bukan dokumen perusahaan.
+
+- **Katalog** = bundel JSON baca-saja `utils/tpl_data/templates.json` (ikut image; tanpa tabel baru, jadi semua tenant membaca yang sama).
+  Isi: 17 jenis kegiatan (`utils/tpl_catalog.CATEGORIES`) × jenis dokumen + satu template "umum" per jenis dokumen.
+- **Cara dibangun** (`scripts/tpl_build.py`, jalankan di container yang punya `CMS_NAS_*`): metadata proyek amdalnet (parquet di NAS) →
+  jenis kegiatan diturunkan dari **judul proyek** (kode `sector` di data hanya angka, tak bisa dipakai) → unduh .docx contoh
+  (`dokumen_ukl_upl`, `dokumen_andal`, `dokumen_rkl_rpl`; yang SKKL/PKPLH-nya terbit didahulukan) → `utils/tpl_outline.py` mengambil
+  heading (outline level / gaya Heading / cadangan pola "BAB I", "1.1") tanpa memuat gambar → `tpl_catalog.consensus` membuat **outline
+  konsensus**. Bagian yang hanya muncul di segelintir dokumen dibuang, jadi nama proyek/perusahaan/lokasi tidak bocor ke template
+  yang dijual. **KA** memakai kerangka lazim (`BASELINE_KA`; arsip KA hanya berisi formulir isian, jadi bukan konsensus — cocokkan dgn format
+  dalam peraturan yang berlaku).
+- **Isi blok** (sejak v2): selain judul, tiap bagian bisa membawa (a) **paragraf baku** — kalimat yg hampir identik di >=40% contoh pada
+  jalur judul yang sama, (b) **tabel isian** `No | Uraian | : | Isian` (daftar uraian), (c) **kerangka tabel** (judul kolom + keterangan tabel)
+  yang ada di >=30% contoh. Sebelum dihitung, identitas proyek dimasking (`tpl_catalog.templatize`: nama pemrakarsa/judul proyek ->
+  `[Nama Pemrakarsa]`, `Desa [nama]`, dst) sehingga kalimat baku yang beda hanya nama tetap dikenali & tak ada nama yang tersimpan; teks berisi
+  email/URL/nomor panjang dibuang; angka yang beragam diganti `…`. Cache (`--cache`, default `/tmp/tpl_content_cache.json`) hanya memuat bentuk termasking.
+- **Panduan global** (`utils/tpl_data/guidance.json`, dikunci pada `canon_key` judul → berlaku untuk semua jenis kegiatan; `cat` = tambahan khusus
+  jenis kegiatan): 1–3 kalimat "apa yang ditulis di bagian ini". Disusun otomatis, TANPA nomor pasal/lampiran/angka ambang — perlu ditinjau ahli
+  sebelum dijual. Saat menyalin, petunjuk jadi blok `note` ("Petunjuk: …", `data.source=template_guide`) di bawah judul; hapus sebelum ekspor.
+  Build ulang kapan saja (cache outline `--cache`, bisa dilanjut); sampel acak tetap lewat `--seed`.
+- **Izin**: `template_use` ("Pakai Template Laporan", halaman Privilege) — SENGAJA tidak otomatis diberikan ke grup mana pun
+  (fitur berlisensi); `is_super` bebas. Menaut dokumen ke proyek tetap butuh `project_manage`.
+- **API**: `GET /api/templates?q=&kind=&category=`, `GET /api/templates/<id>?min_share=`, `POST /api/templates/<id>/copy`
+  ({title, min_share, include_guide, include_content, project_id, report_type, label}). Uji: `python3 scripts/tpl_test.py` (tanpa NAS/DB).
+- Template = kerangka judul, bukan isi/pedoman hukum; penyusun tetap wajib menyesuaikan dgn peraturan berlaku (dinyatakan di UI).
+
+**Petunjuk tidak ikut ekspor & penanda alat hitung/simulasi**
+- Blok "Petunjuk:" (`data.source=template_guide`) **tidak ikut ekspor DOCX** secara bawaan (`cmsapp/export.py: strip_guide`; cache ekspor
+  dibedakan sufiks `g`). Dihidupkan per dokumen lewat **Opsi ekspor** (meta `export_guide`), atau `POST /api/docs/<id>/export {"include_guide":true}`.
+- **Rumus baru (71 total)**: Andalalin sebelum vs sesudah proyek (`lalin_banding` per tahun dgn V/C, tingkat pelayanan, tabel+grafik; `pengalihan_arus`; `bangkitan_perjalanan`; `kepadatan_greenshields`, `kepadatan_banding`; `waktu_tempuh_bpr`);
+  selain itu: tenaga kerja & sosial (`tenaga_kerja_tahap`, `tenaga_kerja_tahunan` = simulasi per tahun dgn tabel+grafik, `kebutuhan_tk_shift`, `dampak_pendatang`),
+  `indeks_pencemaran` (IP), pertambangan & konstruksi (`tambang_produksi`, `dewatering_dupuit`, `kolam_pengendap`, `ppv_peledakan`), `kdb_klb`. Rumus boleh mengembalikan
+  `_table` (tabel rincian) dan `_series` (deret utk grafik) -> `calc()` menyertakannya sebagai `table`/`series`. Persentase lokal/pendatang, pengganda, K/β peledakan = ASUMSI pengguna.
+- **Pilihan bentuk saat menyisipkan** (di `/data-desa` mode sisip): rumus & substitusi, tabel masukan/hasil, tabel rincian, grafik (PNG berlatar putih), narasi;
+  simulasi: gambar peta, tabel ringkasan, tabel titik kontrol, narasi. Tujuan sisip bisa diganti di panel atas: bagian mana + "di akhir bagian" (bawaan) atau "tepat setelah judul".
+
+**Penanda 🧮** (`utils/tpl_tools.py`): judul heading/caption dicocokkan ke 12 alat (proyeksi penduduk, tenaga kerja, air bersih, air limbah,
+  simulasi air sungai/udara/kebisingan, sampah, lalu lintas, limpasan-erosi, GRK, biaya-manfaat). Pencocokan dinamis dari teks (bukan disimpan di blok),
+  pola dilayani `GET /api/kd/tools`; pratinjau template menampilkannya (`tools` pada tiap node). Di editor: badge + tombol **🧮 Hitung / simulasikan…**
+  → `/data-desa?tool=<id>&doc=<doc>&after=<blok>` (membuka tab/rumus yang sesuai) → tombol **📥 Sisipkan ke dokumen** menyisipkan paragraf + tabel
+  (+ gambar peta simulasi) tepat setelah blok itu lewat API blok biasa (izin edit berlaku). Pola struktural ("Tahap Konstruksi", "Komponen Geo-Fisik Kimia")
+  hanya penanda longgar, bukan klaim isi. Mengubah pola: edit `TOOLS`/`_EXTRA` di `tpl_tools.py`.
 
 ## Multi-tenant: banyak perusahaan, banyak divisi (sejak 2026-10-06)
 
