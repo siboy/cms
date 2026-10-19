@@ -114,7 +114,7 @@ berisi heading kosong yang bisa diedit per blok dan digeser seperti dokumen lain
 
 **Data olahan template (tidak dikomit) — penyimpanan permanen & backup:** bundel/panduan/hints di volume `/data/tpl/data` (`CMS_TPL_DATA_DIR`), state build (cache isi + **manifes dokumen yang sudah dibaca**) di `/data/tpl`
 (`CMS_TPL_STATE_DIR`). Katalog membaca volume lebih dulu; salinan di image hanya cadangan awal. Memperkaya dari NAS: `scripts/tpl_build.py --new-only` (dokumen di manifes tidak dibaca ulang; `--list` untuk ringkasan).
-Backup harian per tenant: `scripts/tenant_backup.sh <slug>` (dump MySQL + arsip `/data` + cermin data template ke `~/cms-tenants/_shared/tpl-data/<slug>/`).
+**Backup harian per tenant: restic ke minipc** (SFTP; repositori `D:\\backup-cms\\restic\\<slug>`, terenkripsi + dedup + snapshot): siapkan sekali `bash scripts/restic_setup.sh <slug>` (membuat repositori & file sandi `~/cms-tenants/<slug>/.restic_pass` — SIMPAN SALINANNYA di tempat aman terpisah), lalu `scripts/tenant_backup.sh <slug>` (cron). Isi: dump MySQL (stream) + volume `/data`; retensi 7 harian/4 mingguan/6 bulanan; bila minipc tak terjangkau → cadangan lokal. Pulihkan: `restic -r sftp:minipc:/D:/backup-cms/restic/<slug> restore latest --tag data --target <dir>`.
 
 **Modul fitur berlangganan per tenant (dikunci; hanya OPERATOR yang bisa membuka)** — `utils/modules.py`, `cmsapp/modules_api.py`:
 - 17 modul: *Platform* (`templates`, `data_desa`, `proyeksi`, `proyek_lokasi`, `proyek_simulasi`) dan *Engine* per topik (`calc_survei`, `calc_lalin`, `calc_limbah`, `calc_kualitas_air` + simulasi sungai,
