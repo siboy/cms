@@ -112,6 +112,13 @@ berisi heading kosong yang bisa diedit per blok dan digeser seperti dokumen lain
   ({title, min_share, include_guide, include_content, project_id, report_type, label}). Uji: `python3 scripts/tpl_test.py` (tanpa NAS/DB).
 - Template = kerangka judul, bukan isi/pedoman hukum; penyusun tetap wajib menyesuaikan dgn peraturan berlaku (dinyatakan di UI).
 
+**Lisensi fitur Template (terkunci sampai dibeli & diaktifkan superadmin)** — `cmsapp/templates_api.py`:
+- Bawaan **terkunci**: pengguna ber-izin `template_use` hanya bisa **mempratinjau 3 template contoh** (`ka-umum`, `ukl_upl-pertambangan`, `andal-pertambangan`; ubah lewat env `CMS_TPL_DEMO`); template lain tampil terkunci (🔒) dan tak bisa dibuka;
+  **impor/salin ke dokumen ditolak (403 `locked`)** untuk semua template.
+- Aktivasi hanya oleh **superadmin** di halaman `/templates` (`POST /api/templates/license {active, payment_ref}`): wajib mengisi **referensi pembayaran** (dicatat bersama nama & waktu). Status di `cms_settings` kunci `feature:templates`.
+- Penguncian tingkat platform: env `CMS_FEATURE_TEMPLATES=0` (selalu terkunci) / `=1` (selalu aktif) di `.env`/compose tenant — superadmin tenant tak bisa mengubahnya (409). Pakai `=0` bila superadmin tenant tidak boleh mengaktifkan sendiri.
+- Izin `template_use` di-seed ke grup author, owner, reviewer/qc (`scripts/init_schema.sql`). Belum ada integrasi gateway pembayaran: pembayaran dikonfirmasi di luar sistem lalu diaktifkan manual.
+
 **Petunjuk tidak ikut ekspor & penanda alat hitung/simulasi**
 - Blok "Petunjuk:" (`data.source=template_guide`) **tidak ikut ekspor DOCX** secara bawaan (`cmsapp/export.py: strip_guide`; cache ekspor
   dibedakan sufiks `g`). Dihidupkan per dokumen lewat **Opsi ekspor** (meta `export_guide`), atau `POST /api/docs/<id>/export {"include_guide":true}`.

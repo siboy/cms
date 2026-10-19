@@ -38,6 +38,7 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
 .mask{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:20;padding:12px}
 .dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;width:min(460px,100%);display:flex;flex-direction:column;gap:10px}
 .dlg label{display:flex;flex-direction:column;gap:3px;font-size:13px}
+.card.lock{opacity:.55;cursor:not-allowed}.card.lock:hover{border-color:var(--line)}.badge.lk{background:#b45309;color:#fff}.badge.fr{background:#2da44e;color:#fff}.licbox{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 10px;background:var(--card)}.licbox.off{border-color:#b45309}.licbox input{min-width:240px}
 </style></head><body>
 <header><b>📑 Template Laporan AMDAL &amp; UKL-UPL</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
 <main>
@@ -46,6 +47,7 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
  <select id="cat"><option value="">Semua jenis kegiatan</option></select>
 </div>
 <div class="chips" id="kinds"></div>
+<div id="lic"></div>
 <div id="msg"></div>
 <div class="layout">
  <div class="list" id="list"></div>
@@ -65,7 +67,7 @@ async function api(method,path,body){
   if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
   return j;
 }
-const st={q:'',kind:'',cat:'',cur:null,min:0,me:null,project:+(new URLSearchParams(location.search).get('project'))||0};
+const st={q:'',kind:'',cat:'',cur:null,min:0,me:null,lic:null,project:+(new URLSearchParams(location.search).get('project'))||0};
 let timer;
 function can(k){return !!(st.me&&(st.me.is_super||(st.me.perms||[]).includes(k)))}
 
@@ -75,17 +77,33 @@ async function boot(){
   if(!can('template_use')){$('#msg').innerHTML='<div class="note">Akun Anda belum berhak memakai fitur Template. Minta admin mengaktifkan izin "Pakai Template Laporan" di halaman Privilege.</div>';return}
   await load();
 }
+function renderLic(){
+  const l=st.lic,box=$('#lic');if(!l){box.innerHTML='';return}
+  if(l.active){box.innerHTML=`<div class="licbox small">✅ <b>Fitur Template aktif</b>${l.activated_at?` — diaktifkan ${esc(l.activated_by||'')} · ${esc(l.activated_at.slice(0,16))}${l.payment_ref?' · ref '+esc(l.payment_ref):''}`:''}${l.forced?` <span class="mut">(dikunci operator platform: ${l.forced==='on'?'aktif':'nonaktif'})</span>`:''}
+    ${l.can_manage&&!l.forced?'<button type="button" id="licOff" class="small" style="margin-left:10px">Nonaktifkan</button>':''}</div>`;
+    if($('#licOff'))$('#licOff').onclick=async()=>{if(!confirm('Nonaktifkan fitur Template? Pengguna hanya bisa melihat pratinjau 3 template contoh.'))return;
+      try{st.lic=(await api('POST','/templates/license',{active:false})).license;renderLic();load()}catch(e){alert(e.message)}};
+    return}
+  box.innerHTML=`<div class="licbox off">🔒 <b>Fitur Template belum diaktifkan.</b> Anda hanya dapat <b>melihat pratinjau ${l.demo_ids.length} template contoh</b> (bertanda “Pratinjau gratis”); template lain terkunci dan <b>tidak bisa diimpor</b> ke dokumen.
+    <div class="small mut" style="margin-top:4px">Untuk membuka semua template dan mengimpor, fitur perlu <b>dibeli (pembayaran)</b> lalu <b>diaktifkan oleh superadmin</b>.${l.forced==='off'?' Penguncian ditetapkan operator platform.':''}</div>
+    ${l.can_manage&&!l.forced?`<div class="row" style="margin-top:8px"><input id="licRef" placeholder="Referensi pembayaran (no. invoice / bukti bayar)"><button type="button" id="licOn" class="p">Aktifkan fitur</button><span class="small mut">Hanya superadmin. Referensi pembayaran dicatat bersama nama &amp; waktu aktivasi.</span></div>`
+      :(l.forced?'':'<div class="small" style="margin-top:6px">Hubungi superadmin untuk pembelian dan aktivasi.</div>')}</div>`;
+  if($('#licOn'))$('#licOn').onclick=async()=>{const ref=$('#licRef').value.trim();if(ref.length<3)return alert('Isi referensi pembayaran dulu.');
+    if(!confirm('Aktifkan fitur Template? Pastikan pembayaran sudah terkonfirmasi.'))return;
+    try{st.lic=(await api('POST','/templates/license',{active:true,payment_ref:ref})).license;renderLic();load();if(st.cur)open(st.cur)}catch(e){alert(e.message)}};
+}
 async function load(){
   const p=new URLSearchParams({q:st.q,kind:st.kind,category:st.cat});
   let r;try{r=await api('GET','/templates?'+p)}catch(e){$('#msg').innerHTML=`<div class="err">${esc(e.message)}</div>`;return}
+  st.lic=r.license;renderLic();
   if(!$('#kinds').children.length){
     $('#kinds').innerHTML=[{key:'',label:'Semua dokumen'},...r.kinds].map(k=>`<button class="chip" data-k="${esc(k.key)}">${esc(k.label)}</button>`).join('');
     $('#cat').innerHTML='<option value="">Semua jenis kegiatan</option>'+r.categories.map(c=>`<option value="${esc(c.key)}">${esc(c.label)}</option>`).join('');
   }
   document.querySelectorAll('#kinds .chip').forEach(b=>b.classList.toggle('cur',b.dataset.k===st.kind));
   $('#msg').innerHTML=r.total?'':'<div class="note">Katalog template belum dibangun di server ini (jalankan <code>scripts/tpl_build.py</code>).</div>';
-  $('#list').innerHTML=r.items.map(t=>`<div class="card${st.cur===t.id?' cur':''}" data-id="${esc(t.id)}"><b>${esc(t.title)}</b>
-   <div class="meta"><span class="badge">${esc(t.kind_label)}</span><span class="badge">${t.n_chapters} bab · ${t.n_nodes} bagian</span>
+  $('#list').innerHTML=r.items.map(t=>`<div class="card${st.cur===t.id?' cur':''}${t.locked?' lock':''}" data-id="${esc(t.id)}" data-lock="${t.locked?1:''}"><b>${t.locked?'🔒 ':''}${esc(t.title)}</b>
+   <div class="meta">${t.locked?'<span class="badge lk">Terkunci</span>':(st.lic&&!st.lic.active?'<span class="badge fr">Pratinjau gratis</span>':'')}<span class="badge">${esc(t.kind_label)}</span><span class="badge">${t.n_chapters} bab · ${t.n_nodes} bagian</span>
    <span class="badge ${t.source==='baku'?'':'gr'}">${t.source==='baku'?'kerangka baku':'konsensus '+t.n_docs+' dokumen'}</span></div></div>`).join('')
    ||'<p class="mut">Tidak ada template yang cocok. Coba kata kunci lain (mis. “tambang”, “jalan”, “pabrik”).</p>';
   if(!st.cur&&r.items.length&&r.items.length<=1)open(r.items[0].id);
@@ -93,7 +111,7 @@ async function load(){
 $('#kinds').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;st.kind=b.dataset.k;load()};
 $('#cat').onchange=e=>{st.cat=e.target.value;load()};
 $('#q').oninput=e=>{clearTimeout(timer);timer=setTimeout(()=>{st.q=e.target.value.trim();load()},200)};
-$('#list').onclick=e=>{const c=e.target.closest('.card');if(c)open(c.dataset.id)};
+$('#list').onclick=e=>{const c=e.target.closest('.card');if(!c)return;if(c.dataset.lock){$('#msg').innerHTML='<div class="note">🔒 Template ini terkunci. Aktifkan fitur Template (pembelian + aktivasi superadmin) untuk membuka semua template dan mengimpor.</div>';return}$('#msg').innerHTML='';open(c.dataset.id)};
 
 let TOOLS={};
 function htHtml(n){return (n.ht||[]).length?`<div class="tl">📊 <b>Di dokumen contoh sejenis, bagian ini memuat perhitungan:</b> ${n.ht.map(h=>TOOLS[h.tool]?`<span class="chip" title="${esc(TOOLS[h.tool].why)}">${TOOLS[h.tool].icon} ${esc(TOOLS[h.tool].label)} <span class="sh">· ${h.n} dari ${h.of} dokumen</span></span>`:'').join(' ')}</div>`:''}
@@ -125,14 +143,15 @@ async function open(id){
      <span class="ic">${(n.tools||[]).length?'🧮 ':''}${n.g?'💡':''}${(n.b||[]).length?' 📝'+n.b.length:''}</span>${n.s<100?`<span class="s">${n.s}%</span>`:''}</div>
      <div class="x hide" id="x${i}">${blocksHtml(n)}</div>`).join('')}</div>
    <div class="row"><span class="mut small fill">${t.nodes.length} bagian${t.n_nodes_all>t.nodes.length?' (dari '+t.n_nodes_all+')':''} — setelah disalin, semuanya blok biasa: edit, geser, atau hapus di editor.</span>
-   <button class="p" id="cp">Salin jadi dokumen</button></div>
+   ${st.lic&&!st.lic.active?'<button class="p" id="cp" disabled title="Impor terkunci sampai fitur diaktifkan">🔒 Impor terkunci</button>':'<button class="p" id="cp">Salin jadi dokumen</button>'}</div>
+   ${st.lic&&!st.lic.active?'<div class="note">Ini pratinjau contoh. Mengimpor template ke dokumen memerlukan fitur Template yang aktif (pembelian + aktivasi superadmin).</div>':''}
    <div class="note">${esc(r.disclaimer||'Template hanya kerangka dan contoh isi; penyusun tetap wajib menyesuaikan dengan peraturan yang berlaku dan karakter rencana kegiatan.')} Teks contoh disusun dari pola dokumen yang sudah diajukan; nama pemrakarsa &amp; wilayah diganti placeholder <code>[…]</code>.</div>`;
   const rg=$('#min');if(rg){rg.oninput=()=>{st.min=+rg.value;$('#mv').textContent=st.min===0?'lengkap':'hanya yang ≥ '+st.min+'%'};rg.onchange=()=>open(id)}
   const tog=(i,on)=>{const x=$('#x'+i);if(!x)return;x.classList.toggle('hide',on===undefined?!x.classList.contains('hide'):!on);
     const row=document.querySelector(`.tree .n[data-i="${i}"] .tw`);if(row)row.textContent=x.classList.contains('hide')?'▸':'▾'};
   $('.tree').onclick=e=>{const n=e.target.closest('.n');if(n)tog(n.dataset.i)};
   let allOpen=false;$('#ex').onclick=()=>{allOpen=!allOpen;t.nodes.forEach((_,i)=>tog(i,allOpen));$('#ex').textContent=allOpen?'Tutup semua':'Buka semua'};
-  $('#cp').onclick=()=>copyDlg(t);
+  if(!$('#cp').disabled)$('#cp').onclick=()=>copyDlg(t);
 }
 async function copyDlg(t){
   let projects=[];

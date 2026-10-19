@@ -74,6 +74,7 @@ services:
       CMS_DATA_DIR: /data
       CMS_EXPORT_DIR: /data/exports
       CMS_BASE_URL: ${CMS_BASE_URL:?isi di .env}    # https://<subdomain-tenant>, dipakai link email & share
+      CMS_FEATURE_TEMPLATES: ${CMS_FEATURE_TEMPLATES:-}  # fitur Template: 0 = dikunci operator (hanya pratinjau 3 contoh), 1 = selalu aktif, kosong = diatur superadmin tenant
       CMS_COOKIE_SECURE: ${CMS_COOKIE_SECURE:-1}    # 1: wajib HTTPS (di belakang nginx+cert)
       CMS_SMTP_HOST: ${CMS_SMTP_HOST:-}
       CMS_SMTP_PORT: ${CMS_SMTP_PORT:-587}
@@ -84,7 +85,8 @@ services:
       CMS_NAS_HOST: ${CMS_NAS_HOST:-}                # halaman /data-desa: NAS Synology berisi data Kemendagri (kosong = fitur nonaktif)
       CMS_NAS_USER: ${CMS_NAS_USER:-}
       CMS_NAS_PASS: ${CMS_NAS_PASS:-}
-      CMS_NAS_BASE: ${CMS_NAS_BASE:-/TIMDATA/kemendagri}
+      CMS_NAS_BASE: ${CMS_NAS_BASE:-/TIMDATA}
+      CMS_NAS_KD_DIR: ${CMS_NAS_KD_DIR:-kemendagri}    # subfolder data Kemendagri di bawah CMS_NAS_BASE
       CMS_NAS_VERIFY: ${CMS_NAS_VERIFY:-1}
     volumes:
       - app_data:/data
