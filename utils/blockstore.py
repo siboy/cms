@@ -77,6 +77,22 @@ CREATE TABLE IF NOT EXISTS cms_project_documents (
     report_type TEXT NOT NULL DEFAULT 'draft', label TEXT, is_printed INTEGER NOT NULL DEFAULT 0,
     printed_at TEXT, printed_by TEXT, created_at TEXT);
 CREATE INDEX IF NOT EXISTS idx_pd_project ON cms_project_documents(project_id);
+CREATE TABLE IF NOT EXISTS cms_project_layers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, name TEXT NOT NULL, geom TEXT NOT NULL DEFAULT 'point',
+    color TEXT, points TEXT NOT NULL, created_by TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_pl_project ON cms_project_layers(project_id);
+CREATE TABLE IF NOT EXISTS cms_project_regions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, code TEXT NOT NULL, level TEXT NOT NULL, name TEXT,
+    created_at TEXT, UNIQUE (project_id, code));
+CREATE TABLE IF NOT EXISTS cms_project_sims (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, tool_id TEXT NOT NULL, title TEXT,
+    doc_id INTEGER, block_id INTEGER, assignee_id INTEGER, note TEXT, created_by TEXT, created_at TEXT, deleted_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_ps_project ON cms_project_sims(project_id);
+CREATE TABLE IF NOT EXISTS cms_project_sim_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, sim_id INTEGER, doc_id INTEGER, origin_block_id INTEGER,
+    tool_id TEXT, calc_id TEXT, title TEXT, summary TEXT, block_ids TEXT, created_by TEXT, created_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_psr_project ON cms_project_sim_runs(project_id);
+CREATE INDEX IF NOT EXISTS idx_psr_sim ON cms_project_sim_runs(sim_id);
 CREATE TABLE IF NOT EXISTS cms_project_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, category TEXT NOT NULL,
     title TEXT, description TEXT, filename TEXT NOT NULL, path TEXT NOT NULL, mime TEXT, size INTEGER,
@@ -1837,10 +1853,15 @@ class BlockStore:
             doc_id = cur.lastrowid
         last = None
         for n in nodes:
+            ht = n.get("ht") or []                      # bagian yang di dokumen contoh memuat perhitungan -> penanda 🧮 di editor
             last = self.insert_block(doc_id, last, "heading", esc_markup(n["t"]), level=max(1, min(4, int(n["l"]))),
-                                     part="body", user=user)
-            if guide and n.get("g"):
-                txt = "Petunjuk: " + n["g"] + (" " + n["gc"] if n.get("gc") else "")
+                                     part="body", data=({"tools": [h["tool"] for h in ht]} if ht else None), user=user)
+            if guide and (n.get("g") or ht):
+                txt = ("Petunjuk: " + n["g"] + (" " + n["gc"] if n.get("gc") else "")) if n.get("g") else "Petunjuk:"
+                if ht:
+                    from utils import tpl_tools
+                    lst = "; ".join(f"{tpl_tools.get(h['tool'])['label']} ({h['n']} dari {h['of']} dokumen contoh)" for h in ht[:4] if tpl_tools.get(h["tool"]))
+                    txt += f" Perhitungan yang lazim di bagian ini pada dokumen contoh sejenis: {lst}. Gunakan tombol 🧮 pada judul bagian ini untuk menghitung lalu menyisipkan hasilnya."
                 last = self.insert_block(doc_id, last, "note", esc_markup(txt), data={"source": "template_guide"}, user=user)
             for b in (n.get("b") or []) if content else []:
                 k = b.get("k")

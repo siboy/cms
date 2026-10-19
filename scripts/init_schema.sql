@@ -644,3 +644,64 @@ END$$
 DELIMITER ;
 CALL cms_tmp_migrate_proj_final();
 DROP PROCEDURE cms_tmp_migrate_proj_final;
+
+-- ---- Lokasi proyek (layer koordinat), wilayah studi (checklist kab/kota-kecamatan-desa), tugas & hasil simulasi ----
+CREATE TABLE IF NOT EXISTS cms_project_layers (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    name        VARCHAR(255) NOT NULL,
+    geom        VARCHAR(10) NOT NULL DEFAULT 'point',   -- point | line | polygon
+    color       VARCHAR(20) DEFAULT NULL,
+    points      MEDIUMTEXT NOT NULL,                    -- JSON [[lat, lon, label], ...]
+    created_by  VARCHAR(100) DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    updated_at  VARCHAR(19) DEFAULT NULL,
+    deleted_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_pl_project (project_id),
+    CONSTRAINT fk_pl_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_project_regions (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    code        VARCHAR(20) NOT NULL,                   -- kode Kemendagri: 33.03 / 33.03.05 / 33.03.05.1012
+    level       VARCHAR(12) NOT NULL,                   -- kabkota | kecamatan | desa
+    name        VARCHAR(255) DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    UNIQUE KEY uq_pr_code (project_id, code),
+    CONSTRAINT fk_pr_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_project_sims (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    tool_id     VARCHAR(40) NOT NULL,                   -- id alat (utils/tpl_tools.py)
+    title       VARCHAR(255) DEFAULT NULL,
+    doc_id      INT DEFAULT NULL,
+    block_id    INT DEFAULT NULL,                       -- heading tempat hasil dimasukkan
+    assignee_id INT DEFAULT NULL,                       -- tenaga ahli; NULL = ikut PIC heading
+    note        TEXT,
+    created_by  VARCHAR(100) DEFAULT NULL,
+    created_at  VARCHAR(19) DEFAULT NULL,
+    deleted_at  VARCHAR(19) DEFAULT NULL,
+    INDEX idx_ps_project (project_id),
+    CONSTRAINT fk_ps_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS cms_project_sim_runs (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    project_id      INT NOT NULL,
+    sim_id          INT DEFAULT NULL,
+    doc_id          INT DEFAULT NULL,
+    origin_block_id INT DEFAULT NULL,
+    tool_id         VARCHAR(40) DEFAULT NULL,
+    calc_id         VARCHAR(60) DEFAULT NULL,
+    title           VARCHAR(255) DEFAULT NULL,
+    summary         MEDIUMTEXT,                         -- JSON: masukan & hasil utama
+    block_ids       TEXT,                               -- JSON: blok yang disisipkan ke dokumen
+    created_by      VARCHAR(100) DEFAULT NULL,
+    created_at      VARCHAR(19) DEFAULT NULL,
+    INDEX idx_psr_project (project_id),
+    INDEX idx_psr_sim (sim_id),
+    CONSTRAINT fk_psr_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

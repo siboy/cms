@@ -36,6 +36,9 @@ def create_app(cfg=Config) -> Flask:
     from cmsapp.templates_api import bp as tpl_bp
     app.register_blueprint(tpl_bp)
 
+    from cmsapp.proj_site_api import bp as psite_bp
+    app.register_blueprint(psite_bp)
+
     @app.after_request
     def _security_headers(resp):
         h = resp.headers
@@ -89,6 +92,12 @@ def create_app(cfg=Config) -> Flask:
     @app.get("/data-desa/sim.js")
     def data_desa_sim_js():
         resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "sim-ui.js", mimetype="text/javascript")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.get("/proj-site.js")
+    def proj_site_js():
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "proj-site.js", mimetype="text/javascript")
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 

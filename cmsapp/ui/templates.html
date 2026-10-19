@@ -96,6 +96,7 @@ $('#q').oninput=e=>{clearTimeout(timer);timer=setTimeout(()=>{st.q=e.target.valu
 $('#list').onclick=e=>{const c=e.target.closest('.card');if(c)open(c.dataset.id)};
 
 let TOOLS={};
+function htHtml(n){return (n.ht||[]).length?`<div class="tl">📊 <b>Di dokumen contoh sejenis, bagian ini memuat perhitungan:</b> ${n.ht.map(h=>TOOLS[h.tool]?`<span class="chip" title="${esc(TOOLS[h.tool].why)}">${TOOLS[h.tool].icon} ${esc(TOOLS[h.tool].label)} <span class="sh">· ${h.n} dari ${h.of} dokumen</span></span>`:'').join(' ')}</div>`:''}
 function toolsHtml(n){return (n.tools||[]).length?`<div class="tl">🧮 <b>Terkait mesin hitung/simulasi:</b> ${n.tools.map(id=>TOOLS[id]?`<span class="chip" title="${esc(TOOLS[id].why)}">${TOOLS[id].icon} ${esc(TOOLS[id].label)}</span>`:'').join(' ')}<div class="small mut">Setelah disalin, tombol “🧮 Hitung / simulasikan…” muncul di bagian ini pada editor dan hasilnya bisa disisipkan sebagai blok.</div></div>`:''}
 function blocksHtml(n){
   const g=n.g?`<div class="g">💡 ${esc(n.g)}${n.gc?`<span class="gc"><b>Untuk jenis kegiatan ini:</b> ${esc(n.gc)}</span>`:''}</div>`:'';
@@ -105,7 +106,7 @@ function blocksHtml(n){
     return `${b.cap?`<div class="cap">Tabel: ${esc(b.cap)} <span class="sh">· ${b.s}%</span></div>`:`<div class="cap">Kerangka tabel <span class="sh">· ${b.s}%</span></div>`}
       <table>${b.h.map(r=>`<tr>${r.map(c=>`<th>${esc(c)}</th>`).join('')}</tr>`).join('')}<tr>${b.h[0].map(()=>'<td></td>').join('')}</tr></table>`;
   }).join('');
-  return g+bl+toolsHtml(n)||'<span class="mut">Belum ada petunjuk atau contoh isi untuk bagian ini.</span>';
+  return g+bl+htHtml(n)+toolsHtml(n)||'<span class="mut">Belum ada petunjuk atau contoh isi untuk bagian ini.</span>';
 }
 async function open(id){
   st.cur=id;document.querySelectorAll('.card').forEach(c=>c.classList.toggle('cur',c.dataset.id===id));

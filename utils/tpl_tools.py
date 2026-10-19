@@ -41,10 +41,10 @@ TOOLS: list[dict] = [
      "why": "Simulasi peta kebisingan dari sumber titik/garis dengan dinding & sabuk hijau, atau hitung tingkat bunyi di reseptor.",
      "patterns": [r"kebisingan", r"\bbising\b", r"getaran", r"tingkat\s+bunyi"]},
     {"id": "lalu_lintas", "label": "Bangkitan & kinerja lalu lintas", "icon": "🚚", "tab": "rumus",
-     "calc": ["lalin_banding", "pengalihan_arus", "bangkitan_perjalanan", "kepadatan_banding", "waktu_tempuh_bpr", "kepadatan_greenshields",
+     "calc": ["kepemilikan_kendaraan", "pelebaran_jalan", "waktu_puncak_lalin", "lalin_banding", "pengalihan_arus", "bangkitan_perjalanan", "kepadatan_banding", "waktu_tempuh_bpr", "kepadatan_greenshields",
               "lhr_proyeksi", "arus_smp", "kapasitas_jalan", "derajat_jenuh"],
      "why": "Bandingkan lalu lintas sebelum vs sesudah proyek (pelebaran, jembatan, tol): LHR, V/C, tingkat pelayanan, kepadatan, waktu tempuh, pengalihan & bangkitan.",
-     "patterns": [r"lalu\s+lintas", r"transportasi", r"jalan\s+angkut", r"angkutan", r"andalalin", r"kemacetan", r"jembatan", r"\btol\b", r"bangkitan", r"tarikan\s+perjalanan"]},
+     "patterns": [r"lalu\s+lintas", r"transportasi", r"jalan\s+angkut", r"angkutan", r"andalalin", r"kemacetan", r"jembatan", r"\btol\b", r"bangkitan", r"pelebaran", r"kendaraan", r"jam\s+puncak", r"tarikan\s+perjalanan"]},
     {"id": "limpasan_erosi", "label": "Limpasan, banjir & erosi", "icon": "🌧️", "tab": "rumus",
      "calc": ["rasional", "mononobe", "scs_cn", "volume_limpasan", "gumbel", "manning", "usle"],
      "why": "Hitung debit limpasan, hujan rencana, kapasitas saluran, dan laju erosi (USLE).",
@@ -60,6 +60,13 @@ TOOLS: list[dict] = [
     {"id": "tata_ruang", "label": "Intensitas ruang: KDB, KLB, RTH", "icon": "📐", "tab": "rumus", "calc": ["kdb_klb"],
      "why": "Hitung luas dasar, luas lantai, dan RTH dari koefisien yang diizinkan tata ruang.",
      "patterns": [r"tata\s+ruang", r"penggunaan\s+lahan", r"ruang\s+terbuka", r"\brth\b", r"koefisien\s+(?:dasar|lantai)"]},
+    {"id": "keanekaragaman", "label": "Keanekaragaman flora & fauna (Shannon-Wiener, INP)", "icon": "🌿", "tab": "rumus", "calc": ["shannon_wiener", "inp_vegetasi"],
+     "why": "Hitung indeks keanekaragaman, kemerataan, dominansi, dan Indeks Nilai Penting dari data survei biota.",
+     "patterns": [r"\bflora\b", r"\bfauna\b", r"vegetasi", r"keanekaragaman", r"biota", r"plankton", r"bentos", r"satwa", r"komponen\s+biologi", r"hayati"]},
+    {"id": "survei", "label": "Jumlah responden survei sosial ekonomi", "icon": "📋", "tab": "rumus",
+     "calc": ["survei_responden", "metode_sampel_banding", "sampel_cochran", "sampel_slovin", "sampel_rata_rata", "galat_sampel"],
+     "why": "Hitung jumlah responden (Cochran/Slovin) dan alokasinya ke tiap desa/kecamatan; cek galat bila responden dibatasi.",
+     "patterns": [r"survei", r"responden", r"kuesioner", r"\bsampel\b", r"persepsi", r"pelibatan\s+masyarakat", r"konsultasi\s+publik", r"metode\s+(?:pengumpulan|studi)"]},
     {"id": "biaya_manfaat", "label": "Analisis biaya-manfaat", "icon": "💰", "tab": "rumus", "calc": ["npv", "bcr", "irr"],
      "why": "Hitung NPV, BCR, dan IRR dari arus kas biaya & manfaat lingkungan/ekonomi.",
      "patterns": [r"biaya\s+(?:dan\s+)?manfaat", r"kelayakan\s+(?:ekonomi|finansial)", r"nilai\s+ekonomi", r"\bcsr\b"]},
@@ -71,6 +78,7 @@ _DAMPAK = r"dampak\s+lingkungan\s+yang\s+ditimbulkan|rencana\s+pengelolaan\s+lin
 _FISIK = r"geo[\s-]*fisik"
 _EXTRA: dict[str, list[str]] = {
     "penduduk": [r"sosial,?\s+ekonomi"],
+    "survei": [r"sosial,?\s+ekonomi"],
     "tenaga_kerja": [r"sosial,?\s+ekonomi", _TAHAP, _DAMPAK],
     "air_bersih": [r"kesehatan\s+masyarakat"],
     "air_limbah": [_FISIK, _TAHAP, _DAMPAK],
@@ -84,19 +92,23 @@ _EXTRA: dict[str, list[str]] = {
     "biaya_manfaat": [r"evaluasi\s+secara\s+holistik"],
 }
 for _t in TOOLS:
+    _t["base"] = list(_t["patterns"])                     # pola topik (kuat); _EXTRA = pola struktural (longgar)
     _t["patterns"] = _t["patterns"] + _EXTRA.get(_t["id"], [])
 _BY_ID = {t["id"]: t for t in TOOLS}
 _COMPILED = {t["id"]: [re.compile(p, re.I) for p in t["patterns"]] for t in TOOLS}
+_COMPILED_BASE = {t["id"]: [re.compile(p, re.I) for p in t["base"]] for t in TOOLS}
 
 
 def get(tool_id: str) -> dict | None:
     return _BY_ID.get(tool_id)
 
 
-def match(text: str) -> list[str]:
-    """id alat yang relevan untuk teks judul bagian (urutan = urutan TOOLS)."""
+def match(text: str, strict: bool = False) -> list[str]:
+    """id alat yang relevan untuk teks judul bagian (urutan = urutan TOOLS). strict=True: hanya pola topik (tanpa pola struktural
+    seperti "Tahap Konstruksi") -- dipakai untuk mengusulkan tugas simulasi proyek agar daftarnya tidak membengkak."""
     t = re.sub(r"\s+", " ", text or "").strip()
-    return [tid for tid, pats in _COMPILED.items() if any(p.search(t) for p in pats)] if t else []
+    src = _COMPILED_BASE if strict else _COMPILED
+    return [tid for tid, pats in src.items() if any(p.search(t) for p in pats)] if t else []
 
 
 def public() -> list[dict]:

@@ -217,6 +217,7 @@ header b{letter-spacing:.2px}
 <button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
 </nav></header>
 <div id="app"></div><div id="bar" hidden></div>
+<script src="/proj-site.js?v=1"></script>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
 let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,section=null,es=null,outline=[],locks={},hb=null,shareTok=null;
@@ -533,11 +534,11 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
- const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['aktivitas','Aktivitas','🕑']];
+ const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['lokasi','Lokasi & Survei','📍'],['simulasi','Simulasi','🧮'],['aktivitas','Aktivitas','🕑']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
-async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,aktivitas:tabAktivitas};
+async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,lokasi:tabLokasi,simulasi:tabSimulasi,aktivitas:tabAktivitas};
  stopChat();try{await fns[curTab]()}catch(e){note(e.message,1)}}
 const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blok','block.delete':'🗑 hapus blok','block.move':'🔀 pindah blok',
  'block.restore':'♻️ pulihkan blok','block.revert':'⏪ kembalikan versi','block.hidden':'🙈 sembunyikan/tampilkan',
@@ -1562,7 +1563,8 @@ let KDTOOLS=null;
 async function loadTools(){if(KDTOOLS)return KDTOOLS;try{KDTOOLS=(await api('GET','/kd/tools')).tools.map(t=>({...t,re:t.patterns.map(p=>new RegExp(p,'i'))}))}catch(e){KDTOOLS=[]}return KDTOOLS}
 // heading/caption yang judulnya terkait mesin hitung/simulasi (pola dari server: utils/tpl_tools.py)
 function toolsFor(b){if(!KDTOOLS||!['heading','caption'].includes(b.kind))return[];
- const t=(b.text||'').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,'');return KDTOOLS.filter(x=>x.re.some(r=>r.test(t)))}
+ const t=(b.text||'').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,''),ex=(b.data&&b.data.tools)||[];   // data.tools = bagian yang di dokumen contoh memuat perhitungan (dari template)
+ return KDTOOLS.filter(x=>ex.includes(x.id)||x.re.some(r=>r.test(t)))}
 function toolDlg(b,tl){const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>🧮 Alat hitung / simulasi untuk “${esc((b.text||'').replace(/\\(.)/g,'$1').slice(0,70))}”</b>
   <small style="color:var(--mut)">Dibuka di tab baru. Hasilnya bisa disisipkan sebagai blok (tabel/paragraf/gambar) tepat setelah blok ini. Ini alat penapisan awal — parameter dan baku mutu tetap isian Anda.</small>

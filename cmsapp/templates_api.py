@@ -58,7 +58,7 @@ def get_template(tid):
     if not t:
         raise KeyError(f"template {tid} tidak ada")
     ms = _min_share()
-    nodes = tc.annotate(tc.nodes_for(t, ms), t["category"])
+    nodes = tc.annotate(tc.nodes_for(t, ms), t["category"], t["kind"])
     from utils import tpl_tools
     return jsonify(template={**{k: v for k, v in t.items() if k != "nodes"}, "nodes": nodes,
                              "n_nodes_all": len(t["nodes"])}, min_share=ms,
@@ -76,7 +76,7 @@ def copy_template(tid):
         raise KeyError(f"template {tid} tidak ada")
     d = body()
     guide, content = bool(d.get("include_guide", True)), bool(d.get("include_content", True))
-    nodes = tc.annotate(tc.nodes_for(t, _min_share(d)), t["category"])
+    nodes = tc.annotate(tc.nodes_for(t, _min_share(d)), t["category"], t["kind"])
     if not nodes:
         raise ValueError("tidak ada bagian yang lolos ambang kerincian")
     pid = d.get("project_id")

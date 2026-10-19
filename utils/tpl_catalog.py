@@ -358,7 +358,30 @@ def load_guidance() -> dict:
     return _gcache["data"]
 
 
-def annotate(nodes: list[dict], category: str = "") -> list[dict]:
+HINTS = Path(os.environ.get("CMS_TPL_HINTS") or Path(__file__).with_name("tpl_data") / "calc_hints.json")
+_hcache: dict = {"mtime": None, "data": {"items": {}}}
+
+
+def load_hints() -> dict:
+    """Bagian yang di dokumen contoh memuat perhitungan (scripts/tpl_hints.py): items[kind][category|umum][canon_key][tool_id] = [dokumen berhitung, dokumen punya bagian]."""
+    try:
+        m = HINTS.stat().st_mtime
+    except OSError:
+        return {"items": {}}
+    if _hcache["mtime"] != m:
+        _hcache["data"] = json.loads(HINTS.read_text(encoding="utf-8"))
+        _hcache["mtime"] = m
+    return _hcache["data"]
+
+
+def calc_hints(kind: str, category: str, key: str) -> list[dict]:
+    """[{tool, n, of}] urut paling sering; jenis kegiatan spesifik didahulukan, jatuh ke 'umum' bila tak ada."""
+    items = load_hints().get("items", {}).get(kind, {})
+    hit = (items.get(category) or {}).get(key) or (items.get("umum") or {}).get(key) or {}
+    return [{"tool": t, "n": v[0], "of": v[1]} for t, v in sorted(hit.items(), key=lambda kv: -kv[1][0] / max(1, kv[1][1]))][:4]
+
+
+def annotate(nodes: list[dict], category: str = "", kind: str = "") -> list[dict]:
     """Salinan nodes + "g" (petunjuk umum) dan "gc" (tambahan khusus jenis kegiatan) bila ada panduan utk judulnya."""
     items = load_guidance().get("items") or {}
     from utils import tpl_tools
@@ -368,6 +391,10 @@ def annotate(nodes: list[dict], category: str = "") -> list[dict]:
         if it:
             n = {**n, "g": it["g"], **({"gc": it["cat"][category]} if category in (it.get("cat") or {}) else {})}
         tl = tpl_tools.match(n["t"])
+        ht = calc_hints(kind, category, canon_key(n["t"])) if kind else []
+        tl = tl + [h["tool"] for h in ht if h["tool"] not in tl]
+        if ht:
+            n = {**n, "ht": ht}
         out.append({**n, "tools": tl} if tl else n)
     return out
 

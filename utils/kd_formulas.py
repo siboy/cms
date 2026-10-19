@@ -664,6 +664,255 @@ def waktu_tempuh_bpr(panjang, vf, V1, C1, V2, C2, alpha, beta):
     return {"t0": t0, "t1": t1, "t2": t2, "hemat": t1 - t2, "v1": panjang / t1 * 60.0, "v2": panjang / t2 * 60.0}
 
 
+
+# =============================================================================== keanekaragaman hayati (flora/fauna/plankton/bentos)
+def shannon_wiener(n):
+    """H' = −Σ pi·ln(pi) ; E = H'/ln(S) ; D = 1 − Σ pi²  (pi = ni/N)"""
+    n = [x for x in n if x > 0]
+    if len(n) < 1:
+        raise CalcError("isi jumlah individu minimal satu jenis (> 0)")
+    N = sum(n)
+    p = [x / N for x in n]
+    H = -sum(x * math.log(x) for x in p)
+    S = len(n)
+    return {"S": S, "N": N, "H": H, "E": (H / math.log(S) if S > 1 else 0.0), "D": 1 - sum(x * x for x in p), "dom": max(p) * 100.0,
+            "_table": {"header": ["Jenis ke-", "Jumlah individu", "pi = n/N", "pi·ln(pi)"],
+                       "rows": [[str(i + 1), f"{x:g}", f"{q:.4f}", f"{q * math.log(q):.4f}"] for i, (x, q) in enumerate(zip(n, p))]}}
+
+
+def inp_vegetasi(n, plot, ba, total_plot, luas_plot_ha):
+    """KR = n/Σn ; FR = f/Σf (f = petak ditemukan/total petak) ; DR = ba/Σba ; INP = KR+FR+DR (pohon; tumbuhan bawah tanpa DR → maks 200%)"""
+    if not n or not (len(n) == len(plot) == len(ba)):
+        raise CalcError("jumlah individu, petak, dan luas bidang dasar harus sama panjangnya dan tidak kosong")
+    _pos(total_plot=total_plot, luas_plot_ha=luas_plot_ha)
+    if any(x < 0 for x in n + plot + ba) or any(pl > total_plot for pl in plot):
+        raise CalcError("nilai tidak boleh negatif dan petak ditemukan ≤ total petak")
+    sn, sf, sb = sum(n), sum(plot), sum(ba)
+    if sn <= 0 or sf <= 0:
+        raise CalcError("total individu dan total petak ditemukan harus > 0")
+    area = total_plot * luas_plot_ha
+    rows, inps = [], []
+    for i in range(len(n)):
+        kr, fr, dr = n[i] / sn * 100, plot[i] / sf * 100, (ba[i] / sb * 100 if sb > 0 else 0.0)
+        inps.append(kr + fr + dr)
+        rows.append([str(i + 1), f"{n[i] / area:.1f}", f"{kr:.2f}", f"{fr:.2f}", f"{dr:.2f}", f"{kr + fr + dr:.2f}"])
+    top = max(range(len(inps)), key=lambda i: inps[i])
+    return {"inp_max": inps[top], "jenis_dominan": top + 1, "kerapatan": sn / area, "_table": {"header": ["Jenis ke-", "Kerapatan (ind/ha)", "KR (%)", "FR (%)", "DR (%)", "INP (%)"], "rows": rows}}
+
+
+
+# =============================================================================== Andalalin: pertumbuhan kepemilikan, pelebaran, jam puncak
+def kepemilikan_kendaraan(P0, r_pct, own0, own_sat, g_pct, n, tahun0, share_pct, trips, smp):
+    """P_t = P0(1+r)^t ; kepemilikan (per 1000 penduduk) logistik menuju jenuh ; kendaraan = P·own/1000 ; LHR = kendaraan·%melintas·perjalanan·smp"""
+    _pos(P0=P0, own0=own0, own_sat=own_sat, trips=trips, smp=smp)
+    _nn(g_pct=g_pct, n=n)
+    if own_sat < own0:
+        raise CalcError("kepemilikan jenuh harus ≥ kepemilikan awal")
+    if not 0 < share_pct <= 100:
+        raise CalcError("persentase kendaraan yang melintas harus 0-100")
+    if n > 50:
+        raise CalcError("horizon maksimal 50 tahun")
+    n = int(n)
+    rows, x, kend, lhr = [], [], [], []
+    for t in range(n + 1):
+        P = P0 * (1 + r_pct / 100.0) ** t
+        own = own_sat / (1 + (own_sat / own0 - 1) * math.exp(-g_pct / 100.0 * t))
+        v = P * own / 1000.0
+        l = v * share_pct / 100.0 * trips * smp
+        kend.append(v); lhr.append(l); x.append(int(tahun0) + t)
+        rows.append([str(int(tahun0) + t), f"{P:,.0f}", f"{own:,.0f}", f"{v:,.0f}", f"{l:,.0f}"])
+    cagr = ((lhr[-1] / lhr[0]) ** (1.0 / n) - 1) * 100.0 if n > 0 else 0.0
+    return {"kend0": kend[0], "kend_n": kend[-1], "lhr0": lhr[0], "lhr_n": lhr[-1], "ubah_kend": (kend[-1] / kend[0] - 1) * 100.0, "cagr": cagr,
+            "_table": {"header": ["Tahun", "Penduduk (jiwa)", "Kepemilikan (kend/1000 jiwa)", "Kendaraan (unit)", "LHR ruas (smp/hari)"], "rows": rows},
+            "_series": {"title": "Kendaraan terdaftar dan LHR ruas (indeks tahun pertama = 100)", "unit": "indeks", "x": x,
+                        "ys": [{"name": "Kendaraan", "values": [v / kend[0] * 100 for v in kend]}, {"name": "LHR ruas", "values": [l / lhr[0] * 100 for l in lhr]}]}}
+
+
+def pelebaran_jalan(lebar1, lebar2, C0, FCw1, FCw2, FCsp, FCsf, FCcs, k_pct, DSmax, LHR0, i_pct, tahun0):
+    """C = C0·FCw·FCsp·FCsf·FCcs ; LHR tertampung = C·DSmax/k ; tahun jenuh = ln(LHRmaks/LHR0)/ln(1+i)"""
+    _pos(lebar1=lebar1, lebar2=lebar2, C0=C0, FCw1=FCw1, FCw2=FCw2, FCsp=FCsp, FCsf=FCsf, FCcs=FCcs, k_pct=k_pct, DSmax=DSmax, LHR0=LHR0)
+    C1 = C0 * FCw1 * FCsp * FCsf * FCcs
+    C2 = C0 * FCw2 * FCsp * FCsf * FCcs
+    k = k_pct / 100.0
+    m1, m2 = C1 * DSmax / k, C2 * DSmax / k
+
+    def tjenuh(m):
+        if LHR0 >= m:
+            return 0.0
+        if i_pct <= 0:
+            return 100.0
+        return min(100.0, math.log(m / LHR0) / math.log(1 + i_pct / 100.0))
+    t1, t2 = tjenuh(m1), tjenuh(m2)
+    return {"C1": C1, "C2": C2, "naik_C": (C2 / C1 - 1) * 100.0, "m1": m1, "m2": m2, "tambah": m2 - m1, "t1": t1, "t2": t2, "mundur": t2 - t1,
+            "_table": {"header": ["Ukuran", f"Lebar {lebar1:g} m", f"Lebar {lebar2:g} m"],
+                       "rows": [["Faktor lebar jalur (FCw)", f"{FCw1:g}", f"{FCw2:g}"],
+                                ["Kapasitas (smp/jam)", f"{C1:,.0f}", f"{C2:,.0f}"],
+                                [f"LHR tertampung pada V/C ≤ {DSmax:g} (smp/hari)", f"{m1:,.0f}", f"{m2:,.0f}"],
+                                ["Tahun hingga jenuh (dari tahun dasar)", f"{t1:.1f}", f"{t2:.1f}"],
+                                ["Perkiraan tahun jenuh", str(int(tahun0 + math.ceil(t1))), str(int(tahun0 + math.ceil(t2)))]]}}
+
+
+def _phi(z):
+    return 0.5 * (1 + math.erf(z / math.sqrt(2)))
+
+
+def waktu_puncak_lalin(LHR, C, DSmax, h1, h2, sd, p1, p2, mulai, akhir):
+    """Profil 24 jam = p1% pada puncak pagi (normal di h1, sebaran sd) + p2% puncak sore (h2) + sisanya merata antara jam mulai-akhir."""
+    _pos(LHR=LHR, C=C, DSmax=DSmax, sd=sd)
+    if not (0 <= p1 and 0 <= p2 and p1 + p2 <= 100):
+        raise CalcError("porsi puncak pagi + sore harus 0-100%")
+    if not (0 <= mulai < akhir <= 24):
+        raise CalcError("jam mulai < jam akhir, dalam 0-24")
+    base = 100.0 - p1 - p2
+    w = []
+    for h in range(24):
+        peak = p1 * (_phi((h + 1 - h1) / sd) - _phi((h - h1) / sd)) + p2 * (_phi((h + 1 - h2) / sd) - _phi((h - h2) / sd))
+        flat = base / (akhir - mulai) if mulai <= h < akhir else 0.0
+        w.append(peak + flat)
+    tot = sum(w)
+    w = [x / tot * 100.0 for x in w]
+    q = [LHR * x / 100.0 for x in w]
+    hp = max(range(24), key=lambda i: q[i])
+    lewat = [h for h in range(24) if q[h] / C > DSmax]
+    return {"jam": hp, "arus": q[hp], "vc": q[hp] / C, "porsi": w[hp], "n_lewat": len(lewat), "awal_lewat": (lewat[0] if lewat else -1),
+            "_table": {"header": ["Jam", "Porsi harian (%)", "Arus (smp/jam)", "V/C", "Melebihi batas?"],
+                       "rows": [[f"{h:02d}:00", f"{w[h]:.1f}", f"{q[h]:,.0f}", f"{q[h] / C:.2f}", "ya" if h in lewat else ""] for h in range(24)]},
+            "_series": {"title": "Profil arus lalu lintas per jam", "unit": "smp/jam", "x": list(range(24)),
+                        "ys": [{"name": "Arus per jam", "values": q}, {"name": f"Kapasitas × batas V/C ({DSmax:g})", "values": [C * DSmax] * 24}]}}
+
+
+
+# =============================================================================== survei sosial ekonomi (jumlah responden)
+def _zscore(cl_pct):
+    if not 50 <= cl_pct < 100:
+        raise CalcError("tingkat kepercayaan harus 50-99,9%")
+    from statistics import NormalDist
+    return NormalDist().inv_cdf(1 - (1 - cl_pct / 100.0) / 2)
+
+
+def sampel_slovin(N, e_pct):
+    """Slovin: n = N / (1 + N·e²)"""
+    _pos(N=N, e_pct=e_pct)
+    return N / (1 + N * (e_pct / 100.0) ** 2)
+
+
+def sampel_cochran(N, cl_pct, e_pct, p_pct, deff, nonresp_pct):
+    """Cochran: n0 = Z²·p(1−p)/e² ; koreksi populasi hingga n = n0/(1+(n0−1)/N) ; ×deff ; ÷(1−tak-respons)"""
+    _pos(N=N, e_pct=e_pct, deff=deff)
+    if not 0 < p_pct < 100:
+        raise CalcError("proporsi p harus 0-100% (0,5 = paling konservatif)")
+    if not 0 <= nonresp_pct < 90:
+        raise CalcError("tak-respons harus 0-90%")
+    z = _zscore(cl_pct)
+    e, p = e_pct / 100.0, p_pct / 100.0
+    n0 = z * z * p * (1 - p) / (e * e)
+    n = n0 / (1 + (n0 - 1) / N)
+    nd = min(N, n * deff)
+    nf = min(N, math.ceil(nd / (1 - nonresp_pct / 100.0)))
+    return {"z": z, "n0": n0, "n": n, "n_deff": nd, "n_final": nf}
+
+
+def galat_sampel(N, n, cl_pct, p_pct, deff):
+    """Galat (margin of error) bila jumlah responden n sudah tertentu: e = Z·√(p(1−p)/n·deff·(1−n/N))"""
+    _pos(N=N, n=n, deff=deff)
+    if n > N:
+        raise CalcError("responden tidak boleh melebihi populasi")
+    if not 0 < p_pct < 100:
+        raise CalcError("proporsi p harus 0-100%")
+    z, p = _zscore(cl_pct), p_pct / 100.0
+    return z * math.sqrt(p * (1 - p) / n * deff * (1 - n / N)) * 100.0
+
+
+def sampel_rata_rata(N, cl_pct, sigma, d, nonresp_pct):
+    """Cochran utk RATA-RATA (data kontinu, mis. pendapatan): n0 = (Z·σ/d)² ; koreksi populasi hingga"""
+    _pos(N=N, sigma=sigma, d=d)
+    if not 0 <= nonresp_pct < 90:
+        raise CalcError("tak-respons harus 0-90%")
+    z = _zscore(cl_pct)
+    n0 = (z * sigma / d) ** 2
+    n = n0 / (1 + (n0 - 1) / N)
+    return {"n0": n0, "n": n, "n_final": min(N, math.ceil(n / (1 - nonresp_pct / 100.0)))}
+
+
+def sampel_persentase(N, pct, lantai):
+    """Aturan praktis: n = persentase tetap dari populasi, tidak kurang dari `lantai`, tidak lebih dari N"""
+    _pos(N=N, pct=pct)
+    _nn(lantai=lantai)
+    return min(N, max(lantai, math.ceil(N * pct / 100.0)))
+
+
+def metode_sampel_banding(N, cl_pct, e_pct, p_pct, pct, lantai):
+    """Semua metode berdampingan utk bahan rapat. Catatan: Cochran (populasi hingga) = Krejcie-Morgan = Lemeshow (hingga); Slovin = Yamane."""
+    c = sampel_cochran(N, cl_pct, e_pct, p_pct, 1.0, 0.0)
+    slov = sampel_slovin(N, e_pct)
+    pers = sampel_persentase(N, pct, lantai)
+    rows = [["Cochran, populasi hingga  [direkomendasikan sebagai acuan utama]", "n0 = Z²p(1−p)/e² ; n = n0/(1+(n0−1)/N)", f"{c['n']:.0f}",
+             "Memperhitungkan kepercayaan, galat, dan proporsi; sama dengan Krejcie-Morgan dan Lemeshow (populasi hingga)"],
+            ["Cochran, populasi sangat besar (tanpa koreksi)", "n0 = Z²p(1−p)/e²", f"{c['n0']:.0f}", "Batas atas; dipakai bila N tidak diketahui/sangat besar"],
+            ["Slovin / Yamane", "n = N/(1+N·e²)", f"{slov:.0f}", "Paling sederhana; mengandaikan p = 50% dan kepercayaan ±95%, galat harus disebut"],
+            ["Persentase tetap (aturan praktis)", f"n = {pct:g}% × N, minimum {lantai:g}", f"{pers}", "Tanpa dasar statistik; hanya pembanding/bila populasi kecil"]]
+    return {"cochran": c["n"], "tanpa_koreksi": c["n0"], "slovin": slov, "persen": float(pers),
+            "_table": {"header": ["Metode", "Rumus", "Jumlah sampel", "Catatan"], "rows": rows}}
+
+
+
+def _alokasi(pop, total, minimum):
+    """Alokasi total responden ke unit: minimum per unit (≤ populasinya), sisanya proporsional ukuran (sisa terbesar), tidak melebihi populasi."""
+    D = len(pop)
+    base = [min(minimum, int(p)) for p in pop]
+    if sum(base) > total:
+        raise CalcError(f"minimum per desa ({minimum}) × {D} desa = {sum(base)} melebihi total responden {total}: turunkan minimum atau tambah responden")
+    alloc, left = base[:], total - sum(base)
+    while left > 0:
+        cap = [max(0.0, p - a) for p, a in zip(pop, alloc)]
+        tc = sum(cap)
+        if tc <= 0:
+            break
+        quota = [left * c / tc for c in cap]
+        add = [min(int(q), int(c)) for q, c in zip(quota, cap)]
+        used = sum(add)
+        rem = sorted(range(D), key=lambda i: quota[i] - int(quota[i]), reverse=True)
+        for i in rem:
+            if used >= left:
+                break
+            if alloc[i] + add[i] < pop[i]:
+                add[i] += 1; used += 1
+        if used == 0:
+            break
+        alloc = [a + b for a, b in zip(alloc, add)]
+        left -= used
+    return alloc
+
+
+def survei_responden(pop, per_kec, cl_pct, e_pct, p_pct, deff, nonresp_pct, minimum, metode=0):
+    """Jumlah responden total (Cochran + deff + tak-respons) lalu dialokasikan ke desa proporsional dengan minimum per desa."""
+    if not pop or any(x <= 0 for x in pop):
+        raise CalcError("isi jumlah populasi (KK) tiap desa, semuanya > 0")
+    per_kec = [int(x) for x in per_kec]
+    if not per_kec or sum(per_kec) != len(pop) or any(x <= 0 for x in per_kec):
+        raise CalcError(f"jumlah desa per kecamatan ({sum(per_kec)}) harus sama dengan banyak desa pada daftar populasi ({len(pop)})")
+    _nn(minimum=minimum)
+    N = sum(pop)
+    if int(metode) == 1:                                                # Slovin: n × deff ÷ (1 − tak-respons)
+        nd = min(N, sampel_slovin(N, e_pct) * deff)
+        r = {"n": sampel_cochran(N, cl_pct, e_pct, p_pct, deff, nonresp_pct)["n"], "n_deff": nd,
+             "n_final": min(N, math.ceil(nd / (1 - nonresp_pct / 100.0)))}
+    else:
+        r = sampel_cochran(N, cl_pct, e_pct, p_pct, deff, nonresp_pct)
+    total = int(r["n_final"])
+    alloc = _alokasi(pop, total, int(minimum))
+    rows, i = [], 0
+    for k, nd in enumerate(per_kec, 1):
+        sub_n = sub_a = 0
+        for d in range(nd):
+            rows.append([f"Kec. {k}", f"Desa {i + 1}", f"{pop[i]:,.0f}", f"{pop[i] / N * 100:.1f}%", f"{alloc[i]}"])
+            sub_n += pop[i]; sub_a += alloc[i]; i += 1
+        rows.append([f"Subtotal Kec. {k}", "", f"{sub_n:,.0f}", f"{sub_n / N * 100:.1f}%", f"{sub_a}"])
+    rows.append(["TOTAL", f"{len(pop)} desa", f"{N:,.0f}", "100%", f"{sum(alloc)}"])
+    return {"N": N, "n_slovin": sampel_slovin(N, e_pct), "n_cochran": r["n"], "n_deff": r["n_deff"], "n_final": total, "min_d": min(alloc), "max_d": max(alloc),
+            "_table": {"header": ["Kecamatan", "Desa", "Populasi (KK)", "Porsi populasi", "Responden"], "rows": rows}}
+
+
 # =============================================================================== registri
 def V(name, label, unit="", default=None, hint="", typ="number", options=None):
     return {"name": name, "label": label, "unit": unit, "default": default, "hint": hint, "type": typ,
@@ -1019,6 +1268,113 @@ reg("waktu_tempuh_bpr", "Waktu tempuh sebelum vs sesudah (fungsi BPR)", "Lalu li
     run=lambda i: waktu_tempuh_bpr(i["panjang"], i["vf"], i["V1"], i["C1"], i["V2"], i["C2"], i["alpha"], i["beta"]))
 
 
+# ---- keanekaragaman hayati
+BIOREF = "Indeks Shannon-Wiener (Shannon & Wiener 1949), kemerataan Pielou, dominansi Simpson; INP menurut analisis vegetasi (Mueller-Dombois & Ellenberg 1974)."
+reg("shannon_wiener", "Indeks keanekaragaman Shannon-Wiener (H′)", "Keanekaragaman hayati",
+    "H′ = −Σ pi·ln(pi) ; E = H′/ln S ; D = 1 − Σ pi²",
+    [V("n", "Jumlah individu tiap jenis (pisah koma)", "individu", "34, 21, 15, 9, 6, 4, 2, 1", "satu angka per jenis hasil survei flora/fauna/plankton/bentos", typ="list")],
+    [("S", "Jumlah jenis (S)", "jenis"), ("N", "Total individu (N)", "individu"), ("H", "Indeks Shannon-Wiener (H′)", ""), ("E", "Kemerataan (E)", ""),
+     ("D", "Dominansi Simpson (1 − Σpi²)", ""), ("dom", "Proporsi jenis terbanyak", "%")],
+    BIOREF, "Kelas H′ (rendah/sedang/tinggi) mengikuti kriteria yang dipakai di dokumen/pedoman — modul ini tidak menetapkannya. Menghasilkan tabel pi per jenis.",
+    run=lambda i: shannon_wiener(i["n"]))
+reg("inp_vegetasi", "Indeks Nilai Penting (INP) vegetasi", "Keanekaragaman hayati",
+    "INP = KR + FR + DR ; KR = n/Σn ; FR = f/Σf ; DR = LBD/ΣLBD",
+    [V("total_plot", "Jumlah petak contoh", "petak", 20), V("luas_plot_ha", "Luas tiap petak", "ha", 0.04, "mis. 20 m × 20 m = 0,04 ha (pohon)"),
+     V("n", "Jumlah individu tiap jenis (pisah koma)", "individu", "30, 18, 12, 9, 5", typ="list"),
+     V("plot", "Jumlah petak tempat jenis ditemukan (urutan sama)", "petak", "12, 9, 7, 6, 3", typ="list"),
+     V("ba", "Luas bidang dasar tiap jenis (urutan sama; 0 bila tak dipakai)", "m²", "1.2, 0.7, 0.5, 0.3, 0.1", "tumbuhan bawah/semai: isi 0 → INP maks 200%", typ="list")],
+    [("inp_max", "INP tertinggi", "%"), ("jenis_dominan", "Jenis ke- dengan INP tertinggi", ""), ("kerapatan", "Kerapatan total", "individu/ha")],
+    BIOREF, "Urutan jenis pada ketiga daftar harus sama. Menghasilkan tabel KR, FR, DR, dan INP per jenis.",
+    run=lambda i: inp_vegetasi(i["n"], i["plot"], i["ba"], i["total_plot"], i["luas_plot_ha"]))
+
+
+# ---- Andalalin: pertumbuhan kepemilikan, pelebaran, jam puncak
+reg("kepemilikan_kendaraan", "Pertumbuhan penduduk → kepemilikan kendaraan → LHR ruas", "Lalu lintas",
+    "P_t = P0(1+r)^t ; own_t = jenuh/(1 + (jenuh/own0 − 1)·e^(−g·t)) ; kendaraan = P·own/1000 ; LHR = kendaraan·%melintas·perjalanan·smp",
+    [V("tahun0", "Tahun dasar", "", 2026), V("P0", "Penduduk wilayah layanan", "jiwa", 40000, "dari DKB (tab 1-4 Data Desa)"), V("r_pct", "Laju pertumbuhan penduduk", "% per th", 1.5, "dari proyeksi penduduk"),
+     V("own0", "Kepemilikan kendaraan awal", "kend/1000 jiwa", 450, "dari data Samsat/BPS/survei rumah tangga (motor+mobil)"),
+     V("own_sat", "Kepemilikan jenuh", "kend/1000 jiwa", 800, "ASUMSI tingkat kejenuhan jangka panjang (bandingkan wilayah serupa)"),
+     V("g_pct", "Laju pertumbuhan kepemilikan (logistik)", "% per th", 6, "kalibrasi dari 2-3 titik data tahunan kendaraan"),
+     V("n", "Horizon", "tahun", 15), V("share_pct", "Kendaraan wilayah yang melintasi ruas", "%", 25, "dari survei asal-tujuan / pembagian rute"),
+     V("trips", "Lintasan per kendaraan per hari di ruas", "lintasan/hari", 2, "mis. pergi-pulang = 2"),
+     V("smp", "Faktor smp rata-rata", "smp/kend", 0.6, "ISI dari komposisi kendaraan (motor dominan → kecil) dan pedoman")],
+    [("kend0", "Kendaraan tahun dasar", "unit"), ("kend_n", "Kendaraan akhir horizon", "unit"), ("ubah_kend", "Pertambahan kendaraan", "%"),
+     ("lhr0", "LHR ruas tahun dasar", "smp/hari"), ("lhr_n", "LHR ruas akhir horizon", "smp/hari"), ("cagr", "Laju pertumbuhan LHR rata-rata", "% per th")],
+    LLREF, "Laju pertumbuhan LHR (keluaran terakhir) dapat dipakai sebagai 'pertumbuhan lalu lintas' di rumus sebelum-vs-sesudah. Menghasilkan tabel per tahun dan grafik.", docs=LL,
+    run=lambda i: kepemilikan_kendaraan(i["P0"], i["r_pct"], i["own0"], i["own_sat"], i["g_pct"], i["n"], i["tahun0"], i["share_pct"], i["trips"], i["smp"]))
+reg("pelebaran_jalan", "Pelebaran jalan: kapasitas, LHR tertampung & tahun jenuh", "Lalu lintas",
+    "C = C0·FCw·FCsp·FCsf·FCcs ; LHR tertampung = C·DSmaks/k ; tahun jenuh = ln(LHRmaks/LHR0)/ln(1+i)",
+    [V("tahun0", "Tahun dasar", "", 2026), V("lebar1", "Lebar jalan sebelum", "m", 4), V("lebar2", "Lebar jalan sesudah", "m", 6),
+     V("C0", "Kapasitas dasar tipe jalan", "smp/jam", 2900, "ISI dari MKJI untuk tipe jalan (mis. 2/2 UD)"),
+     V("FCw1", "Faktor lebar jalur — sebelum", "", 0.69, "ISI dari tabel MKJI menurut lebar efektif"), V("FCw2", "Faktor lebar jalur — sesudah", "", 1.0, "idem"),
+     V("FCsp", "Faktor pemisahan arah", "", 1.0), V("FCsf", "Faktor hambatan samping", "", 0.94, "ISI dari tabel MKJI"), V("FCcs", "Faktor ukuran kota", "", 1.0),
+     V("k_pct", "Faktor jam puncak k", "% LHR", 10, "dari survei; lihat rumus profil jam puncak"), V("DSmax", "Batas V/C yang diizinkan", "", 0.85, "ISI dari pedoman yang dipakai"),
+     V("LHR0", "LHR saat ini", "smp/hari", 6000), V("i_pct", "Pertumbuhan lalu lintas", "% per th", 6, "mis. hasil rumus pertumbuhan kepemilikan")],
+    [("C1", "Kapasitas sebelum", "smp/jam"), ("C2", "Kapasitas sesudah", "smp/jam"), ("naik_C", "Kenaikan kapasitas", "%"),
+     ("m1", "LHR tertampung sebelum", "smp/hari"), ("m2", "LHR tertampung sesudah", "smp/hari"), ("tambah", "Tambahan LHR yang bisa ditampung", "smp/hari"),
+     ("t1", "Tahun hingga jenuh — sebelum", "tahun"), ("t2", "Tahun hingga jenuh — sesudah", "tahun"), ("mundur", "Penundaan kejenuhan", "tahun")],
+    "Pola MKJI: kapasitas = kapasitas dasar × faktor penyesuaian (lebar, pemisahan arah, hambatan samping, ukuran kota).",
+    "Semua faktor MKJI adalah isian dari tabel pedoman yang Anda pakai — modul ini tidak menyimpannya. Menghasilkan tabel perbandingan.", docs=LL,
+    run=lambda i: pelebaran_jalan(i["lebar1"], i["lebar2"], i["C0"], i["FCw1"], i["FCw2"], i["FCsp"], i["FCsf"], i["FCcs"], i["k_pct"], i["DSmax"], i["LHR0"], i["i_pct"], i["tahun0"]))
+reg("waktu_puncak_lalin", "Profil jam puncak lalu lintas (kapan beban puncak)", "Lalu lintas",
+    "arus jam h = LHR × porsi(h) ; porsi = puncak pagi (normal) + puncak sore (normal) + dasar merata",
+    [V("LHR", "LHR", "smp/hari", 8000), V("C", "Kapasitas ruas", "smp/jam", 1500), V("DSmax", "Batas V/C", "", 0.85, "ISI dari pedoman"),
+     V("h1", "Jam puncak pagi", "jam", 7.5, "dari survei volume per jam"), V("h2", "Jam puncak sore", "jam", 17.5, "idem"), V("sd", "Sebaran tiap puncak", "jam", 1.2, "±1-2 jam; kalibrasi dari survei"),
+     V("p1", "Porsi harian di puncak pagi", "%", 22, "dari survei"), V("p2", "Porsi harian di puncak sore", "%", 26, "dari survei"),
+     V("mulai", "Jam mulai aktivitas dasar", "jam", 5), V("akhir", "Jam akhir aktivitas dasar", "jam", 22)],
+    [("jam", "Jam puncak", "jam ke-"), ("arus", "Arus jam puncak", "smp/jam"), ("vc", "V/C jam puncak", ""), ("porsi", "Porsi LHR di jam puncak (k efektif)", "%"),
+     ("n_lewat", "Jumlah jam melebihi batas V/C", "jam"), ("awal_lewat", "Jam pertama melebihi batas (−1 = tidak ada)", "jam ke-")],
+    LLREF, "Profil adalah pendekatan dari dua puncak + dasar; ganti parameter dengan hasil survei volume per jam. 'k efektif' bisa dipakai sebagai faktor jam puncak di rumus lain. Menghasilkan tabel 24 jam dan grafik.", docs=LL,
+    run=lambda i: waktu_puncak_lalin(i["LHR"], i["C"], i["DSmax"], i["h1"], i["h2"], i["sd"], i["p1"], i["p2"], i["mulai"], i["akhir"]))
+
+
+# ---- survei sosial ekonomi
+SVREF = "Penarikan sampel survei: Cochran (1977, Sampling Techniques), Slovin, efek desain (Kish) untuk sampel bergugus, koreksi populasi hingga."
+SVNOTE = "Kepercayaan, galat (margin of error), proporsi, efek desain, dan tak-respons adalah KEPUTUSAN tim studi/rapat — tidak ada nilai baku dalam rumus; nyatakan dasarnya di dokumen."
+_SV = lambda: [V("cl_pct", "Tingkat kepercayaan", "%", 95, "umum 90 / 95 / 99"), V("e_pct", "Galat yang ditoleransi (margin of error)", "%", 10, "umum 5-10%"),
+               V("p_pct", "Proporsi yang diperkirakan (p)", "%", 50, "50% = paling konservatif (sampel terbesar) bila tak ada informasi awal")]
+reg("survei_responden", "Jumlah responden survei sosial ekonomi & alokasi per desa", "Survei sosial ekonomi",
+    "n0 = Z²·p(1−p)/e² ; n = n0/(1+(n0−1)/N) ; ×deff ; ÷(1−tak-respons) ; alokasi: minimum per desa, sisanya sebanding ukuran desa",
+    [V("pop", "Populasi (KK) tiap desa terdampak, urut per kecamatan (pisah koma)", "KK", "820, 640, 1100, 530, 770, 910, 480, 650, 1020, 700, 560, 880, 740, 610, 590",
+       "dari Data Desa (DKB) atau profil desa; satu angka per desa", typ="list"),
+     V("per_kec", "Jumlah desa pada tiap kecamatan (pisah koma)", "desa", "5, 5, 5", "mis. 3 kecamatan × 5 desa; jumlahnya harus sama dengan banyak desa di atas", typ="list")] + _SV() +
+    [V("deff", "Efek desain (sampel bergugus per desa)", "×", 1.5, "1 = acak sederhana; sampel bergugus lazim 1,2-2 — ASUMSI"), V("nonresp_pct", "Cadangan responden tak merespons/tak valid", "%", 10, VERIFY),
+     V("minimum", "Minimum responden per desa", "responden", 5, "agar tiap desa terwakili; 0 = murni proporsional"),
+     V("metode", "Metode jumlah sampel", "", 0, "Cochran direkomendasikan sebagai acuan utama; lihat perbandingan metode", typ="select", options=[[0, "Cochran (populasi hingga) — acuan utama"], [1, "Slovin / Yamane"]])],
+    [("N", "Total populasi", "KK"), ("n_slovin", "Pembanding: jumlah menurut Slovin", "responden"), ("n_cochran", "Cochran (dengan koreksi populasi)", "responden"),
+     ("n_deff", "Setelah efek desain", "responden"), ("n_final", "Jumlah responden yang direkomendasikan", "responden"), ("min_d", "Responden terkecil per desa", "responden"), ("max_d", "Responden terbesar per desa", "responden")],
+    SVREF, SVNOTE + " Tabel alokasi per desa dan subtotal per kecamatan siap disisipkan.", docs=("AMDAL", "UKL-UPL"),
+    run=lambda i: survei_responden(i["pop"], i["per_kec"], i["cl_pct"], i["e_pct"], i["p_pct"], i["deff"], i["nonresp_pct"], i["minimum"], i["metode"]))
+reg("sampel_cochran", "Jumlah sampel — Cochran (populasi hingga)", "Survei sosial ekonomi",
+    "n0 = Z²·p(1−p)/e² ; n = n0/(1+(n0−1)/N)",
+    [V("N", "Populasi", "KK/orang", 10000)] + _SV() + [V("deff", "Efek desain", "×", 1.0, "1 = acak sederhana"), V("nonresp_pct", "Cadangan tak-respons", "%", 10, VERIFY)],
+    [("z", "Nilai Z", ""), ("n0", "n0 (populasi tak hingga)", "responden"), ("n", "n setelah koreksi populasi", "responden"), ("n_deff", "Setelah efek desain", "responden"), ("n_final", "Jumlah responden (dengan cadangan)", "responden")],
+    SVREF, SVNOTE, run=lambda i: sampel_cochran(i["N"], i["cl_pct"], i["e_pct"], i["p_pct"], i["deff"], i["nonresp_pct"]))
+reg("sampel_slovin", "Jumlah sampel — Slovin", "Survei sosial ekonomi", "n = N / (1 + N·e²)",
+    [V("N", "Populasi", "KK/orang", 10000), V("e_pct", "Galat", "%", 10, "umum 5-10%")], [("n", "Jumlah sampel", "responden")],
+    "Rumus Slovin (Yamane 1967 memuat bentuk yang sama).", "Menganggap p = 50% dan tingkat kepercayaan ±95%; tidak memuat efek desain atau tak-respons. Sebagai pembanding cepat saja.",
+    run=lambda i: {"n": sampel_slovin(i["N"], i["e_pct"])})
+reg("galat_sampel", "Galat (margin of error) dari jumlah responden yang ada", "Survei sosial ekonomi",
+    "e = Z·√( p(1−p)/n · deff · (1 − n/N) )",
+    [V("N", "Populasi", "KK/orang", 10000), V("n", "Jumlah responden yang tersedia", "responden", 150), V("cl_pct", "Tingkat kepercayaan", "%", 95), V("p_pct", "Proporsi (p)", "%", 50), V("deff", "Efek desain", "×", 1.5)],
+    [("e", "Galat", "%")], SVREF, "Dipakai bila jumlah responden dibatasi anggaran/waktu: berapa kepastian hasilnya?", run=lambda i: {"e": galat_sampel(i["N"], i["n"], i["cl_pct"], i["p_pct"], i["deff"])})
+
+
+reg("metode_sampel_banding", "Perbandingan metode penentuan jumlah sampel (bahan rapat)", "Survei sosial ekonomi",
+    "Cochran · Slovin/Yamane · persentase tetap, berdampingan",
+    [V("N", "Populasi", "KK/orang", 11000)] + _SV() + [V("pct", "Persentase aturan praktis", "% populasi", 10, "mis. 10-15% (aturan praktis; tanpa dasar statistik)"),
+     V("lantai", "Sampel minimum aturan praktis", "responden", 30, "mis. 30 (batas minimal analisis kelompok)")],
+    [("cochran", "Cochran, populasi hingga", "responden"), ("tanpa_koreksi", "Cochran tanpa koreksi populasi", "responden"), ("slovin", "Slovin / Yamane", "responden"), ("persen", "Persentase tetap", "responden")],
+    SVREF, "Cochran populasi hingga, Krejcie-Morgan, dan Lemeshow (hingga) adalah rumus yang SAMA secara aljabar; Slovin = Yamane. Rekomendasi acuan utama: Cochran (kepercayaan, galat, dan proporsi eksplisit); Slovin sebagai pembanding. "
+    "Pada dokumen contoh, rumus penentuan sampel jarang disebut—yang lebih sering purposive/kuota; apa pun metodenya, tuliskan dasar & asumsinya.", run=lambda i: metode_sampel_banding(i["N"], i["cl_pct"], i["e_pct"], i["p_pct"], i["pct"], i["lantai"]))
+reg("sampel_rata_rata", "Jumlah sampel untuk estimasi rata-rata (pendapatan, dst.)", "Survei sosial ekonomi",
+    "n0 = (Z·σ/d)² ; n = n0/(1+(n0−1)/N)",
+    [V("N", "Populasi", "KK/orang", 11000), V("cl_pct", "Tingkat kepercayaan", "%", 95), V("sigma", "Simpangan baku perkiraan (σ)", "satuan variabel", 1500000, "dari survei awal/studi sejenis/BPS (mis. pendapatan Rp/bulan)"),
+     V("d", "Selisih yang ditoleransi terhadap rata-rata sebenarnya (d)", "satuan variabel", 200000, "satuan sama dengan σ"), V("nonresp_pct", "Cadangan tak-respons", "%", 10, VERIFY)],
+    [("n0", "n0 (tanpa koreksi)", "responden"), ("n", "n setelah koreksi populasi", "responden"), ("n_final", "Jumlah responden (dengan cadangan)", "responden")],
+    SVREF, "Dipakai bila yang ditaksir adalah nilai rata-rata, bukan proporsi. σ harus dari data awal; tanpa itu hasilnya hanya tebakan.", run=lambda i: sampel_rata_rata(i["N"], i["cl_pct"], i["sigma"], i["d"], i["nonresp_pct"]))
+
+
 # ---- bangun run/fn otomatis utk entri berparameter tetap
 _FUNC_FOR_ID = {  # id -> (callable, urutan var, nama kunci hasil[, kunci dict])
     "pop_aritmatika": (pop_aritmatika, ["P0", "Ka", "n"], "Pn"), "pop_geometrik": (pop_geometrik, ["P0", "r_pct", "n"], "Pn"),
@@ -1143,12 +1499,12 @@ def public_catalog() -> list[dict]:
                     "outs": [{"key": k, "label": l, "unit": u} for k, l, u in e["outs"]], "ref": e["ref"], "note": e["note"],
                     "docs": e["docs"], "expr": expr_example(e["id"]),
                     "fn": ("gumbel_x" if e["id"] == "gumbel" else e["id"]) in FORMULA_FUNCS,
-                    "howto": {"use": HOWTO.get(e["id"], ("", ""))[0], "read": HOWTO.get(e["id"], ("", ""))[1], "steps": GENERIC_STEPS},
+                    "howto": {"use": HOWTO.get(e["id"], ("", ""))[0], "read": HOWTO.get(e["id"], ("", ""))[1], "steps": GENERIC_STEPS, "data": DATA_NEEDED.get(e["id"], [])},
                     "example": example_result(e["id"])})
     return out
 
 
-CATEGORIES = ["Kependudukan", "Tenaga kerja & sosial", "Air bersih & air limbah", "Kualitas air", "Limbah padat", "Kualitas udara",
+CATEGORIES = ["Kependudukan", "Tenaga kerja & sosial", "Survei sosial ekonomi", "Keanekaragaman hayati", "Air bersih & air limbah", "Kualitas air", "Limbah padat", "Kualitas udara",
               "Kebisingan", "Lalu lintas", "Hidrologi & erosi", "Pertambangan & konstruksi", "Tata ruang & lahan",
               "Gas rumah kaca & karbon", "Analisis biaya-manfaat"]
 
@@ -1156,6 +1512,17 @@ CATEGORIES = ["Kependudukan", "Tenaga kerja & sosial", "Air bersih & air limbah"
 # =============================================================================== petunjuk pemakaian tiap rumus
 # id -> (kapan dipakai, cara membaca hasil). Langkah umum ada di GENERIC_STEPS.
 HOWTO = {
+    "metode_sampel_banding": ("Rapat penentuan sampel: lihat jumlah responden menurut beberapa metode sekaligus, lalu sepakati satu sebagai acuan.", "Acuan utama yang disarankan: Cochran (eksplisit soal kepercayaan, galat, proporsi). Slovin = pembanding sederhana. Tulis metode dan asumsinya di metodologi."),
+    "sampel_rata_rata": ("Bila tujuan survei menaksir rata-rata (mis. pendapatan rumah tangga), bukan persentase.", "Butuh σ dari data awal; selisih d dalam satuan yang sama dengan σ."),
+    "survei_responden": ("Menentukan jumlah responden survei sosial ekonomi (mis. 3 kecamatan, 15 desa) lalu membaginya ke tiap desa — dipakai langsung saat rapat penentuan sampel.", "Bandingkan 'jumlah yang direkomendasikan' dengan Slovin; ubah galat/kepercayaan di rapat dan lihat dampaknya pada jumlah responden. Tabel alokasi per desa & kecamatan bisa disisipkan ke dokumen."),
+    "sampel_cochran": ("Jumlah sampel untuk satu populasi (satu desa/kecamatan/gabungan) dengan kepercayaan & galat tertentu.", "n0 = tanpa batas populasi; n = setelah koreksi; 'jumlah responden' sudah memuat efek desain dan cadangan tak-respons."),
+    "sampel_slovin": ("Pembanding cepat jumlah sampel yang sederhana (hanya butuh populasi dan galat).", "Hasil Slovin bisa lebih kecil/besar dari Cochran; catat rumus yang dipakai dan alasannya di metodologi."),
+    "galat_sampel": ("Menilai ketelitian bila jumlah responden sudah ditetapkan (anggaran/waktu terbatas).", "Galat makin kecil = hasil makin pasti. Cantumkan di metodologi sebagai batasan survei."),
+    "kepemilikan_kendaraan": ("Menurunkan pertumbuhan lalu lintas dari pertumbuhan penduduk dan kepemilikan kendaraan (bukan sekadar persentase tetap).", "Lihat laju pertumbuhan LHR dan tahun-tahun lonjakan; kepemilikan melandai mendekati nilai jenuh. Pakai laju LHR hasilnya sebagai pertumbuhan di rumus 'sebelum vs sesudah'."),
+    "pelebaran_jalan": ("Menguji pelebaran jalan (mis. 4 m → 6 m): kapasitas baru, LHR yang bisa ditampung, dan seberapa lama jalan baru jenuh.", "'Penundaan kejenuhan' = tahun tambahan sebelum V/C melewati batas setelah pelebaran. Bandingkan dengan umur rencana."),
+    "waktu_puncak_lalin": ("Mencari jam beban puncak dan lama jam yang melebihi batas V/C dalam sehari.", "Jam puncak dan jumlah jam melebihi batas menentukan perlunya manajemen lalu lintas; 'k efektif' dipakai di rumus lain."),
+    "shannon_wiener": ("Mengukur keanekaragaman jenis dari data cacah flora, fauna, plankton, atau bentos pada rona lingkungan awal.", "H′ makin besar = makin beragam; E mendekati 1 = penyebaran antarjenis merata; D tinggi = tidak didominasi satu jenis. Kelasnya dibaca dari kriteria yang dipakai di dokumen."),
+    "inp_vegetasi": ("Analisis vegetasi: jenis mana yang paling berperan di komunitas (pohon, tiang, pancang, semai).", "INP tertinggi = jenis dominan. Isi urutan jenis sama di ketiga daftar; tabel hasil siap disisipkan."),
     "lalin_banding": ("Membandingkan kondisi lalu lintas TANPA vs DENGAN proyek (jalan dilebarkan, jembatan/tol terbangun) tiap tahun sampai akhir horizon.", "Lihat tahun V/C tanpa proyek melewati 1 dan apakah dengan proyek tetap di bawahnya; tingkat pelayanan A-F di tabel. Grafik dan tabel bisa langsung disisipkan."),
     "pengalihan_arus": ("Memperkirakan berapa arus beralih dari jalan lama ke fasilitas baru dan berapa lalu lintas baru yang terinduksi.", "'LHR jalan lama setelah proyek' dan 'LHR fasilitas baru' masuk ke perbandingan sebelum/sesudah; pengalihan adalah asumsi dari studi permintaan."),
     "bangkitan_perjalanan": ("Perkiraan lalu lintas tambahan yang dibangkitkan/ditarik proyek (kawasan, pabrik, tambang).", "Arus jam puncak (smp/jam) ditambahkan ke arus jalan sekitar sebelum menguji V/C."),
@@ -1228,6 +1595,51 @@ HOWTO = {
     "irr": ("Tingkat diskonto yang membuat NPV = 0.", "Bandingkan dgn tingkat diskonto acuan; IRR lebih tinggi = lebih menarik."),
     "cicilan": ("Cicilan tetap utk investasi pengolahan limbah/peralatan.", "Biaya per periode; dipakai dalam arus kas biaya-manfaat."),
 }
+
+# id -> daftar "indikator — sumber/cara memperolehnya" yang perlu disiapkan pengguna sebelum memakai rumus
+DATA_NEEDED = {
+    "metode_sampel_banding": ["Populasi yang disurvei", "Kepercayaan, galat, proporsi — kesepakatan tim (catat dalam notulen)"],
+    "sampel_rata_rata": ["Simpangan baku (σ) variabel utama — survei pendahuluan, studi sejenis, atau BPS", "Selisih yang ditoleransi (d) dalam satuan yang sama"],
+    "survei_responden": ["Daftar desa terdampak (3 kecamatan, 15 desa dst.) — batas wilayah studi sosial dari pelingkupan/KA",
+        "Populasi tiap desa (jumlah KK, atau jiwa bila respondennya individu) — Data Desa tab 1 (DKB) atau profil desa/BPS",
+        "Kerangka sampel: siapa responden (kepala keluarga, tokoh masyarakat, pelaku usaha) dan apakah yang diambil seluruh desa atau hanya yang terdampak langsung",
+        "Tingkat kepercayaan, galat, efek desain, tak-respons, dan minimum per desa — kesepakatan tim studi (catat dalam notulen rapat)",
+        "Bila ada kelompok khusus (nelayan, petani penggarap, pemilik lahan terdampak) — pertimbangkan sampel terpisah (strata) dengan perhitungan sendiri"],
+    "sampel_cochran": ["Populasi yang disurvei (KK/individu)", "Kepercayaan, galat, proporsi, efek desain, tak-respons — kesepakatan tim studi"],
+    "sampel_slovin": ["Populasi yang disurvei", "Galat — kesepakatan tim studi"],
+    "galat_sampel": ["Jumlah responden yang tersedia dan populasinya", "Tingkat kepercayaan, proporsi, efek desain — samakan dengan rencana survei"],
+    "kepemilikan_kendaraan": ["Jumlah penduduk wilayah layanan & laju pertumbuhannya — Data Desa tab 1-4 (DKB) atau proyeksi penduduk",
+        "Jumlah kendaraan bermotor terdaftar (motor + mobil) 2-3 tahun terakhir — Samsat/Dispenda/BPS kabupaten, untuk kepemilikan awal & laju pertumbuhannya",
+        "Tingkat kepemilikan jenuh — perbandingan wilayah sejenis yang lebih maju, atau asumsi yang dijelaskan di dokumen",
+        "Persentase kendaraan yang melewati ruas & jumlah lintasan/hari — survei asal-tujuan atau pembagian rute jaringan",
+        "Komposisi kendaraan (motor/mobil/truk) untuk faktor smp — survei klasifikasi kendaraan"],
+    "pelebaran_jalan": ["Lebar efektif jalan & tipe jalan sebelum/sesudah — data teknis/DED proyek",
+        "Kapasitas dasar dan faktor penyesuaian (lebar jalur, pemisahan arah, hambatan samping, ukuran kota) — tabel MKJI/pedoman kapasitas jalan yang dipakai",
+        "LHR saat ini — survei lalu lintas (counting) 12-24 jam atau data Dinas Perhubungan/Bina Marga",
+        "Faktor jam puncak k — hasil survei volume per jam (atau rumus profil jam puncak)",
+        "Pertumbuhan lalu lintas — hasil rumus kepemilikan kendaraan, data historis LHR, atau pedoman"],
+    "waktu_puncak_lalin": ["Volume per jam 12-24 jam (hari kerja & akhir pekan) — survei counting di ruas",
+        "Jam, porsi harian, dan sebaran puncak pagi/sore — dibaca dari grafik volume per jam hasil survei",
+        "Kapasitas ruas dan batas V/C — rumus kapasitas jalan + pedoman yang dipakai"],
+    "lalin_banding": ["LHR dasar, pertumbuhan, faktor jam puncak — survei dan rumus pertumbuhan/kepemilikan",
+        "Kapasitas sebelum & sesudah proyek — rumus kapasitas jalan atau pelebaran jalan",
+        "Perubahan arus karena proyek (pengalihan + induksi) — rumus pengalihan arus / bangkitan perjalanan atau studi permintaan",
+        "Batas V/C tiap tingkat pelayanan — pedoman yang dipakai"],
+    "pengalihan_arus": ["LHR jalan lama — survei counting", "Persentase pengalihan — studi pemilihan rute (waktu tempuh, tarif) atau studi sejenis",
+        "Lalu lintas terinduksi — asumsi/studi permintaan perjalanan"],
+    "bangkitan_perjalanan": ["Besaran proyek (m² lantai, jumlah unit, pekerja) — dokumen rencana kegiatan",
+        "Tingkat bangkitan per satuan — ITE/pedoman Andalalin atau survei lokasi sejenis", "Okupansi kendaraan & porsi jam puncak — survei"],
+    "kepadatan_banding": ["Arus per lajur sebelum/sesudah — survei dan jumlah lajur", "Kecepatan arus bebas — survei kecepatan pada jam sepi",
+        "Kepadatan jenuh — asumsi 100-150 kend/km/lajur atau kalibrasi lapangan", "Panjang ruas — peta/DED"],
+    "waktu_tempuh_bpr": ["Panjang ruas, kecepatan arus bebas — peta dan survei kecepatan", "Volume dan kapasitas sebelum/sesudah — hasil rumus lalu lintas lain",
+        "Parameter α, β — nilai baku BPR atau kalibrasi"],
+    "tenaga_kerja_tahunan": ["Kebutuhan tenaga kerja per tahap/tahun — jadwal & rencana kerja proyek (tabel tenaga kerja di deskripsi kegiatan)",
+        "Persentase tenaga kerja lokal & pendatang yang membawa keluarga — komitmen perekrutan pemrakarsa, rona sosial (kebutuhan/ketersediaan tenaga kerja setempat)",
+        "Jumlah jiwa per keluarga — statistik desa/kecamatan (DKB)"],
+    "shannon_wiener": ["Cacah individu per jenis — survei lapangan (transek/petak contoh, jaring, plot plankton/bentos)", "Satu daftar untuk satu kelompok biota & satu lokasi/stasiun"],
+    "inp_vegetasi": ["Jumlah petak & luas tiap petak — metode survei vegetasi", "Per jenis: jumlah individu, jumlah petak tempat ditemukan, dan diameter → luas bidang dasar"],
+}
+
 GENERIC_STEPS = ["Pilih rumus dan baca persamaannya.", "Isi setiap kotak dengan angka proyek Anda (satuan tertera). Nilai awal hanya contoh.",
                  "Klik Hitung lalu catat hasil beserta satuannya.", "Cantumkan rumus & rujukan di dokumen; bila memakai nilai asumsi, nyatakan sumbernya."]
 

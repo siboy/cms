@@ -786,6 +786,7 @@ function renderRfBox(){
    <div style="margin-top:10px">${inp}</div><div class="row"><button class="b p" id="rfGo">Hitung</button><span id="rfMsg" class="small"></span></div><div id="rfOut"></div>
    <details class="mt" style="margin-top:10px" open><summary>📖 Cara pakai</summary><div class="small" style="margin-top:6px"><b>Kapan dipakai:</b> ${esc(f.howto.use)}</div>
     <ol class="small" style="margin:6px 0 6px 18px;padding:0">${f.howto.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>
+    ${(f.howto.data||[]).length?`<div class="small" style="margin-top:8px"><b>📋 Data yang perlu Anda siapkan:</b><ul style="margin:4px 0 4px 18px;padding:0">${f.howto.data.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
     <div class="small"><b>Cara membaca hasil:</b> ${esc(f.howto.read)}</div>
     ${f.example?`<div class="small mut" style="margin-top:6px"><b>Contoh (nilai awal):</b> ${f.example.outputs.map(o=>`${esc(o.label)} = <b>${fmt(o.value,Math.abs(o.value)<10?3:1)}</b> ${esc(o.unit)}`).join(' · ')}</div>`:''}</details>
    <div class="small mut" style="margin-top:8px"><b>Rujukan:</b> ${esc(f.ref)}${f.note?`<br><b>Catatan:</b> ${esc(f.note)}`:''}</div>
@@ -838,16 +839,16 @@ async function docPost(path,body,form){
 async function insertParts(parts){
   if(!CTX.on)throw new Error('buka halaman ini lewat tombol 🧮 di editor dokumen');
   if(!parts.length)throw new Error('centang minimal satu bentuk yang mau disisipkan');
-  let after=CTX.after,n=0;
+  let after=CTX.after,n=0;const made=[];
   for(const p of parts){
-    if(p.t==='p'){after=(await docPost(`/docs/${CTX.doc}/blocks`,{after_id:after,kind:'paragraph',text:mk(p.text)})).id;n++}
+    if(p.t==='p'){after=(await docPost(`/docs/${CTX.doc}/blocks`,{after_id:after,kind:'paragraph',text:mk(p.text)})).id;made.push(after);n++}
     else if(p.t==='table'){const ids=(await docPost(`/docs/${CTX.doc}/tables`,{after_id:after,header:true,caption:p.caption?mk(p.caption):undefined,
-      rows:p.rows.map(r=>r.map(c=>mk(c)))})).ids;after=ids[ids.length-1];n+=ids.length}
+      rows:p.rows.map(r=>r.map(c=>mk(c)))})).ids;after=ids[ids.length-1];made.push(...ids);n+=ids.length}
     else if(p.t==='img'){const fd=new FormData();fd.append('file',p.blob,p.name||'hasil.png');fd.append('after_id',after);fd.append('alt',p.alt||'');if(p.caption)fd.append('caption',mk(p.caption));
-      const ids=(await docPost(`/docs/${CTX.doc}/images`,null,fd)).ids;after=ids[ids.length-1];n+=ids.length}
+      const ids=(await docPost(`/docs/${CTX.doc}/images`,null,fd)).ids;after=ids[ids.length-1];made.push(...ids);n+=ids.length}
     CTX.after=after;                                                     // titik sisip maju per blok, jadi gagal di tengah tidak menumpuk
   }
-  CTX.n+=n;ctxBar();return n;
+  CTX.n+=n;ctxBar();return {n,ids:made};
 }
 function ctxBar(){
   if(!CTX.on)return;
@@ -890,10 +891,12 @@ async function chartParts(cards,prefix){
   for(const c of cards){const blob=await cardBlob(c);if(blob)out.push({t:'img',blob,name:'grafik.png',alt:cardTitle(c),caption:`${prefix?prefix+' — ':''}${cardTitle(c)}`})}
   return out;
 }
+let LASTMETA=null;      // ringkasan hasil terakhir yang disisipkan -> dicatat ke detail proyek (tab Simulasi)
 const SRC_NOTE='Hasil perhitungan ini merupakan penapisan awal; nilai parameter ditetapkan oleh pemrakarsa dan perlu diverifikasi terhadap peraturan yang berlaku.';
 const dpv=v=>fmt(v,Math.abs(v)<10?3:Math.abs(v)<1000?1:0);
 async function partsRf(o){
   const {f,inputs,outputs,table,chartId}=RFLAST,out=[];
+  LASTMETA={calc_id:f.id,title:f.title,summary:{formula:f.formula,inputs:inputs.map(i=>({label:i[0],value:i[1],unit:i[2]})),outputs:outputs.map(x=>({label:x.label,value:dpv(x.value),unit:x.unit||''}))}};
   const outTxt=outputs.map(x=>`${x.label} = ${dpv(x.value)}${x.unit?' '+x.unit:''}`).join('; ');
   const inTxt=inputs.map(i=>`${i[0]} = ${i[1]}${i[2]?' '+i[2]:''}`).join('; ');
   if(o.has('narasi'))out.push({t:'p',text:`Berdasarkan perhitungan ${f.title.toLowerCase()}, diperoleh ${outTxt}.`});
@@ -907,6 +910,7 @@ async function partsRf(o){
 }
 async function partsProj(o){
   const out=[];
+  LASTMETA={calc_id:'proyeksi',title:'Proyeksi '+PROJ.regions.map(rg=>nameOf(rg.region.code)).join(', '),summary:{outputs:PROJ.regions.flatMap(rg=>rg.results.map(r=>{const e=(r.contributions.some(c=>c.applied)?r.scenario:r.baseline).path.slice(-1)[0];return {label:r.label+' '+e.label,value:fmt(e.v,r.kind==='ratio'?2:0),unit:''}}))}};
   for(const rg of PROJ.regions){
     if(!rg.results.length)continue;
     const labs=rg.results[0].baseline.path.map(p=>p.label),lastLab=rg.results[0].observed[rg.results[0].observed.length-1].label,nm=nameOf(rg.region.code);
@@ -924,6 +928,7 @@ async function partsProj(o){
 }
 async function partsModel(o){
   const r=MRES,f0=v=>fmt(v,Math.abs(v)<100?2:0),ev=r.events.length>0,u=r.target.unit?` (${r.target.unit})`:'',out=[],fin=r.final,e=fin[fin.length-1],l=r.target.history[r.target.history.length-1];
+  LASTMETA={calc_id:'model_multifaktor',title:'Proyeksi '+r.target.name,summary:{outputs:[{label:r.target.name+' '+e.year,value:f0(e.value),unit:r.target.unit||''},{label:'Metode',value:r.chosen.label,unit:''}]}};
   if(o.has('narasi'))out.push({t:'p',text:`${r.target.name} diproyeksikan ${r.horizon} tahun dengan metode ${r.chosen.label} (${r.chosen.why}): dari ${f0(l.value)}${r.target.unit?' '+r.target.unit:''} pada ${l.year} menjadi ${f0(e.value)} pada ${e.year} (rentang ${f0(e.lo)}–${f0(e.hi)}, interval ${Math.round(r.confidence*100)}%). ${(r.warnings||[]).join(' ')} Proyeksi merupakan perkiraan; kejadian/faktor tambahan adalah asumsi analis.`.trim()});
   if(o.has('tabel'))out.push({t:'table',caption:`Proyeksi ${r.target.name}${u}`,rows:[['Tahun',...(ev?['Jalur dasar']:[]),'Hasil','Batas bawah','Batas atas'],
       ...fin.map(p=>[String(p.year),...(ev?[f0(p.base)]:[]),f0(p.value),f0(p.lo),f0(p.hi)])]});
@@ -932,6 +937,7 @@ async function partsModel(o){
 }
 async function simParts(V,o){
   const info=V.info,out=[];
+  LASTMETA={calc_id:'sim_'+V.sim,title:'Simulasi '+info.title,summary:{outputs:info.metrics.flatMap(([k,lab,unit,d])=>{const v=V.sc[0].s.metrics[k];return v==null?[]:[{label:lab+(V.sc.length>1?' ('+V.sc[0].s.name+')':''),value:fmt(v,d),unit}]}).slice(0,6)}};
   if(o.has('narasi'))out.push({t:'p',text:`Simulasi ${info.title.toLowerCase()} dijalankan untuk ${V.sc.map(x=>x.s.name).join(', ')}. Simulasi ini merupakan alat penapisan dan komunikasi, bukan pengganti model regulatori; nilai parameter (laju emisi, koefisien peluruhan, dst.) adalah asumsi yang perlu diverifikasi.`});
   if(o.has('gambar'))for(let i=0;i<V.sc.length;i++){const c=$('#vC'+i);if(!c)continue;
     const blob=await new Promise(r=>c.toBlob(r,'image/png'));
@@ -946,7 +952,10 @@ async function simParts(V,o){
 }
 async function doInsert(btn,build){
   const msg=btn.parentElement.querySelector('[data-insmsg]')||$('#ctxInfo');btn.disabled=true;msg.textContent='menyisipkan…';
-  try{const n=await insertParts(await build(getOpts(btn)));msg.innerHTML=`<span class="pos">✓ ${n} blok disisipkan</span>`}
+  try{LASTMETA=null;const r=await insertParts(await build(getOpts(btn))),n=r.n;let rec='';
+    if(CTX.tool&&LASTMETA){try{const j=await docPost('/sim-runs',{doc_id:CTX.doc,origin_block_id:CTX.base,tool_id:CTX.tool,calc_id:LASTMETA.calc_id,title:LASTMETA.title,summary:LASTMETA.summary,block_ids:r.ids});
+      if((j.recorded||[]).length)rec=' · tercatat di tab Simulasi proyek'}catch(e){}}
+    msg.innerHTML=`<span class="pos">✓ ${n} blok disisipkan${rec}</span>`}
   catch(e){msg.innerHTML=`<span class="err">${esc(e.message)}</span>`}
   btn.disabled=false;
 }

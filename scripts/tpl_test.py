@@ -1,5 +1,6 @@
 """Uji katalog template outline tanpa NAS/DB:  python3 scripts/tpl_test.py   (butuh python-docx + lxml)."""
 import io
+import math
 import json
 import os
 import sys
@@ -190,6 +191,50 @@ def t_tools():
         except kf.CalcError:
             check(True, "")
         check("lalu_lintas" in tt.match("Dampak Jembatan terhadap Lalu Lintas") and "lalu_lintas" in tt.match("Jalan Tol"), "penanda jembatan/tol")
+        o = {x["key"]: x["value"] for x in kf.calc("shannon_wiener", {"n": "10, 10, 10, 10"})["outputs"]}
+        check(abs(o["H"] - math.log(4)) < 1e-9 and abs(o["E"] - 1) < 1e-9 and abs(o["D"] - 0.75) < 1e-9, "Shannon: 4 jenis sama banyak -> H=ln4, E=1, D=0,75")
+        r = kf.calc("inp_vegetasi", d("inp_vegetasi"))
+        check(abs(sum(float(x[5]) for x in r["table"]["rows"]) - 300) < 0.1, "INP total = 300% (KR+FR+DR)")
+        try:
+            kf.calc("inp_vegetasi", {**d("inp_vegetasi"), "plot": "1, 2"}); check(False, "panjang daftar berbeda harus ditolak")
+        except kf.CalcError:
+            check(True, "")
+        check("keanekaragaman" in tt.match("Komponen Biologi") and "keanekaragaman" in tt.match("Flora dan Fauna"), "penanda biota")
+        r = kf.calc("kepemilikan_kendaraan", d("kepemilikan_kendaraan")); o = {x["key"]: x["value"] for x in r["outputs"]}
+        check(len(r["table"]["rows"]) == 16 and o["lhr_n"] > o["lhr0"] and o["cagr"] > 0, "kepemilikan -> LHR tumbuh")
+        own = [float(x[2].replace(",", "")) for x in r["table"]["rows"]]
+        check(all(a < b for a, b in zip(own, own[1:])) and own[-1] < 800, "kepemilikan naik tapi di bawah nilai jenuh")
+        o = {x["key"]: x["value"] for x in kf.calc("pelebaran_jalan", d("pelebaran_jalan"))["outputs"]}
+        check(o["C2"] > o["C1"] and o["t2"] > o["t1"] and abs(o["m1"] - o["C1"] * 0.85 / 0.10) < 1e-6, "pelebaran: kapasitas & tahun jenuh")
+        r = kf.calc("waktu_puncak_lalin", {**d("waktu_puncak_lalin"), "C": 600}); o = {x["key"]: x["value"] for x in r["outputs"]}
+        check(len(r["table"]["rows"]) == 24 and o["n_lewat"] > 0 and abs(sum(float(x[1]) for x in r["table"]["rows"]) - 100) < 0.5, "profil 24 jam: jumlah porsi 100%, ada jam melebihi")
+        check(all(x["howto"].get("data") for x in kf.public_catalog() if x["id"] in ("pelebaran_jalan", "kepemilikan_kendaraan", "waktu_puncak_lalin")), "daftar data yang perlu disiapkan")
+        r = kf.calc("sampel_cochran", {"N": 1e9, "cl_pct": 95, "e_pct": 5, "p_pct": 50, "deff": 1, "nonresp_pct": 0}); o = {x["key"]: x["value"] for x in r["outputs"]}
+        check(abs(o["n0"] - 384.15) < 0.1 and abs(o["z"] - 1.95996) < 1e-4, "Cochran: 95%, e 5%, p 50% -> 384")
+        check(abs(kf.calc("sampel_slovin", {"N": 1000, "e_pct": 5})["outputs"][0]["value"] - 285.714) < 0.01, "Slovin N=1000,e=5% -> 285,7")
+        r = kf.calc("survei_responden", d("survei_responden")); o = {x["key"]: x["value"] for x in r["outputs"]}
+        rows = r["table"]["rows"]; desa = [int(x[4]) for x in rows if x[1].startswith("Desa")]; pops = [float(x[2].replace(",", "")) for x in rows if x[1].startswith("Desa")]
+        check(len(desa) == 15 and sum(desa) == o["n_final"] and all(a <= b for a, b in zip(desa, pops)) and min(desa) >= 5, "alokasi 15 desa: jumlah = total, >= minimum, <= populasi")
+        check(rows[-1][0] == "TOTAL" and int(rows[-1][4]) == o["n_final"] and sum(1 for x in rows if x[0].startswith("Subtotal")) == 3, "subtotal 3 kecamatan + total")
+        try:
+            kf.calc("survei_responden", {**d("survei_responden"), "per_kec": "5, 5"}); check(False, "jumlah desa per kecamatan salah harus ditolak")
+        except kf.CalcError:
+            check(True, "")
+        try:
+            kf.calc("survei_responden", {**d("survei_responden"), "minimum": 50}); check(False, "minimum melebihi total harus ditolak")
+        except kf.CalcError:
+            check(True, "")
+        e = kf.calc("galat_sampel", {"N": 1e9, "n": 384.1459, "cl_pct": 95, "p_pct": 50, "deff": 1})["outputs"][0]["value"]
+        check(abs(e - 5.0) < 0.01, "galat balik: n=384 -> 5%")
+        z2 = 1.959964 ** 2; N_, dd = 2500, 0.05
+        km = z2 * N_ * 0.25 / (dd * dd * (N_ - 1) + z2 * 0.25)
+        co = kf.calc("sampel_cochran", {"N": N_, "cl_pct": 95, "e_pct": 5, "p_pct": 50, "deff": 1, "nonresp_pct": 0})["outputs"][2]["value"]
+        check(abs(km - co) < 0.01, "Krejcie-Morgan = Cochran populasi hingga (aljabar sama)")
+        r = kf.calc("metode_sampel_banding", d("metode_sampel_banding")); check(len(r["table"]["rows"]) == 4 and "direkomendasikan" in r["table"]["rows"][0][0], "perbandingan metode memuat 4 metode + rekomendasi")
+        o = {x["key"]: x["value"] for x in kf.calc("survei_responden", {**d("survei_responden"), "metode": 1})["outputs"]}
+        check(o["n_final"] > kf.calc("survei_responden", d("survei_responden"))["outputs"][4]["value"], "metode Slovin dipilih -> jumlah berbeda dari Cochran")
+        o = {x["key"]: x["value"] for x in kf.calc("sampel_rata_rata", d("sampel_rata_rata"))["outputs"]}
+        check(abs(o["n0"] - (1.959964 * 1500000 / 200000) ** 2) < 0.1, "sampel rata-rata n0=(Zσ/d)²")
         for bad in ("dewatering_dupuit",):
             try:
                 kf.calc(bad, {**d(bad), "h": 30}); check(False, "H<=h harus ditolak")
@@ -204,6 +249,23 @@ def t_tools():
     check([b["id"] for b in export.strip_guide(bl)] == [1, 3], "petunjuk dibuang dari ekspor")
 
 
+def t_hints():
+    with tempfile.TemporaryDirectory() as td:
+        hp = Path(td) / "h.json"
+        hp.write_text(json.dumps({"version": 1, "items": {"ukl_upl": {"pertambangan": {"deskripsi": {"tenaga_kerja": [18, 33], "air_bersih": [10, 33]}},
+                                                                     "umum": {"kebisingan": {"bising": [7, 9]}}}}}), encoding="utf-8")
+        tc.HINTS, tc._hcache["mtime"] = hp, None
+        h = tc.calc_hints("ukl_upl", "pertambangan", "deskripsi")
+        check([x["tool"] for x in h] == ["tenaga_kerja", "air_bersih"] and h[0]["n"] == 18 and h[0]["of"] == 33, f"hint urut paling sering: {h}")
+        check(tc.calc_hints("ukl_upl", "migas", "kebisingan")[0]["tool"] == "bising", "jatuh ke 'umum' bila jenis kegiatan tak punya")
+        check(tc.calc_hints("andal", "pertambangan", "deskripsi") == [] and tc.calc_hints("ukl_upl", "pertambangan", "zzz") == [], "tanpa bukti -> kosong")
+        n = tc.annotate([{"l": 1, "t": "Deskripsi", "s": 100}, {"l": 1, "t": "Latar Belakang", "s": 100}], "pertambangan", "ukl_upl")
+        check(n[0]["tools"][:2] == ["tenaga_kerja", "air_bersih"] and n[0]["ht"][0]["of"] == 33 and "ht" not in n[1], "annotate membawa ht & tools")
+        check("ht" not in tc.annotate([{"l": 1, "t": "Deskripsi", "s": 100}], "pertambangan")[0], "tanpa kind -> tanpa ht (kompatibel)")
+        tc.HINTS, tc._hcache["mtime"] = Path("/nonexistent/h.json"), None
+        check(tc.calc_hints("ukl_upl", "pertambangan", "deskripsi") == [], "berkas hints tak ada -> kosong, tidak error")
+
+
 def t_wiring():
     try:
         from cmsapp import templates_api  # noqa: F401
@@ -216,6 +278,6 @@ def t_wiring():
 
 
 if __name__ == "__main__":
-    for fn in (t_classify, t_clean, t_extract, t_consensus, t_content, t_variants, t_search, t_tools, t_wiring):
+    for fn in (t_classify, t_clean, t_extract, t_consensus, t_content, t_variants, t_search, t_tools, t_hints, t_wiring):
         fn()
     print(f"OK: {OK} pemeriksaan lulus")

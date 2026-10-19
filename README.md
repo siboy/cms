@@ -129,6 +129,21 @@ berisi heading kosong yang bisa diedit per blok dan digeser seperti dokumen lain
   (+ gambar peta simulasi) tepat setelah blok itu lewat API blok biasa (izin edit berlaku). Pola struktural ("Tahap Konstruksi", "Komponen Geo-Fisik Kimia")
   hanya penanda longgar, bukan klaim isi. Mengubah pola: edit `TOOLS`/`_EXTRA` di `tpl_tools.py`.
 
+## Lokasi, wilayah studi, survei responden & simulasi per proyek (tab "Lokasi & Survei" dan "Simulasi")
+
+Di detail proyek (`cmsapp/ui/proj-site.js`, API `cmsapp/proj_site_api.py`, logika `utils/projsite.py` + `utils/projsite_store.py`):
+- **Layer koordinat** (titik/garis/poligon): formulir per baris atau impor/tempel CSV (`lat,lon,label`; header lat/lintang/y & lon/bujur/x; pemisah `, ; tab`; desimal titik/koma; derajat-menit-detik;
+  lon,lat tertukar dibalik otomatis; peringatan bila di luar Indonesia). Digambar jadi **SVG** (`/api/projects/<id>/map.svg`: grid derajat, skala km, panah utara, legenda); info panjang (km) dan luas (ha).
+- **Wilayah studi**: checklist bertingkat kab/kota → kecamatan → desa (data wilayah `/api/kd/regions`). **Level agregat mengikuti centang terdalam**: hanya kab/kota → data kab/kota;
+  kecamatan dicentang → data kecamatan; desa dicentang → rincian desa. Penduduk & KK dari DKB Kemendagri di NAS (periode terbaru).
+- **Jumlah responden otomatis** per unit wilayah menurut metode **A** Cochran (acuan), **B** Slovin/Yamane, **C** persentase tetap; parameter (kepercayaan, galat, p, efek desain, tak-respons, minimum per unit, dasar KK/jiwa)
+  disimpan per proyek (`cms_settings` kunci `proj:<id>:survey`). Tabel bisa diunduh CSV.
+- **Tugas simulasi**: topik (alat 🧮) × bagian dokumen; diusulkan dari judul heading dokumen proyek (pola topik, bukan struktural) atau ditambah manual; ditugaskan ke tenaga ahli, atau ikut **PIC bagian**.
+  Saat hasil disisipkan dari `/data-desa` (mode sisip), ringkasan hasil dicatat otomatis (`POST /api/sim-runs`) dan dicocokkan ke tugas → detail proyek menampilkan **sudah/belum disimulasikan**, persentase kelengkapan,
+  hasil terakhir, dan tombol **Buka alat** untuk tenaga ahli (`/api/me/sims` = tugas saya).
+- Tabel baru (SQLite: `SQLITE_DDL`; MySQL: `scripts/init_schema.sql`, jalankan `make init-schema`): `cms_project_layers`, `cms_project_regions`, `cms_project_sims`, `cms_project_sim_runs`.
+- Uji: `python3 scripts/projsite_test.py` (logika + penyimpanan, SQLite) dan `python3 scripts/projsite_api_test.py` (endpoint, auth di-stub).
+
 ## Multi-tenant: banyak perusahaan, banyak divisi (sejak 2026-10-06)
 
 Kebutuhan: CMS dipakai banyak perusahaan, tiap perusahaan punya divisi-divisi; laporan, pengguna,
