@@ -5,6 +5,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("CMS_MODULES", "all")          # uji fungsi: semua modul aktif (penguncian diuji di modules_test.py)
 from flask import Flask, g  # noqa: E402
 
 from cmsapp import auth  # noqa: E402

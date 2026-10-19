@@ -20,6 +20,9 @@ from utils import kd_projection as kp
 from utils.kd_data import KDStore, LocalSource, NASSource, depth
 from utils.kd_nas import NASError, SynologyReader, period_label
 
+from cmsapp.modules_api import guard, locked_response  # noqa: E402
+from utils import modules as mods  # noqa: E402
+
 bp = Blueprint("kd", __name__, url_prefix="/api/kd")
 CODE_RE = re.compile(r"^(\d{2}(\.\d{2}(\.\d{2}(\.\d{4})?)?)?)?$")
 UNIT_RE = re.compile(r"^(\d{2}(\.\d{2}(\.\d{2}(\.\d{4})?)?)?)(\+\d{2}(\.\d{2}(\.\d{2}(\.\d{4})?)?)?){0,59}$|^$")
@@ -81,7 +84,11 @@ def _keys(raw: list[str]) -> list[str]:
 def tools():
     """Daftar alat hitung/simulasi + pola judul bagian yang relevan (dipakai editor utk menandai heading)."""
     from utils import tpl_tools
-    return jsonify(tools=tpl_tools.public())
+    out = []
+    for t in tpl_tools.public():
+        mod = mods.TOOL_MODULE.get(t["id"])
+        out.append({**t, "module": mod, "locked": bool(mod) and not mods.is_on(mod)})
+    return jsonify(tools=out)
 
 
 # ---------------------------------------------------------------- meta
@@ -109,6 +116,7 @@ def meta():
 # ---------------------------------------------------------------- wilayah
 @bp.get("/regions")
 @auth.require()
+@guard("data_desa")
 def regions():
     parent = (request.args.get("parent") or "").strip()
     if not CODE_RE.match(parent) or depth(parent) >= 4:
@@ -118,12 +126,14 @@ def regions():
 
 @bp.get("/search")
 @auth.require()
+@guard("data_desa")
 def search():
     return jsonify(items=store().search(request.args.get("q", "")))
 
 
 @bp.get("/baselines")
 @auth.require()
+@guard("data_desa")
 def baselines():
     code = (request.args.get("region") or "").strip()
     code = "" if code == "nasional" else code
@@ -135,6 +145,7 @@ def baselines():
 # ---------------------------------------------------------------- deret historis
 @bp.get("/series")
 @auth.require()
+@guard("data_desa")
 def series():
     codes = _codes((request.args.get("regions") or "").split(","))
     keys = _keys((request.args.get("keys") or "").split(","))
@@ -144,6 +155,7 @@ def series():
 # ---------------------------------------------------------------- peta
 @bp.get("/children_values")
 @auth.require()
+@guard("data_desa")
 def children_values():
     parent = (request.args.get("parent") or "").strip()
     key = request.args.get("key", "")
@@ -161,6 +173,7 @@ def children_values():
 
 @bp.get("/geojson")
 @auth.require()
+@guard("data_desa")
 def geojson():
     parent = (request.args.get("parent") or "").strip()
     if not CODE_RE.match(parent) or depth(parent) >= 4:
@@ -177,10 +190,30 @@ def geojson():
 
 
 # ---------------------------------------------------------------- rumus
+def _reject_locked_funcs(text: str):
+    """Rumus sendiri boleh memanggil fungsi pustaka (rasional, usle, ...). Fungsi milik modul terkunci ditolak agar kunci tak bisa dilewati."""
+    import re as _re
+    extra = {"laju_aritmatika": "Kependudukan", "laju_eksponensial": "Kependudukan", "ugm3_ke_ppm": "Kualitas udara", "gumbel_k": "Hidrologi & erosi",
+             "gumbel_x": "Hidrologi & erosi", "efisiensi_perlu": "Air bersih & air limbah", "gauss": "Kualitas udara"}      # fungsi bernama yang bukan id katalog
+    for name in set(_re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text or "")):
+        if name not in kp._FUNCS:
+            continue
+        e = kfm.BY_ID.get(name)
+        category = e["category"] if e else extra.get(name)
+        mod = mods.formula_module(category) if category else None
+        if mod and not mods.is_on(mod):
+            return mod
+    return None
+
+
 @bp.post("/formula/check")
 @auth.require()
+@guard("proyeksi")
 def formula_check():
     text = (request.get_json(silent=True) or {}).get("formula", "")
+    lk = _reject_locked_funcs(text)
+    if lk:
+        return locked_response(lk)
     f = kp.Formula(text)
     allowed = {"base", "v0", "k", "g", "x", "x0", "dx", "w", "prev"} | set(cat.INDICATORS) | \
         {k + "_0" for k in cat.INDICATORS}
@@ -220,12 +253,17 @@ def _clean_driver(d: dict) -> dict:
 
 @bp.post("/project")
 @auth.require()
+@guard("proyeksi")
 def project():
     b = request.get_json(silent=True) or {}
     codes = _codes(b.get("regions") or [])
     keys = _keys(b.get("keys") or [])
     horizon = int(_num(b.get("horizon"), kp.HORIZON))
     drivers = [_clean_driver(d) for d in (b.get("drivers") or [])][:12]
+    for d in drivers:
+        lk = _reject_locked_funcs(d.get("formula", ""))
+        if lk:
+            return locked_response(lk)
     trends = b.get("trend") or {}
     st = store()
     data = st.series(codes, keys)
@@ -263,6 +301,7 @@ def _model_err(e):
 
 @bp.get("/annual")
 @auth.require()
+@guard("data_desa")
 def annual():
     code = _codes([request.args.get("region", "")])[0]
     key = request.args.get("key", "")
@@ -273,6 +312,7 @@ def annual():
 
 @bp.post("/model")
 @auth.require()
+@guard("proyeksi")
 def model():
     """Jalankan model proyeksi multi-faktor (kd_model.run). Seluruh data (target, faktor, kejadian) dikirim klien."""
     b = request.get_json(silent=True)
@@ -290,13 +330,27 @@ def _calc_err(e):
 @bp.get("/formulas")
 @auth.require()
 def formulas():
-    return jsonify(categories=kfm.CATEGORIES, items=kfm.public_catalog())
+    """Daftar kalkulator. Yang modulnya terkunci tetap tampil (judul, kategori) bertanda locked, tanpa isian & rumus lengkap."""
+    items = []
+    for it in kfm.public_catalog():
+        mod = mods.formula_module(it["category"])
+        if mod and not mods.is_on(mod):
+            items.append({"id": it["id"], "title": it["title"], "category": it["category"], "formula": "", "vars": [], "outs": [], "ref": "", "note": "",
+                          "docs": it["docs"], "expr": None, "fn": False, "howto": {"use": "", "read": "", "steps": [], "data": []}, "example": None,
+                          "locked": True, "module": mod, "module_label": mods.LABEL[mod]})
+        else:
+            items.append({**it, "locked": False, "module": mod})
+    return jsonify(categories=kfm.CATEGORIES, items=items)
 
 
 @bp.post("/calc")
 @auth.require()
 def calc():
     b = request.get_json(silent=True) or {}
+    e = kfm.BY_ID.get(str(b.get("id", "")))
+    mod = mods.formula_module(e["category"]) if e else None
+    if mod and not mods.is_on(mod):
+        return locked_response(mod)
     return jsonify(kfm.calc(str(b.get("id", "")), b.get("inputs") or {}))
 
 
@@ -309,11 +363,14 @@ def _sim_err(e):
 @bp.get("/sim/info")
 @auth.require()
 def sim_info():
-    out = {}
+    out, locked = {}, []
     for k, sch in ksc.SCHEMAS.items():
+        if not mods.is_on(mods.SIM_MODULE[k]):
+            locked.append({"id": k, "title": sch["title"], "module": mods.SIM_MODULE[k], "module_label": mods.LABEL[mods.SIM_MODULE[k]]})
+            continue
         out[k] = {"id": k, "title": sch["title"], "unit": sch["unit"], "unit_long": sch["unit_long"], "groups": sch["groups"], "lists": sch["lists"],
                   "presets": ksc.PRESETS[k], "guide": ksc.GUIDES[k], "metrics": ksc.METRICS[k]}
-    return jsonify(sims=out)
+    return jsonify(sims=out, locked=locked)
 
 
 @bp.post("/sim/run")
@@ -323,5 +380,7 @@ def sim_run():
     if not isinstance(b, dict) or b.get("sim") not in ksc.SCHEMAS:
         return _fail("sim harus water | air | noise")
     sim = b["sim"]
+    if not mods.is_on(mods.SIM_MODULE[sim]):
+        return locked_response(mods.SIM_MODULE[sim])
     scen = ksm.build_scenarios(sim, b.get("params") or {}, b.get("compare"), b.get("variation"))
     return jsonify(ksm.run(sim, scen, int(_num(b.get("frames"), 40))))

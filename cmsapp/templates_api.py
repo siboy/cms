@@ -5,13 +5,12 @@ setiap perusahaan (stack) hanya membaca katalog yang sama dan menyalinnya ke dok
 Hasil salinan = dokumen biasa berisi heading H1-H4 (+ petunjuk/isi opsional; petunjuk tidak ikut ekspor DOCX secara bawaan) -- diedit/digeser lewat editor blok seperti dokumen lain."""
 from __future__ import annotations
 
-import json
 import os
-from datetime import datetime
 
 from flask import Blueprint, g, jsonify, request
 
 from cmsapp import auth
+from utils import modules as mods
 from utils import tpl_catalog as tc
 
 bp = Blueprint("templates", __name__, url_prefix="/api/templates")
@@ -19,26 +18,14 @@ S = auth.store
 PERM = "template_use"
 
 
-# ---- lisensi fitur: terkunci sampai dibeli (pembayaran) & diaktifkan superadmin. Terkunci = hanya pratinjau DEMO_IDS, tanpa impor.
-LICENSE_KEY = "feature:templates"
+# ---- fitur Template = modul "templates" (utils/modules.py), diaktifkan OPERATOR lewat cmspanel (env CMS_MODULES). Terkunci = hanya
+# pratinjau DEMO_IDS (3 template contoh), impor ditolak. Pengguna/superadmin tenant tidak bisa mengaktifkan sendiri.
 DEMO_IDS = [x.strip() for x in (os.environ.get("CMS_TPL_DEMO") or "ka-umum,ukl_upl-pertambangan,andal-pertambangan").split(",") if x.strip()]
 
 
 def license_state() -> dict:
-    """active: fitur terbuka penuh. Env CMS_FEATURE_TEMPLATES=1/0 = penguncian tingkat platform (operator): 1 selalu aktif, 0 selalu
-    terkunci -- superadmin tenant tak bisa mengubahnya. Tanpa env, status disimpan di DB (cms_settings) dan diaktifkan superadmin."""
-    forced = (os.environ.get("CMS_FEATURE_TEMPLATES") or "").strip()
-    try:
-        raw = json.loads(S().get_setting(LICENSE_KEY, "") or "{}")
-    except (ValueError, TypeError):
-        raw = {}
-    if forced in ("1", "0"):
-        active = forced == "1"
-    else:
-        active = bool(raw.get("active"))
-    return {"active": active, "forced": ("on" if forced == "1" else "off") if forced in ("1", "0") else None, "demo_ids": DEMO_IDS,
-            "payment_ref": raw.get("payment_ref") if active else None, "activated_by": raw.get("activated_by") if active else None,
-            "activated_at": raw.get("activated_at") if active else None}
+    return {"active": mods.is_on("templates"), "forced": "on" if mods.is_on("templates") else "off", "demo_ids": DEMO_IDS,
+            "payment_ref": None, "activated_by": None, "activated_at": None}
 
 
 def _locked(tid: str | None = None) -> bool:
@@ -134,32 +121,10 @@ def copy_template(tid):
 
 
 def _public_license(lic: dict) -> dict:
-    return {**lic, "can_manage": bool(g.user.get("is_super")), "can_import": lic["active"]}
+    return {**lic, "can_manage": False, "can_import": lic["active"]}      # aktivasi hanya oleh operator (cmspanel), bukan di tenant
 
 
 @bp.get("/license")
 @auth.require(PERM)
 def get_license():
-    return jsonify(license=_public_license(license_state()))
-
-
-@bp.post("/license")
-@auth.require()
-def set_license():
-    """Hanya superadmin. Body: {active: true, payment_ref} -- aktivasi WAJIB menyertakan referensi pembayaran (dicatat bersama siapa & kapan);
-    {active: false} mematikan lagi. Diabaikan (409) bila platform mengunci lewat env CMS_FEATURE_TEMPLATES."""
-    if not g.user.get("is_super"):
-        return jsonify(error="hanya superadmin yang dapat mengaktifkan/menonaktifkan fitur ini"), 403
-    if license_state()["forced"]:
-        return jsonify(error="status fitur dikunci oleh operator platform (CMS_FEATURE_TEMPLATES)"), 409
-    d = body()
-    if d.get("active"):
-        ref = str(d.get("payment_ref") or "").strip()
-        if len(ref) < 3:
-            return jsonify(error="isi referensi pembayaran (no. invoice/bukti bayar) untuk mengaktifkan"), 400
-        val = {"active": True, "payment_ref": ref[:120], "activated_by": g.user["username"], "activated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-    else:
-        val = {"active": False}
-    S().set_setting(LICENSE_KEY, json.dumps(val))
-    S().log_activity(g.user["username"], "feature.templates", summary=("aktif, ref " + val["payment_ref"]) if val["active"] else "dinonaktifkan")
     return jsonify(license=_public_license(license_state()))

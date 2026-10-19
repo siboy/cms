@@ -1560,7 +1560,7 @@ function bodyOf(b){
   d.style.color='var(--mut)';return d}
  const d=document.createElement('div');d.className='txt';d.append(mk2dom(b.text));return d}
 let KDTOOLS=null;
-async function loadTools(){if(KDTOOLS)return KDTOOLS;try{KDTOOLS=(await api('GET','/kd/tools')).tools.map(t=>({...t,re:t.patterns.map(p=>new RegExp(p,'i'))}))}catch(e){KDTOOLS=[]}return KDTOOLS}
+async function loadTools(){if(KDTOOLS)return KDTOOLS;try{KDTOOLS=(await api('GET','/kd/tools')).tools.filter(t=>!t.locked).map(t=>({...t,re:t.patterns.map(p=>new RegExp(p,'i'))}))}catch(e){KDTOOLS=[]}return KDTOOLS}
 // heading/caption yang judulnya terkait mesin hitung/simulasi (pola dari server: utils/tpl_tools.py)
 function toolsFor(b){if(!KDTOOLS||!['heading','caption'].includes(b.kind))return[];
  const t=(b.text||'').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,''),ex=(b.data&&b.data.tools)||[];   // data.tools = bagian yang di dokumen contoh memuat perhitungan (dari template)

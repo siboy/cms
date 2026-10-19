@@ -31,7 +31,7 @@ function simSave() {
 
 async function initSim() {
   if (!SIM.info) {
-    try { SIM.info = (await api('/sim/info')).sims; } catch (e) { $('#simOut').innerHTML = `<div class="note">${esc(e.message)}</div>`; return; }
+    try { const r0 = await api('/sim/info'); SIM.info = r0.sims; SIM.locked = r0.locked || []; if (!(SIM.cur in SIM.info)) SIM.cur = Object.keys(SIM.info)[0] || SIM.cur; } catch (e) { $('#simOut').innerHTML = `<div class="note">${esc(e.message)}</div>`; return; }
     const saved = store.get('sim', {});
     for (const k of Object.keys(SIM.info)) {
       const d = schemaDefaults(SIM.info[k]);
@@ -41,9 +41,11 @@ async function initSim() {
   }
   renderSim();
 }
+function lockedSims() { return (SIM.locked || []).map(l => `<button class="cat" disabled title="Modul ${esc(l.module_label)} belum diaktifkan" style="opacity:.6">🔒 ${esc(SIMNAME[l.id] || l.title)}</button>`).join(''); }
 function renderSim() {
+  if (!SIM.info[SIM.cur]) { $('#simTabs').innerHTML = lockedSims(); $('#simGuide').innerHTML = ''; $('#simPresets').innerHTML = ''; $('#simRun').innerHTML = ''; $('#simForm').innerHTML = ''; $('#simOut').innerHTML = '<div class="lockb">🔒 <b>Simulator lingkungan belum diaktifkan.</b> Tersedia per modul (air sungai, udara cerobong, kebisingan) setelah pembelian dan diaktifkan oleh penyedia layanan/operator.</div>'; return; }
   const info = SIM.info[SIM.cur];
-  $('#simTabs').innerHTML = Object.keys(SIM.info).map(k => `<button class="cat ${k === SIM.cur ? 'cur' : ''}" data-sim="${k}">${SIMNAME[k]}</button>`).join('');
+  $('#simTabs').innerHTML = Object.keys(SIM.info).map(k => `<button class="cat ${k === SIM.cur ? 'cur' : ''}" data-sim="${k}">${SIMNAME[k]}</button>`).join('') + lockedSims();
   $('#simGuide').innerHTML = `<summary><b>📖 Petunjuk penggunaan — ${esc(info.title)}</b></summary>` + info.guide.map(s =>
     `<div style="margin:8px 0 4px"><b>${esc(s.title)}</b></div><ul class="small" style="margin:0 0 6px 18px;padding:0">${s.items.map(i => `<li style="margin:2px 0">${esc(i)}</li>`).join('')}</ul>`).join('');
   $('#simPresets').innerHTML = info.presets.map((p, i) => `<button class="b" data-preset="${i}" title="${esc(p.desc)}">${esc(p.name)}</button>`).join('');

@@ -74,7 +74,7 @@ services:
       CMS_DATA_DIR: /data
       CMS_EXPORT_DIR: /data/exports
       CMS_BASE_URL: ${CMS_BASE_URL:?isi di .env}    # https://<subdomain-tenant>, dipakai link email & share
-      CMS_FEATURE_TEMPLATES: ${CMS_FEATURE_TEMPLATES:-}  # fitur Template: 0 = dikunci operator (hanya pratinjau 3 contoh), 1 = selalu aktif, kosong = diatur superadmin tenant
+      CMS_MODULES: ${CMS_MODULES:-none}               # modul fitur berlangganan yang aktif (diatur OPERATOR lewat cmspanel): none | all | templates,calc_lalin,...
       CMS_COOKIE_SECURE: ${CMS_COOKIE_SECURE:-1}    # 1: wajib HTTPS (di belakang nginx+cert)
       CMS_SMTP_HOST: ${CMS_SMTP_HOST:-}
       CMS_SMTP_PORT: ${CMS_SMTP_PORT:-587}

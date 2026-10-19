@@ -85,9 +85,8 @@ function renderLic(){
       try{st.lic=(await api('POST','/templates/license',{active:false})).license;renderLic();load()}catch(e){alert(e.message)}};
     return}
   box.innerHTML=`<div class="licbox off">🔒 <b>Fitur Template belum diaktifkan.</b> Anda hanya dapat <b>melihat pratinjau ${l.demo_ids.length} template contoh</b> (bertanda “Pratinjau gratis”); template lain terkunci dan <b>tidak bisa diimpor</b> ke dokumen.
-    <div class="small mut" style="margin-top:4px">Untuk membuka semua template dan mengimpor, fitur perlu <b>dibeli (pembayaran)</b> lalu <b>diaktifkan oleh superadmin</b>.${l.forced==='off'?' Penguncian ditetapkan operator platform.':''}</div>
-    ${l.can_manage&&!l.forced?`<div class="row" style="margin-top:8px"><input id="licRef" placeholder="Referensi pembayaran (no. invoice / bukti bayar)"><button type="button" id="licOn" class="p">Aktifkan fitur</button><span class="small mut">Hanya superadmin. Referensi pembayaran dicatat bersama nama &amp; waktu aktivasi.</span></div>`
-      :(l.forced?'':'<div class="small" style="margin-top:6px">Hubungi superadmin untuk pembelian dan aktivasi.</div>')}</div>`;
+    <div class="small mut" style="margin-top:4px">Untuk membuka semua template dan mengimpor, fitur perlu <b>dibeli (pembayaran)</b> lalu <b>diaktifkan oleh operator platform</b>.</div>
+    <div class="small" style="margin-top:6px">Aktivasi dilakukan oleh penyedia layanan (operator) setelah pembayaran — hubungi mereka untuk berlangganan.</div></div>`;
   if($('#licOn'))$('#licOn').onclick=async()=>{const ref=$('#licRef').value.trim();if(ref.length<3)return alert('Isi referensi pembayaran dulu.');
     if(!confirm('Aktifkan fitur Template? Pastikan pembayaran sudah terkonfirmasi.'))return;
     try{st.lic=(await api('POST','/templates/license',{active:true,payment_ref:ref})).license;renderLic();load();if(st.cur)open(st.cur)}catch(e){alert(e.message)}};
@@ -111,7 +110,7 @@ async function load(){
 $('#kinds').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;st.kind=b.dataset.k;load()};
 $('#cat').onchange=e=>{st.cat=e.target.value;load()};
 $('#q').oninput=e=>{clearTimeout(timer);timer=setTimeout(()=>{st.q=e.target.value.trim();load()},200)};
-$('#list').onclick=e=>{const c=e.target.closest('.card');if(!c)return;if(c.dataset.lock){$('#msg').innerHTML='<div class="note">🔒 Template ini terkunci. Aktifkan fitur Template (pembelian + aktivasi superadmin) untuk membuka semua template dan mengimpor.</div>';return}$('#msg').innerHTML='';open(c.dataset.id)};
+$('#list').onclick=e=>{const c=e.target.closest('.card');if(!c)return;if(c.dataset.lock){$('#msg').innerHTML='<div class="note">🔒 Template ini terkunci. Aktifkan fitur Template (pembelian + aktivasi oleh operator) untuk membuka semua template dan mengimpor.</div>';return}$('#msg').innerHTML='';open(c.dataset.id)};
 
 let TOOLS={};
 function htHtml(n){return (n.ht||[]).length?`<div class="tl">📊 <b>Di dokumen contoh sejenis, bagian ini memuat perhitungan:</b> ${n.ht.map(h=>TOOLS[h.tool]?`<span class="chip" title="${esc(TOOLS[h.tool].why)}">${TOOLS[h.tool].icon} ${esc(TOOLS[h.tool].label)} <span class="sh">· ${h.n} dari ${h.of} dokumen</span></span>`:'').join(' ')}</div>`:''}
@@ -144,7 +143,7 @@ async function open(id){
      <div class="x hide" id="x${i}">${blocksHtml(n)}</div>`).join('')}</div>
    <div class="row"><span class="mut small fill">${t.nodes.length} bagian${t.n_nodes_all>t.nodes.length?' (dari '+t.n_nodes_all+')':''} — setelah disalin, semuanya blok biasa: edit, geser, atau hapus di editor.</span>
    ${st.lic&&!st.lic.active?'<button class="p" id="cp" disabled title="Impor terkunci sampai fitur diaktifkan">🔒 Impor terkunci</button>':'<button class="p" id="cp">Salin jadi dokumen</button>'}</div>
-   ${st.lic&&!st.lic.active?'<div class="note">Ini pratinjau contoh. Mengimpor template ke dokumen memerlukan fitur Template yang aktif (pembelian + aktivasi superadmin).</div>':''}
+   ${st.lic&&!st.lic.active?'<div class="note">Ini pratinjau contoh. Mengimpor template ke dokumen memerlukan fitur Template yang aktif (pembelian + aktivasi oleh operator).</div>':''}
    <div class="note">${esc(r.disclaimer||'Template hanya kerangka dan contoh isi; penyusun tetap wajib menyesuaikan dengan peraturan yang berlaku dan karakter rencana kegiatan.')} Teks contoh disusun dari pola dokumen yang sudah diajukan; nama pemrakarsa &amp; wilayah diganti placeholder <code>[…]</code>.</div>`;
   const rg=$('#min');if(rg){rg.oninput=()=>{st.min=+rg.value;$('#mv').textContent=st.min===0?'lengkap':'hanya yang ≥ '+st.min+'%'};rg.onchange=()=>open(id)}
   const tog=(i,on)=>{const x=$('#x'+i);if(!x)return;x.classList.toggle('hide',on===undefined?!x.classList.contains('hide'):!on);

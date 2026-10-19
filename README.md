@@ -112,12 +112,15 @@ berisi heading kosong yang bisa diedit per blok dan digeser seperti dokumen lain
   ({title, min_share, include_guide, include_content, project_id, report_type, label}). Uji: `python3 scripts/tpl_test.py` (tanpa NAS/DB).
 - Template = kerangka judul, bukan isi/pedoman hukum; penyusun tetap wajib menyesuaikan dgn peraturan berlaku (dinyatakan di UI).
 
-**Lisensi fitur Template (terkunci sampai dibeli & diaktifkan superadmin)** — `cmsapp/templates_api.py`:
-- Bawaan **terkunci**: pengguna ber-izin `template_use` hanya bisa **mempratinjau 3 template contoh** (`ka-umum`, `ukl_upl-pertambangan`, `andal-pertambangan`; ubah lewat env `CMS_TPL_DEMO`); template lain tampil terkunci (🔒) dan tak bisa dibuka;
-  **impor/salin ke dokumen ditolak (403 `locked`)** untuk semua template.
-- Aktivasi hanya oleh **superadmin** di halaman `/templates` (`POST /api/templates/license {active, payment_ref}`): wajib mengisi **referensi pembayaran** (dicatat bersama nama & waktu). Status di `cms_settings` kunci `feature:templates`.
-- Penguncian tingkat platform: env `CMS_FEATURE_TEMPLATES=0` (selalu terkunci) / `=1` (selalu aktif) di `.env`/compose tenant — superadmin tenant tak bisa mengubahnya (409). Pakai `=0` bila superadmin tenant tidak boleh mengaktifkan sendiri.
-- Izin `template_use` di-seed ke grup author, owner, reviewer/qc (`scripts/init_schema.sql`). Belum ada integrasi gateway pembayaran: pembayaran dikonfirmasi di luar sistem lalu diaktifkan manual.
+**Modul fitur berlangganan per tenant (dikunci; hanya OPERATOR yang bisa membuka)** — `utils/modules.py`, `cmsapp/modules_api.py`:
+- 17 modul: *Platform* (`templates`, `data_desa`, `proyeksi`, `proyek_lokasi`, `proyek_simulasi`) dan *Engine* per topik (`calc_survei`, `calc_lalin`, `calc_limbah`, `calc_kualitas_air` + simulasi sungai,
+  `calc_udara` + simulasi cerobong, `calc_bising` + simulasi bunyi, `calc_hidrologi`, `calc_tambang`, `calc_sosial`, `calc_hayati`, `calc_grk`, `calc_ekonomi`). Daftar kunci: `bash scripts/tenant-feature.sh modules`.
+- Status per tenant = env **`CMS_MODULES`** di `.env` tenant: `none` (bawaan; semua terkunci), `all`, atau daftar `templates,calc_lalin,...`. Tenant baru dari `add-tenant.sh` otomatis `none`.
+- **Ditegakkan di server** (`@guard(modul)` → 403 `{code: module_locked}`): endpoint Data Desa, proyeksi/model, tiap kalkulator (menurut kategori) dan simulator 2-D, tab proyek (lokasi/wilayah, survei, tugas simulasi). Daftar rumus tetap tampil dengan 🔒 tanpa rincian;
+  tombol 🧮 di editor menyembunyikan alat terkunci; rumus sendiri di proyeksi tidak bisa memanggil fungsi milik modul terkunci. Template terkunci = hanya pratinjau 3 contoh (`CMS_TPL_DEMO`) dan impor ditolak.
+- Pengguna & superadmin tenant **tidak bisa** mengaktifkan modul. Operator mengaturnya di **cmspanel → "🧩 Fitur & modul per perusahaan"** (`/modules`: matriks checkbox perusahaan × modul; mengaktifkan modul baru wajib mengisi referensi pembayaran;
+  jejak perubahan di `panel.json` `modules_log`), pintasan menu **⋮** pada kartu tenant, atau CLI `bash scripts/tenant-feature.sh <slug> enable|disable <modul,...>`. Perubahan menulis `.env` lalu `docker compose up -d` (hanya app & worker tenant itu dibuat ulang).
+- Belum ada gateway pembayaran: pembayaran dikonfirmasi di luar sistem. Uji: `python3 scripts/modules_test.py` (penguncian API) dan `python3 scripts/panel_test.py` (panel, tenant tiruan).
 
 **Petunjuk tidak ikut ekspor & penanda alat hitung/simulasi**
 - Blok "Petunjuk:" (`data.source=template_guide`) **tidak ikut ekspor DOCX** secara bawaan (`cmsapp/export.py: strip_guide`; cache ekspor

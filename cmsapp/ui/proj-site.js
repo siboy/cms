@@ -26,6 +26,11 @@
     document.body.append(m); m.onclick = e => { if (e.target === m) m.remove(); };
     return m;
   }
+  // modul fitur aktif (diatur OPERATOR; GET /api/modules). Terkunci = kartu pemberitahuan, bukan fungsi.
+  let MODS = null;
+  const mods = async () => { if (!MODS) { try { const r = await api('GET', '/modules'); MODS = Object.fromEntries(r.modules.map(m => [m.key, m])); } catch (e) { MODS = {}; } } return MODS; };
+  const lockCard = (m, why) => `<div class=card style="border-color:#b45309"><b>🔒 Modul “${esc(m ? m.label : '')}” belum diaktifkan.</b><p class=sum>${why || 'Fitur ini tersedia setelah pembelian (pembayaran) dan diaktifkan oleh penyedia layanan/operator — hubungi mereka untuk berlangganan.'}</p></div>`;
+  const isOff = async k => { const M = await mods(); return M[k] && !M[k].on; };
   const canManage = async () => { try { return !!(await api('GET', `/projects/${curProj}/team`)).can_manage; } catch (e) { return false; } };
   const dl = (name, text, type) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: type || 'text/csv'})); a.download = name; a.click(); };
   const csvCell = v => /[",\n;]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
@@ -33,12 +38,13 @@
   // =============================================================================================== LOKASI & SURVEI
   window.tabLokasi = async function () {
     style();
-    const pid = curProj, manage = await canManage();
+    const pid = curProj, manage = await canManage(), M = await mods();
+    if (M.proyek_lokasi && !M.proyek_lokasi.on) { $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>📍 Lokasi, Wilayah Studi & Survei</b></div>${lockCard(M.proyek_lokasi)}${M.calc_survei && !M.calc_survei.on ? lockCard(M.calc_survei) : ''}</div>`; return; }
     $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>📍 Lokasi, Wilayah Studi & Survei</b></div>
      <p style="color:var(--mut);font-size:12px">Alur: (1) masukkan koordinat lokasi sebagai layer → peta; (2) centang wilayah studi (kab/kota → kecamatan → desa); (3) jumlah penduduk dan responden survei dihitung otomatis dari data Kemendagri.</p>
      <div class=card id=lyCard>memuat…</div><div class=card id=rgCard>memuat…</div><div class=card id=svCard>memuat…</div></div>`;
     await Promise.all([paintLayers(pid, manage), paintRegions(pid, manage)]);
-    await paintSurvey(pid, manage);
+    if (M.calc_survei && !M.calc_survei.on) $('#svCard').innerHTML = lockCard(M.calc_survei, 'Kalkulator survei responden belum diaktifkan, sehingga jumlah responden per unit tidak dihitung.'); else await paintSurvey(pid, manage);
   };
 
   // ---- layer koordinat
@@ -144,7 +150,7 @@
     $('#rgSave').onclick = async () => {
       $('#rgMsg').textContent = 'menyimpan…';
       try { await api('PUT', `/projects/${pid}/regions`, {items: [...sel].map(([code, name]) => ({code, name}))}); $('#rgMsg').textContent = '';
-        note('Wilayah studi disimpan'); const R2 = await api('GET', `/projects/${pid}/regions`); renderAgg(R2); await paintSurvey(pid, manage); }
+        note('Wilayah studi disimpan'); const R2 = await api('GET', `/projects/${pid}/regions`); renderAgg(R2); if (!(await isOff('calc_survei'))) await paintSurvey(pid, manage); }
       catch (e) { $('#rgMsg').innerHTML = `<span class=err>${esc(e.message)}</span>`; }
     };
   }
@@ -196,7 +202,8 @@
   // =============================================================================================== SIMULASI
   window.tabSimulasi = async function () {
     style();
-    const pid = curProj, manage = await canManage();
+    const pid = curProj, manage = await canManage(), M = await mods();
+    if (M.proyek_simulasi && !M.proyek_simulasi.on) { $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>🧮 Simulasi & perhitungan proyek</b></div>${lockCard(M.proyek_simulasi)}</div>`; return; }
     const [D, team] = await Promise.all([api('GET', `/projects/${pid}/sims`), api('GET', `/projects/${pid}/team`).then(r => r.team || []).catch(() => [])]);
     const people = team.filter(t => t.user_id);
     const meId = (typeof me !== 'undefined' && me) ? me.id : null, mine = D.sims.filter(s => s.assignee && s.assignee.id === meId);

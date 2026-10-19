@@ -25,6 +25,13 @@ import time
 
 from flask import Flask, abort, jsonify, redirect, request, session
 
+try:
+    from utils import modules as mods
+except ImportError:                                     # dijalankan dari folder lain tanpa PYTHONPATH -> pakai repo ini
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from utils import modules as mods
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE = os.environ.get("CMS_TENANTS_DIR", os.path.expanduser("~/cms-tenants"))
 PASSWORD = os.environ.get("PANEL_PASSWORD", "")
@@ -191,6 +198,15 @@ def do_login():
 
 
 # ---------------------------------------------------------------- API
+def tenant_modules(env: dict) -> set:
+    """Modul fitur yang diaktifkan operator untuk tenant ini (CMS_MODULES di .env; kosong/tak ada = semua terkunci)."""
+    return mods.parse(env.get("CMS_MODULES"))
+
+
+def templates_state(env: dict) -> str:
+    return "on" if "templates" in tenant_modules(env) else "off"
+
+
 @app.get("/api/tenants")
 def api_tenants():
     items = []
@@ -206,7 +222,8 @@ def api_tenants():
                           "port": env.get("TENANT_PORT"), "workers": env.get("CMS_WORKERS", "3"),
                           "app_mem": env.get("APP_MEM", "2g"), "mysql_mem": env.get("MYSQL_MEM", "2g"),
                           "storage_limit_gb": m.get("storage_limit_gb"), "minio": bool((m.get("minio") or {}).get("endpoint")),
-                          "states": container_states(slug)})
+                          "templates": templates_state(env), "modules": sorted(tenant_modules(env)),
+                          "modules_log": (m.get("modules_log") or [])[-1:], "states": container_states(slug)})
     return jsonify(tenants=items)
 
 
@@ -259,6 +276,57 @@ def api_power(slug):
     args = {"up": ["up", "-d"], "stop": ["stop"], "restart": ["restart"]}[action]
     rc, out = compose(slug, *args)
     return (jsonify(ok=True) if rc == 0 else (jsonify(error=out[-800:]), 500))
+
+
+def apply_modules(slug: str, wanted: set, ref: str, by: str = "panel") -> tuple[dict, int]:
+    """Tulis CMS_MODULES ke .env tenant lalu `compose up -d` (hanya container yang berubah dibuat ulang). Mengaktifkan modul BARU wajib
+    menyertakan referensi pembayaran; jejak perubahan disimpan di panel.json (modules_log)."""
+    envp = os.path.join(tenant_dir(slug), ".env")
+    cur = tenant_modules(read_env(envp))
+    added, removed = sorted(wanted - cur), sorted(cur - wanted)
+    if not added and not removed:
+        return {"ok": True, "modules": sorted(cur), "note": "tidak ada perubahan"}, 200
+    if added and len(ref.strip()) < 3:
+        return {"error": "isi referensi pembayaran (no. invoice / bukti bayar) untuk mengaktifkan modul baru"}, 400
+    update_env(envp, {"CMS_MODULES": mods.format_env(wanted)})
+    rc, out = compose(slug, "up", "-d")
+    if rc != 0:
+        return {"error": f"gagal menerapkan (compose up -d): {out[-500:]}"}, 500
+    m = read_meta(slug)
+    log = m.get("modules_log") or []
+    log.append({"at": time.strftime("%Y-%m-%d %H:%M:%S"), "by": by, "enabled": added, "disabled": removed, "ref": ref.strip()[:120] if added else ""})
+    m["modules_log"] = log[-50:]
+    write_meta(slug, m)
+    return {"ok": True, "modules": sorted(wanted), "enabled": added, "disabled": removed}, 200
+
+
+@app.get("/api/modules")
+def api_modules():
+    return jsonify(modules=mods.MODULES, groups=["Platform", "Engine"])
+
+
+@app.post("/api/tenants/<slug>/modules")
+def api_tenant_modules(slug):
+    """Body: {modules: [kunci...], payment_ref}. Daftar menggantikan seluruh set modul aktif tenant."""
+    tenant_dir(slug)
+    d = request.get_json(silent=True) or {}
+    keys = d.get("modules")
+    if not isinstance(keys, list) or any(k not in mods.KEYS for k in keys):
+        return jsonify(error="modules: daftar kunci modul yang dikenal"), 400
+    body, code = apply_modules(slug, set(keys), str(d.get("payment_ref") or ""))
+    return jsonify(body), code
+
+
+@app.post("/api/tenants/<slug>/features/templates")
+def api_feature_templates(slug):
+    """Pintasan menu ⋮: aktif/nonaktifkan modul Template saja (modul lain tidak berubah)."""
+    d = request.get_json(silent=True) or {}
+    cur = tenant_modules(read_env(os.path.join(tenant_dir(slug), ".env")))
+    want = (cur | {"templates"}) if d.get("active") else (cur - {"templates"})
+    body, code = apply_modules(slug, want, str(d.get("payment_ref") or ""))
+    if code == 200:
+        body["templates"] = "on" if "templates" in want else "off"
+    return jsonify(body), code
 
 
 @app.post("/api/tenants/<slug>/settings")
@@ -339,23 +407,29 @@ def _page(body: str) -> str:
 @app.get("/")
 def home():
     return _page("""
-<header><b>🏢 CMS Control Panel — semua tenant</b><button class=p id=bnew>+ Perusahaan baru</button></header>
+<style>.card{position:relative}.kb{border:0;background:transparent;font-size:20px;line-height:1;padding:0 6px;cursor:pointer;color:var(--mut)}.kb:hover{color:var(--fg,inherit)}
+.kmenu{position:absolute;right:8px;top:30px;z-index:20;min-width:230px;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:8px;box-shadow:0 6px 20px #0003;padding:4px}
+.kmenu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px}.kmenu button:hover{background:var(--acc-soft,#2563eb1a)}
+.kmenu .kh{font-size:11px;color:var(--mut);padding:4px 10px}.tpl-on{color:var(--ok)}.tpl-off{color:orange}</style>
+<header><b>🏢 CMS Control Panel — semua tenant</b><a href="/modules"><button type=button>🧩 Fitur &amp; modul per perusahaan</button></a><button class=p id=bnew>+ Perusahaan baru</button></header>
 <main><div class=grid id=cards>memuat…</div></main>
 <script>
 const H={'Content-Type':'application/json','X-PANEL':'1'};
 const api=(m,u,b)=>fetch(u,{method:m,headers:H,body:b?JSON.stringify(b):undefined}).then(async r=>{
  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j});
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let tenants=[];
 const gb=b=>b==null?'?':(b/1073741824).toFixed(2)+' GB';
 const DOTC={running:'var(--ok)',absent:'var(--mut)',exited:'var(--bad)',restarting:'orange',paused:'orange',created:'var(--mut)'};
-async function paint(){const {tenants}=await api('GET','/api/tenants');
+async function paint(){const res=await api('GET','/api/tenants');tenants=res.tenants;
  document.querySelector('#cards').innerHTML=tenants.map(t=>{
   const dots=['app','worker','mysql','redis'].map(c=>{const s=t.states[c]||{};
    const unhealthy=s.health&&s.health!=='healthy';
    return `<span title="${c}: ${esc(s.status)} ${esc(s.health||'')}"><i class=dot style="background:${unhealthy?'orange':DOTC[s.status]||'var(--mut)'}"></i>${c}</span>`}).join(' ');
   const up=(t.states.app||{}).status==='running';
   return `<div class=card data-slug="${esc(t.slug)}">
-   <div class=row><b style="flex:1">${esc(t.company)}</b><small>cms-${esc(t.slug)}</small></div>
+   <div class=row><b style="flex:1">${esc(t.company)}</b><small>cms-${esc(t.slug)}</small><button class=kb data-act=menu title="Menu lainnya" aria-label="Menu lainnya">⋮</button></div>
+   <div class=row><small>📑 Template: ${t.templates==='on'?'<b class=tpl-on>aktif</b>':t.templates==='off'?'<b class=tpl-off>🔒 terkunci (pratinjau 3 contoh)</b>':'diatur superadmin tenant'}</small></div>
    <div class=row><small>${esc(t.domain||'-')} · :${esc(t.port||'?')} · ${esc(t.admin_email||'tanpa email')}</small></div>
    <div class=row style="font-size:11.5px">${dots}</div>
    <div class=row><small>RAM app ${esc(t.app_mem)} · MySQL ${esc(t.mysql_mem)} · ${esc(t.workers)} worker · kuota ${esc(t.storage_limit_gb??'-')} GB${t.minio?' · MinIO ✓':''}</small></div>
@@ -368,7 +442,21 @@ async function paint(){const {tenants}=await api('GET','/api/tenants');
   b.disabled=true;try{await api('POST',`/api/tenants/${slug}/power`,{action:b.dataset.pw});await paint()}catch(e){alert(e.message);b.disabled=false}});
  document.querySelectorAll('[data-act=stats]').forEach(b=>b.onclick=()=>stats(b.closest('.card').dataset.slug));
  document.querySelectorAll('[data-act=set]').forEach(b=>b.onclick=()=>settings(b.closest('.card').dataset.slug));
- document.querySelectorAll('[data-act=admin]').forEach(b=>b.onclick=()=>addAdmin(b.closest('.card').dataset.slug));}
+ document.querySelectorAll('[data-act=admin]').forEach(b=>b.onclick=()=>addAdmin(b.closest('.card').dataset.slug));
+ document.querySelectorAll('[data-act=menu]').forEach(b=>b.onclick=e=>{e.stopPropagation();const card=b.closest('.card'),open=card.querySelector('.kmenu');closeMenus();if(open)return;
+  const slug=card.dataset.slug,t=tenants.find(x=>x.slug===slug),on=t.templates==='on';
+  const m=document.createElement('div');m.className='kmenu';
+  m.innerHTML=`<div class=kh>${esc(t.company)} · ${t.modules.length} modul aktif</div><button data-m=mod>🧩 Atur fitur &amp; modul…</button>${on?'<button data-m=off>🔒 Nonaktifkan fitur Template</button>':'<button data-m=on>📑 Aktifkan fitur Template</button>'}`;
+  card.append(m);m.onclick=ev=>{ev.stopPropagation();const k=ev.target.dataset.m;if(!k)return;closeMenus();if(k==='mod'){location.href='/modules#'+slug;return}tplToggle(slug,t.company,k==='on')}});}
+function closeMenus(){document.querySelectorAll('.kmenu').forEach(x=>x.remove())}
+document.addEventListener('click',closeMenus);
+function tplToggle(slug,company,on){
+ if(!on){if(confirm(`Nonaktifkan fitur Template untuk ${company}?\nPengguna hanya bisa melihat pratinjau 3 template contoh dan tidak bisa mengimpor.\n(App & worker tenant dibuat ulang beberapa detik.)`))run(slug,{active:false});return}
+ dlg(`<b>📑 Aktifkan fitur Template — ${esc(company)}</b>
+  <label>Referensi pembayaran (no. invoice / bukti bayar)<input name=ref required minlength=3 autofocus></label>
+  <small>Pastikan pembayaran sudah terkonfirmasi. Semua template terbuka dan impor ke dokumen aktif untuk tenant ini saja. App &amp; worker tenant dibuat ulang beberapa detik; referensi dicatat di tenant.</small>`,
+  async f=>{await run(slug,{active:true,payment_ref:f.get('ref')},true)});}
+async function run(slug,body,fromDlg){try{const r=await api('POST',`/api/tenants/${slug}/features/templates`,body);alert((body.active?'Fitur Template AKTIF':'Fitur Template DIKUNCI')+` untuk ${slug}.`+(r.note?`\n(${r.note})`:''));paint()}catch(e){if(fromDlg)throw e;alert(e.message)}}
 async function stats(slug){const box=document.querySelector('#st-'+slug);box.innerHTML='<small>mengambil statistik…</small>';
  try{const r=await api('GET',`/api/tenants/${slug}/stats`);
   const rows=Object.entries(r.stats).map(([c,s])=>`<tr><td>${c}</td><td>${esc(s.cpu)}</td><td>${esc(s.mem)}</td><td>${esc(s.net)}</td></tr>`).join('');
@@ -421,6 +509,50 @@ function addAdmin(slug){dlg(`<b>👤 Tambah admin utk ${esc(slug)}</b>
  async f=>{const d=Object.fromEntries(f.entries());const r=await api('POST',`/api/tenants/${slug}/admins`,d);
   alert(`Admin ${r.username} dibuat, password: ${r.password}`)})}
 paint();setInterval(paint,15000);
+</script>""")
+
+
+@app.get("/modules")
+def modules_page():
+    return _page("""
+<style>main{max-width:none!important}table.mt{border-collapse:separate;border-spacing:0;min-width:100%}.mt th,.mt td{border-bottom:1px solid var(--line);padding:6px 10px;vertical-align:top;background:var(--card)}
+.mt thead th{position:sticky;top:0;z-index:3;text-align:center;min-width:170px}.mt th.f,.mt td.f{position:sticky;left:0;z-index:2;min-width:300px;max-width:360px;text-align:left}.mt thead th.f{z-index:4}
+.mt td.c{text-align:center}.mt tr.g td{background:var(--bg);font-weight:600;color:var(--mut);position:static}.mt .d{font-size:11.5px;color:var(--mut);font-weight:400}.mt col.hl{background:#2563eb14}
+.mt input[type=checkbox]{width:18px;height:18px;cursor:pointer}.mt .dirty{outline:2px solid var(--acc);outline-offset:-2px}.mt td.ft{text-align:center}.mt .ref{width:100%;margin:4px 0;font-size:12px}
+.mt .n{font-size:11px;color:var(--mut);margin-top:4px}.bar2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}</style>
+<header><a href="/"><button type=button>← Panel</button></a><b>🧩 Fitur &amp; modul per perusahaan</b></header>
+<main><div class=bar2><small>Centang modul yang boleh dipakai tiap perusahaan. Pengguna di perusahaan tersebut <b>hanya bisa memakai modul yang Anda aktifkan di sini</b>; sisanya tampil 🔒. Mengaktifkan modul baru wajib mengisi referensi pembayaran. Simpan per perusahaan (app &amp; worker perusahaan itu dibuat ulang beberapa detik).</small></div>
+<div style="overflow:auto;max-height:calc(100vh - 150px)" id=wrap>memuat…</div></main>
+<script>
+const H={'Content-Type':'application/json','X-PANEL':'1'};
+const api=(m,u,b)=>fetch(u,{method:m,headers:H,body:b?JSON.stringify(b):undefined}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let MODS=[],TEN=[];
+async function load(){const [a,b]=await Promise.all([api('GET','/api/modules'),api('GET','/api/tenants')]);MODS=a.modules;TEN=b.tenants;draw()}
+function draw(){const hl=(location.hash||'').slice(1);let rows='',grp='';
+ MODS.forEach(m=>{if(m.group!==grp){grp=m.group;rows+=`<tr class=g><td class=f colspan=${TEN.length+1}>${grp==='Platform'?'Platform & modul proyek':'Engine perhitungan & simulasi (per topik)'}</td></tr>`}
+  rows+=`<tr><td class=f><b>${esc(m.label)}</b><div class=d>${esc(m.desc)}</div></td>${TEN.map(t=>`<td class=c><input type=checkbox data-t="${esc(t.slug)}" data-k="${m.key}" ${t.modules.includes(m.key)?'checked':''}></td>`).join('')}</tr>`});
+ document.querySelector('#wrap').innerHTML=`<table class=mt><thead><tr><th class=f>Fitur / modul</th>${TEN.map(t=>`<th class="${t.slug===hl?'dirty':''}"><b>${esc(t.company)}</b><div class=d>cms-${esc(t.slug)}</div>
+  <div class=d><span data-cnt="${esc(t.slug)}">${t.modules.length}</span>/${MODS.length} aktif</div>
+  <button type=button data-all="${esc(t.slug)}" style="font-size:11px">Semua</button> <button type=button data-none="${esc(t.slug)}" style="font-size:11px">Kosongkan</button></th>`).join('')}</tr></thead>
+  <tbody>${rows}</tbody><tfoot><tr><td class=f><b>Simpan perubahan</b><div class=d>Referensi pembayaran wajib bila ada modul baru yang diaktifkan.</div></td>${TEN.map(t=>{const l=(t.modules_log||[])[0];return `<td class=ft>
+  <input class=ref data-ref="${esc(t.slug)}" placeholder="Referensi pembayaran / invoice"><button class=p type=button data-save="${esc(t.slug)}" disabled>Simpan</button>
+  <div class=n data-msg="${esc(t.slug)}">${l?`terakhir: ${esc(l.at.slice(0,16))}${l.enabled.length?` +${l.enabled.length}`:''}${l.disabled.length?` −${l.disabled.length}`:''}${l.ref?` · ref ${esc(l.ref)}`:''}`:''}</div></td>`}).join('')}</tr></tfoot></table>`;
+ const cur=slug=>TEN.find(t=>t.slug===slug).modules;
+ const picked=slug=>[...document.querySelectorAll(`input[data-t="${slug}"]`)].filter(c=>c.checked).map(c=>c.dataset.k);
+ const refresh=slug=>{const a=picked(slug),c=cur(slug),same=a.length===c.length&&a.every(k=>c.includes(k));
+  document.querySelector(`[data-save="${slug}"]`).disabled=same;document.querySelector(`[data-cnt="${slug}"]`).textContent=a.length;
+  document.querySelectorAll(`input[data-t="${slug}"]`).forEach(x=>x.parentElement.classList.toggle('dirty',x.checked!==c.includes(x.dataset.k)))};
+ document.querySelectorAll('input[data-t]').forEach(c=>c.onchange=()=>refresh(c.dataset.t));
+ document.querySelectorAll('[data-all]').forEach(b=>b.onclick=()=>{document.querySelectorAll(`input[data-t="${b.dataset.all}"]`).forEach(c=>c.checked=true);refresh(b.dataset.all)});
+ document.querySelectorAll('[data-none]').forEach(b=>b.onclick=()=>{document.querySelectorAll(`input[data-t="${b.dataset.none}"]`).forEach(c=>c.checked=false);refresh(b.dataset.none)});
+ document.querySelectorAll('[data-save]').forEach(b=>b.onclick=async()=>{const slug=b.dataset.save,msg=document.querySelector(`[data-msg="${slug}"]`);
+  const a=picked(slug),added=a.filter(k=>!cur(slug).includes(k)),removed=cur(slug).filter(k=>!a.includes(k));
+  if(!confirm(`Terapkan untuk ${slug}?\n+ ${added.length} modul diaktifkan, − ${removed.length} dikunci.\nApp & worker perusahaan ini dibuat ulang beberapa detik.`))return;
+  b.disabled=true;msg.textContent='menerapkan…';
+  try{await api('POST',`/api/tenants/${slug}/modules`,{modules:a,payment_ref:document.querySelector(`[data-ref="${slug}"]`).value});await load()}
+  catch(e){msg.innerHTML='<span style="color:var(--bad)">'+esc(e.message)+'</span>';b.disabled=false}});}
+load();
 </script>""")
 
 

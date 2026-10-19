@@ -12,8 +12,10 @@ from __future__ import annotations
 from flask import Blueprint, Response, abort, g, jsonify, request
 
 from cmsapp import auth
+from cmsapp.modules_api import guard, locked_response
 from cmsapp.projects_api import _project_visible
 from utils import projsite as ps
+from utils import modules as mods
 from utils import projsite_store as pst
 
 bp = Blueprint("projsite", __name__, url_prefix="/api")
@@ -45,6 +47,7 @@ def _manage(pid: int):
 # ------------------------------------------------------------------------------------------ layer koordinat
 @bp.get("/projects/<int:pid>/layers")
 @auth.require()
+@guard("proyek_lokasi")
 def layers(pid):
     _project_visible(pid)
     return jsonify(layers=pst.list_layers(S(), pid))
@@ -52,6 +55,7 @@ def layers(pid):
 
 @bp.post("/projects/<int:pid>/layers")
 @auth.require()
+@guard("proyek_lokasi")
 def layer_add(pid):
     """Body: {name, geom: point|line|polygon, color?, points: [[lat,lon,label]]  ATAU  csv: "teks CSV"}"""
     _manage(pid)
@@ -67,6 +71,7 @@ def layer_add(pid):
 
 @bp.post("/projects/<int:pid>/layers/preview")
 @auth.require()
+@guard("proyek_lokasi")
 def layer_preview(pid):
     """Uji CSV tanpa menyimpan: titik + peringatan + info (panjang/luas) + SVG pratinjau."""
     _manage(pid)
@@ -80,6 +85,7 @@ def layer_preview(pid):
 
 @bp.patch("/projects/<int:pid>/layers/<int:lid>")
 @auth.require()
+@guard("proyek_lokasi")
 def layer_edit(pid, lid):
     _manage(pid)
     d = body()
@@ -95,6 +101,7 @@ def layer_edit(pid, lid):
 
 @bp.delete("/projects/<int:pid>/layers/<int:lid>")
 @auth.require()
+@guard("proyek_lokasi")
 def layer_del(pid, lid):
     _manage(pid)
     pst.delete_layer(S(), pid, lid)
@@ -103,6 +110,7 @@ def layer_del(pid, lid):
 
 @bp.get("/projects/<int:pid>/map.svg")
 @auth.require()
+@guard("proyek_lokasi")
 def map_svg(pid):
     _project_visible(pid)
     w = max(300, min(2000, request.args.get("w", 900, type=int)))
@@ -124,6 +132,8 @@ def _kd():
 
 def _unit_data(units: list[dict]) -> tuple[list[dict], str | None, str | None]:
     """Lengkapi unit dengan nama, penduduk, KK dari periode terbaru tiap tingkat. Return (units, label periode, pesan galat)."""
+    if not mods.is_on("data_desa"):
+        return [{**u, "name": u["code"], "penduduk": None, "kk": None} for u in units], None, mods.locked_message("data_desa") + " Data penduduk wilayah memerlukannya."
     kd = _kd()
     if kd is None:
         return [{**u, "name": u["code"], "penduduk": None, "kk": None} for u in units], None, "sumber data penduduk (NAS Kemendagri) belum terhubung"
@@ -152,6 +162,7 @@ def _unit_data(units: list[dict]) -> tuple[list[dict], str | None, str | None]:
 
 @bp.get("/projects/<int:pid>/regions")
 @auth.require()
+@guard("proyek_lokasi")
 def regions(pid):
     _project_visible(pid)
     sel = pst.get_regions(S(), pid)
@@ -164,6 +175,7 @@ def regions(pid):
 
 @bp.put("/projects/<int:pid>/regions")
 @auth.require()
+@guard("proyek_lokasi")
 def regions_set(pid):
     """Body: {items: [{code, name}]} — ganti seluruh daftar (kode kab/kota 33.03, kecamatan 33.03.05, desa 33.03.05.1012)."""
     _manage(pid)
@@ -175,6 +187,7 @@ def regions_set(pid):
 # ------------------------------------------------------------------------------------------ survei responden
 @bp.get("/projects/<int:pid>/survey")
 @auth.require()
+@guard("calc_survei")
 def survey(pid):
     _project_visible(pid)
     params = pst.get_survey(S(), pid)
@@ -192,6 +205,7 @@ def survey(pid):
 
 @bp.put("/projects/<int:pid>/survey")
 @auth.require()
+@guard("calc_survei")
 def survey_set(pid):
     _manage(pid)
     return jsonify(params=pst.set_survey(S(), pid, body()))
@@ -200,6 +214,7 @@ def survey_set(pid):
 # ------------------------------------------------------------------------------------------ tugas simulasi
 @bp.get("/projects/<int:pid>/sims")
 @auth.require()
+@guard("proyek_simulasi")
 def sims(pid):
     _project_visible(pid)
     return jsonify(pst.list_sims(S(), pid))
@@ -207,13 +222,15 @@ def sims(pid):
 
 @bp.get("/projects/<int:pid>/sims/suggest")
 @auth.require()
+@guard("proyek_simulasi")
 def sims_suggest(pid):
     _manage(pid)
-    return jsonify(items=pst.suggest_sims(S(), pid))
+    return jsonify(items=[x for x in pst.suggest_sims(S(), pid) if mods.is_on(mods.TOOL_MODULE.get(x["tool_id"], ""))])
 
 
 @bp.post("/projects/<int:pid>/sims")
 @auth.require()
+@guard("proyek_simulasi")
 def sims_add(pid):
     """Body: {items: [{tool_id, doc_id?, block_id?, title?, assignee_id?, note?}]} — satu atau banyak (mis. dari usulan)."""
     _manage(pid)
@@ -221,6 +238,9 @@ def sims_add(pid):
     items = d.get("items") or [d]
     ids, skipped = [], 0
     for it in items:
+        lk = mods.TOOL_MODULE.get(it.get("tool_id", ""))
+        if lk and not mods.is_on(lk):
+            return locked_response(lk)
         try:
             ids.append(pst.add_sim(S(), pid, it.get("tool_id", ""), it.get("title", ""), it.get("doc_id"), it.get("block_id"),
                                    it.get("assignee_id"), it.get("note", ""), user=g.user["username"]))
@@ -235,6 +255,7 @@ def sims_add(pid):
 
 @bp.patch("/projects/<int:pid>/sims/<int:sid>")
 @auth.require()
+@guard("proyek_simulasi")
 def sims_edit(pid, sid):
     _manage(pid)
     d = body()
@@ -244,6 +265,7 @@ def sims_edit(pid, sid):
 
 @bp.delete("/projects/<int:pid>/sims/<int:sid>")
 @auth.require()
+@guard("proyek_simulasi")
 def sims_del(pid, sid):
     _manage(pid)
     pst.delete_sim(S(), pid, sid)
@@ -252,6 +274,7 @@ def sims_del(pid, sid):
 
 @bp.get("/projects/<int:pid>/sims/<int:sid>/runs")
 @auth.require()
+@guard("proyek_simulasi")
 def sims_runs(pid, sid):
     _project_visible(pid)
     return jsonify(runs=pst.runs_of_sim(S(), pid, sid))
@@ -263,6 +286,8 @@ def sim_run_record():
     """Dipanggil /data-desa setelah hasil disisipkan ke dokumen. Body: {doc_id, origin_block_id?, tool_id, calc_id?, title, summary{}, block_ids[]}.
     Hanya pengguna yang berhak mengedit dokumen/bab itu yang boleh mencatat."""
     d = body()
+    if not mods.is_on("proyek_simulasi"):
+        return jsonify(recorded=[], skipped="modul proyek_simulasi terkunci"), 200
     doc_id = int(d.get("doc_id") or 0)
     if not doc_id:
         raise ValueError("doc_id wajib")
@@ -277,4 +302,6 @@ def sim_run_record():
 @bp.get("/me/sims")
 @auth.require()
 def my_sims():
+    if not mods.is_on("proyek_simulasi"):
+        return jsonify(sims=[])
     return jsonify(sims=pst.my_sims(S(), g.user["id"]))

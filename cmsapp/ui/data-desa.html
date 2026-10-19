@@ -62,6 +62,7 @@ table.t th:first-child,table.t td:first-child{text-align:left;white-space:normal
 .meth label.sel{border-color:var(--acc);background:var(--acc-soft)}.meth small{color:var(--mut);display:block}
 details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:6px}details.mt summary{cursor:pointer;font-weight:600}
 .badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--acc-soft);color:var(--acc)}
+.lk>*:not(.lockb){opacity:.28;pointer-events:none;user-select:none}.lockb{background:var(--warn-bg,#fef3c7);color:var(--warn,#b45309);border:1px solid var(--warn,#b45309);border-radius:8px;padding:10px 14px;margin:8px 0}.lkicon{opacity:.75}
 </style></head><body>
 <header><b>📊 Data Desa Kemendagri</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
 <main>
@@ -263,9 +264,24 @@ const IND=()=>Object.fromEntries(META.indicators.map(i=>[i.key,i]));
 const nameOf=code=>(regions.find(r=>r.code===code)||{}).name||code;
 
 // ------------------------------------------------------------------ tab
+let MOD={};            // modul fitur yang aktif untuk tenant ini (diatur OPERATOR; GET /api/modules)
+const modOn=k=>!k||MOD.on===undefined||MOD.on.has(k);
+const TABMOD={pilih:'data_desa',grafik:'data_desa',peta:'data_desa',proyeksi:'proyeksi',model:'proyeksi'};
+function lockBanner(sec,key){
+  let b=sec.querySelector(':scope>.lockb');
+  if(modOn(key)){if(b)b.remove();sec.classList.remove('lk');return false}
+  sec.classList.add('lk');
+  if(!b){b=document.createElement('div');b.className='lockb';sec.prepend(b)}
+  b.innerHTML=`🔒 <b>Modul “${esc((MOD.label||{})[key]||key)}” belum diaktifkan.</b> Fitur ini tersedia setelah pembelian (pembayaran) dan diaktifkan oleh penyedia layanan/operator — hubungi mereka untuk berlangganan.`;
+  return true}
+async function loadModules(){
+  try{const r=await fetch('/api/modules',{credentials:'same-origin'}).then(x=>x.json());
+    MOD={on:new Set(r.modules.filter(m=>m.on).map(m=>m.key)),label:Object.fromEntries(r.modules.map(m=>[m.key,m.label])),cat:r.category_module||{},sim:r.sim_module||{},tool:r.tool_module||{}}}catch(e){MOD={}}
+  $$('#tabs button').forEach(b=>{const k=TABMOD[b.dataset.t];if(k&&!modOn(k)&&!b.textContent.includes('🔒'))b.textContent='🔒 '+b.textContent})}
 function tab(t){
   $$('#tabs button').forEach(b=>b.classList.toggle('cur',b.dataset.t===t));
   ['pilih','grafik','peta','proyeksi','model','rumus','sim'].forEach(x=>$('#t-'+x).classList.toggle('hide',x!==t));
+  const tm=TABMOD[t];if(tm&&lockBanner($('#t-'+t),tm))return;
   if(t==='grafik')loadGraf(); if(t==='peta')initMap(); if(t==='proyeksi')initProj(); if(t==='model')initModel(); if(t==='rumus')initRumus(); if(t==='sim')initSim();
 }
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)tab(b.dataset.t)};
@@ -773,11 +789,12 @@ $('#rfQ').oninput=()=>RF&&renderRfList();
 function renderRfList(){
   const q=$('#rfQ').value.trim().toLowerCase();
   const items=RF.items.filter(f=>(!RFcat||f.category===RFcat)&&(!q||(f.title+' '+f.id+' '+f.formula+' '+f.category).toLowerCase().includes(q)));
-  $('#rfList').innerHTML=items.map(f=>`<div class="fr ${RFsel===f.id?'cur':''}" data-id="${f.id}"><b>${esc(f.title)}</b><code>${esc(f.formula)}</code><div class="small mut">${esc(f.category)} · ${f.docs.map(esc).join(', ')}</div></div>`).join('')||'<span class="mut">Tidak ada rumus cocok.</span>';
+  $('#rfList').innerHTML=items.map(f=>`<div class="fr ${RFsel===f.id?'cur':''}" data-id="${f.id}" ${f.locked?'style="opacity:.6"':''}><b>${f.locked?'🔒 ':''}${esc(f.title)}</b><code>${esc(f.formula)}</code><div class="small mut">${esc(f.category)} · ${f.docs.map(esc).join(', ')}</div></div>`).join('')||'<span class="mut">Tidak ada rumus cocok.</span>';
 }
 $('#rfList').onclick=e=>{const c=e.target.closest('.fr');if(c){RFsel=c.dataset.id;renderRfList();renderRfBox()}};
 function renderRfBox(){
   const f=RF.items.find(x=>x.id===RFsel);if(!f)return;
+  if(f.locked){$('#rfBox').innerHTML=`<h3>🔒 ${esc(f.title)}</h3><div class="lockb">Kalkulator ini termasuk modul <b>“${esc(f.module_label||f.module)}”</b> yang belum diaktifkan. Tersedia setelah pembelian (pembayaran) dan diaktifkan oleh penyedia layanan/operator.</div>`;return}
   const inp=f.vars.map(v=>{const d=v.default==null?'':v.default,id='rv_'+v.name;
     const ctl=v.type==='select'?`<select id="${id}">${v.options.map(o=>`<option value="${o[0]}" ${o[0]==d?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`
       :v.type==='list'?`<textarea id="${id}" rows="2">${esc(d)}</textarea>`:`<input type="number" step="any" id="${id}" value="${esc(d)}" placeholder="isi">`;
@@ -972,6 +989,7 @@ async function ctxInit(){
   try{window.TOOLS=(await api('/tools')).tools}catch(e){window.TOOLS=[]}
   ctxBar();ctxTargets();
   const t=window.TOOLS.find(x=>x.id===CTX.tool);if(!t)return;
+  if(t.locked){$('#ctxBar').insertAdjacentHTML('beforeend',`<div class="lockb" style="margin-top:8px">🔒 Alat ini termasuk modul yang belum diaktifkan untuk perusahaan Anda. Hubungi penyedia layanan/operator.</div>`);return}
   for(let i=0;i<60&&!META;i++)await new Promise(r=>setTimeout(r,100));
   if(t.tab==='sim'&&t.sim)SIM.cur=t.sim;
   if((t.tab==='proyeksi'||t.tab==='model')&&!regions.length){tab('pilih');
@@ -986,6 +1004,7 @@ window.addEventListener('load',ctxInit);
 
 // ------------------------------------------------------------------ init
 (async function(){
+  await loadModules();
   try{META=await api('/meta')}catch(e){$('#status').innerHTML=`<div class="note">${esc(e.message)}</div>`;return}
   if(!META.configured){$('#status').innerHTML=`<div class="note"><b>Sumber data belum terhubung.</b> ${esc(META.error||'')}<br>Set CMS_NAS_HOST, CMS_NAS_USER, CMS_NAS_PASS (NAS Synology) atau CMS_KD_LOCAL_DIR pada server, lalu muat ulang.</div>`;return}
   const per=META.periods;

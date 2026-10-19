@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("CMS_MODULES", "all")          # uji fungsi: semua modul aktif (penguncian diuji di modules_test.py)
 import pandas as pd  # noqa: E402
 
 from utils import kd_formulas as kf  # noqa: E402

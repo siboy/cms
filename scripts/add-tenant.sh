@@ -53,6 +53,8 @@ if [ ! -f "$DEST/.env" ]; then
     echo "CMS_IMAGE=$IMAGE"
     echo "CMS_BASE_URL=https://$DOMAIN"
     echo "CMS_COOKIE_SECURE=1"
+    echo "# modul fitur berlangganan: none | all | daftar kunci -- diatur OPERATOR di cmspanel > Fitur & modul"
+    echo "CMS_MODULES=none"
     echo "MYSQL_ROOT_PASSWORD=$(openssl rand -hex 24)"
     echo "MYSQL_PASSWORD=$(openssl rand -hex 24)"
     echo "REDIS_PASSWORD=$(openssl rand -hex 24)"

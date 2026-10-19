@@ -36,6 +36,9 @@ def create_app(cfg=Config) -> Flask:
     from cmsapp.templates_api import bp as tpl_bp
     app.register_blueprint(tpl_bp)
 
+    from cmsapp.modules_api import bp as mod_bp
+    app.register_blueprint(mod_bp)
+
     from cmsapp.proj_site_api import bp as psite_bp
     app.register_blueprint(psite_bp)
 
