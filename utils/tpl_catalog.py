@@ -19,7 +19,25 @@ import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
-BUNDLE = Path(os.environ.get("CMS_TPL_BUNDLE") or Path(__file__).with_name("tpl_data") / "templates.json")
+# ---- lokasi data katalog. Data HASIL OLAHAN (tidak dikomit ke git) disimpan PERMANEN di VOLUME tenant (CMS_TPL_DATA_DIR, bawaan /data/tpl/data) --
+# bertahan saat container dibuat ulang. Salinan di dalam image (utils/tpl_data) hanya cadangan awal bila volume belum berisi.
+REPO_DATA = Path(__file__).with_name("tpl_data")
+VOLUME_DATA = Path(os.environ.get("CMS_TPL_DATA_DIR") or "/data/tpl/data")
+BUNDLE = Path(os.environ["CMS_TPL_BUNDLE"]) if os.environ.get("CMS_TPL_BUNDLE") else None       # override eksplisit (uji / path khusus)
+GUIDE = Path(os.environ["CMS_TPL_GUIDE"]) if os.environ.get("CMS_TPL_GUIDE") else None
+HINTS = Path(os.environ["CMS_TPL_HINTS"]) if os.environ.get("CMS_TPL_HINTS") else None
+
+
+def data_path(name: str, override: "Path | None" = None) -> Path:
+    """override > file di volume (jika ada) > salinan di image."""
+    if override is not None:
+        return Path(override)
+    v = VOLUME_DATA / name
+    return v if v.is_file() else REPO_DATA / name
+
+
+def bundle_path() -> Path:
+    return data_path("templates.json", BUNDLE)
 
 KINDS = {
     "ukl_upl": "UKL-UPL",
@@ -332,44 +350,45 @@ _cache: dict = {"mtime": None, "data": None}
 
 
 def load_bundle() -> dict:
+    path = bundle_path()
     try:
-        m = BUNDLE.stat().st_mtime
+        m = (str(path), path.stat().st_mtime)               # kunci cache = (path, mtime): pindah volume<->image terdeteksi
     except OSError:
         return {"version": 0, "categories": [], "templates": []}
     if _cache["mtime"] != m:
-        _cache["data"] = json.loads(BUNDLE.read_text(encoding="utf-8"))
+        _cache["data"] = json.loads(path.read_text(encoding="utf-8"))
         _cache["mtime"] = m
     return _cache["data"]
 
 
-GUIDE = Path(os.environ.get("CMS_TPL_GUIDE") or Path(__file__).with_name("tpl_data") / "guidance.json")
 _gcache: dict = {"mtime": None, "data": {"items": {}, "disclaimer": ""}}
 
 
 def load_guidance() -> dict:
     """Panduan pengisian global per judul bagian (kunci = canon_key), terpisah dari bundel template."""
+    path = data_path("guidance.json", GUIDE)
     try:
-        m = GUIDE.stat().st_mtime
+        m = (str(path), path.stat().st_mtime)
     except OSError:
         return {"items": {}, "disclaimer": ""}
     if _gcache["mtime"] != m:
-        _gcache["data"] = json.loads(GUIDE.read_text(encoding="utf-8"))
+        _gcache["data"] = json.loads(path.read_text(encoding="utf-8"))
         _gcache["mtime"] = m
     return _gcache["data"]
 
 
-HINTS = Path(os.environ.get("CMS_TPL_HINTS") or Path(__file__).with_name("tpl_data") / "calc_hints.json")
 _hcache: dict = {"mtime": None, "data": {"items": {}}}
 
 
 def load_hints() -> dict:
     """Bagian yang di dokumen contoh memuat perhitungan (scripts/tpl_hints.py): items[kind][category|umum][canon_key][tool_id] = [dokumen berhitung, dokumen punya bagian]."""
+    path = data_path("calc_hints.json", HINTS)
     try:
-        m = HINTS.stat().st_mtime
+        m = (str(path), path.stat().st_mtime)
     except OSError:
         return {"items": {}}
     if _hcache["mtime"] != m:
-        _hcache["data"] = json.loads(HINTS.read_text(encoding="utf-8"))
+        _hcache["data"] = json.loads(path.read_text(encoding="utf-8"))
         _hcache["mtime"] = m
     return _hcache["data"]
 

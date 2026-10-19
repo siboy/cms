@@ -61,8 +61,8 @@ def sections(items: list[dict]):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cache", default="/tmp/tpl_content_cache.json")
-    ap.add_argument("--out", default=str(Path(tc.BUNDLE).with_name("calc_hints.json")))
+    ap.add_argument("--cache", default=os.path.join(os.environ.get("CMS_TPL_STATE_DIR") or "/data/tpl", "content_cache.json"))
+    ap.add_argument("--out", default=str(tc.VOLUME_DATA / "calc_hints.json"))
     a = ap.parse_args()
     import tpl_build as tb                                          # noqa: E402  (scripts/ ada di sys.path saat dijalankan langsung)
     from utils.kd_nas import SynologyReader
@@ -97,6 +97,7 @@ def main():
             keep = {t: [h, nd] for t, (h, _) in tools.items() if h >= MIN_HITS and h / nd >= MIN_SHARE}
             if keep:
                 out.setdefault(grp[0], {}).setdefault(grp[1], {})[key] = keep
+    Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps({"version": 1, "min_share": MIN_SHARE, "min_docs": MIN_DOCS, "items": out}, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     n = sum(len(v) for k in out.values() for v in k.values())
     print(f"{used} dokumen dianalisis; {n} (jenis dokumen x kegiatan x bagian) berpetunjuk perhitungan -> {a.out}")

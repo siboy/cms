@@ -266,6 +266,21 @@ def t_hints():
         check(tc.calc_hints("ukl_upl", "pertambangan", "deskripsi") == [], "berkas hints tak ada -> kosong, tidak error")
 
 
+def t_paths():
+    old = (tc.BUNDLE, tc.VOLUME_DATA)
+    with tempfile.TemporaryDirectory() as td:
+        tc.BUNDLE, tc.VOLUME_DATA = None, Path(td)
+        check(tc.bundle_path() == tc.REPO_DATA / "templates.json", "volume kosong -> salinan image")
+        (Path(td) / "templates.json").write_text(json.dumps({"version": 1, "templates": [tc.finalize("ka-umum", "ka", "umum", tc.BASELINE_KA, 0, "baku")]}), encoding="utf-8")
+        check(tc.bundle_path() == Path(td) / "templates.json", "file di volume didahulukan (permanen)")
+        tc._cache["mtime"] = None
+        check([t["id"] for t in tc.load_bundle()["templates"]] == ["ka-umum"], "katalog dibaca dari volume")
+        tc.BUNDLE = Path(td) / "lain.json"
+        check(tc.bundle_path() == Path(td) / "lain.json", "override eksplisit menang")
+    tc.BUNDLE, tc.VOLUME_DATA = old
+    tc._cache["mtime"] = None
+
+
 def t_wiring():
     try:
         from cmsapp import templates_api  # noqa: F401
@@ -278,6 +293,6 @@ def t_wiring():
 
 
 if __name__ == "__main__":
-    for fn in (t_classify, t_clean, t_extract, t_consensus, t_content, t_variants, t_search, t_tools, t_hints, t_wiring):
+    for fn in (t_classify, t_clean, t_extract, t_consensus, t_content, t_variants, t_search, t_tools, t_hints, t_paths, t_wiring):
         fn()
     print(f"OK: {OK} pemeriksaan lulus")

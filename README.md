@@ -112,6 +112,10 @@ berisi heading kosong yang bisa diedit per blok dan digeser seperti dokumen lain
   ({title, min_share, include_guide, include_content, project_id, report_type, label}). Uji: `python3 scripts/tpl_test.py` (tanpa NAS/DB).
 - Template = kerangka judul, bukan isi/pedoman hukum; penyusun tetap wajib menyesuaikan dgn peraturan berlaku (dinyatakan di UI).
 
+**Data olahan template (tidak dikomit) — penyimpanan permanen & backup:** bundel/panduan/hints di volume `/data/tpl/data` (`CMS_TPL_DATA_DIR`), state build (cache isi + **manifes dokumen yang sudah dibaca**) di `/data/tpl`
+(`CMS_TPL_STATE_DIR`). Katalog membaca volume lebih dulu; salinan di image hanya cadangan awal. Memperkaya dari NAS: `scripts/tpl_build.py --new-only` (dokumen di manifes tidak dibaca ulang; `--list` untuk ringkasan).
+Backup harian per tenant: `scripts/tenant_backup.sh <slug>` (dump MySQL + arsip `/data` + cermin data template ke `~/cms-tenants/_shared/tpl-data/<slug>/`).
+
 **Modul fitur berlangganan per tenant (dikunci; hanya OPERATOR yang bisa membuka)** — `utils/modules.py`, `cmsapp/modules_api.py`:
 - 17 modul: *Platform* (`templates`, `data_desa`, `proyeksi`, `proyek_lokasi`, `proyek_simulasi`) dan *Engine* per topik (`calc_survei`, `calc_lalin`, `calc_limbah`, `calc_kualitas_air` + simulasi sungai,
   `calc_udara` + simulasi cerobong, `calc_bising` + simulasi bunyi, `calc_hidrologi`, `calc_tambang`, `calc_sosial`, `calc_hayati`, `calc_grk`, `calc_ekonomi`). Daftar kunci: `bash scripts/tenant-feature.sh modules`.
