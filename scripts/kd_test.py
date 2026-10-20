@@ -343,6 +343,65 @@ def t_formulas():
     check(any(m["title"].startswith("Logistik") for m in rl["methodology"]) and "korelasi" in rl["methodology"][1]["text"], "keterangan metodologi baku")
 
 
+# ------------------------------------------------------------------ rumus disarikan dari dokumen contoh (angka = kutipan dokumen)
+def t_dokumen_contoh():
+    def c(id_, **kw):
+        base = {v["name"]: v["default"] for v in kf.BY_ID[id_]["vars"]}
+        base.update(kw)
+        return {x["key"]: x["value"] for x in kf.calc(id_, base)["outputs"]}
+    near_ = lambda a, b, tol=1e-6: abs(a - b) <= tol * max(1.0, abs(b))
+    # material & angkutan
+    check(near_(c("massa_dari_volume", V=948755, BJ=2.65)["massa"], 2514200.75), "948.755 m3 x 2,65 = ±2.514.200 ton (dokumen pasir kuarsa)")
+    o = c("angkutan_material", V=1900, kap=3, hari=60, jam=8, smp=1.3)
+    check(o["rit"] == 634 and near_(o["kend_hari"], 2 * 634 / 60) and near_(o["smp_jam"], 2 * 634 / 60 / 8 * 1.3), f"ritase beton 1900 m3 / 3 m3 = 634: {o}")
+    o = c("konversi_periode", n=156, lama_hari=90, hari_bulan=30)
+    check(near_(o["per_bulan"], 52) and near_(o["per_hari"], 156 / 90), "156 L / 3 bulan = 52 L/bulan = 1,73 L/hari")
+    check(near_(c("konversi_periode", n=97222, lama_hari=30, hari_bulan=30)["per_tahun"], 1166664), "97.222 ton/bulan x 12 (dokumen: 1.166.667)")
+    o = c("air_semen", zak_hari=3000, hari=1, L_per_zak=43)
+    check(near_(o["m3_total"], 129) and o["zak"] == 3000, "3000 zak x 43 L = 129 m3 (215 L / 5 zak)")
+    check(near_(c("lumpur_padatan", Q=1.27, pct=0.3)["lumpur"], 0.00381), "lumpur = 1,27 m3/hari x 0,3%")
+    # air limbah rinci
+    check(near_(c("grey_water", pakai=0.04, losses=0.01)["gw"], 0.03), "grey water 0,04 - 0,01")
+    o = c("cek_kapasitas_ipal", Q=1.4, kap=5)
+    check(near_(o["rasio"], 28) and o["ok"] == 1 and c("cek_kapasitas_ipal", Q=6, kap=5)["ok"] == 0, "kapasitas IPAL 1,4 dari 5 m3/hari")
+    o = c("debit_jam", Q_hari=8, jam=24)
+    check(near_(o["m3_jam"], 1 / 3) and near_(o["L_detik"], 8000 / 86400), "8 m3/hari = 0,33 m3/jam")
+    o = c("dimensi_bak", P=1.5, L=1.5, T=1.2, Q=0.985)
+    check(near_(o["V"], 2.7) and near_(o["hrt"], 2.7 / 0.985 * 24), "bak 1,5 x 1,5 x 1,2 m")
+    check(near_(c("air_siram", dosis=5, luas=38874.13, frek=1)["liter"], 194370.65), "5 L/m2 x luas RTH = 194.370 L")
+    # B3
+    o = c("oli_bekas", n=1, vol=4, interval=4, dens=0.9, hari_bulan=30)
+    check(near_(o["L_bulan"], 1) and near_(o["kg_bulan"], 0.9) and near_(o["L_tahun"], 12), "4 L / 4 bulan = 1 L/bulan")
+    o = c("oli_bekas", n=2, vol=540, interval=12, dens=0.9, hari_bulan=30)
+    check(near_(o["L_tahun"], 1080), "2 excavator = 1.080 L/tahun")
+    o = c("total_b3", x="10.05, 6, 2")
+    check(near_(o["total"], 18.05) and o["n"] == 3 and o["maks"] == 10.05, "jumlah timbulan B3")
+    # energi
+    check(near_(c("bbm_genset", n=68, koef=0.21, kva=17, beban=80, jam=8)["L_hari"], 1553.664) and near_(c("bbm_genset", n=68, koef=0.21, kva=17, beban=80, jam=8)["L_hari"], 1553.6, 1e-4),
+          "68 x (0,21 x 17 x 80% x 8) = 1.553,664 L/hari (dokumen membulatkan 1.553,6 ≈ 1.554)")
+    check(near_(c("total_bbm", x="12435, 134.4")["total"], 12569.4), "12.435 + 134,4 L/bulan")
+    check(near_(c("energi_listrik", kw=1.5, jam=24)["kwh_hari"], 36), "blower 1,5 kW x 24 jam = 36 kWh/hari")
+    check(near_(c("kva_kw", kva=350, pf=0.8)["kw"], 280), "350 kVA = 280 kW")
+    o = c("cek_genset", keb=4515, n=2, kva_unit=2500, standby=0)
+    check(near_(o["rasio"], 5000 / 4515 * 100) and o["ok"] == 1 and c("cek_genset", keb=4515, n=2, kva_unit=2500, standby=1)["ok"] == 0, "2 x 2.500 kVA vs 4.515 kVA")
+    # tanpa nilai awal utk koefisien/standar bergantung sumber -> wajib diisi
+    for id_, name in (("bbm_genset", "koef"), ("air_semen", "L_per_zak")):
+        check(next(v for v in kf.BY_ID[id_]["vars"] if v["name"] == name)["default"] is None, f"{id_}.{name} tanpa nilai awal")
+    for bad in (("bbm_genset", {"koef": ""}), ("air_semen", {"L_per_zak": ""}), ("grey_water", {"losses": 1}), ("cek_genset", {"standby": 2}),
+                ("kva_kw", {"pf": 1.2}), ("angkutan_material", {"kap": 0}), ("total_b3", {"x": ""})):
+        try:
+            c(bad[0], **bad[1])
+            check(False, f"isian salah lolos: {bad}")
+        except kf.CalcError:
+            check(True, "")
+    # semua id baru punya petunjuk & muncul di mesin rumus bila skalar
+    new = ["massa_dari_volume", "angkutan_material", "konversi_periode", "air_semen", "lumpur_padatan", "grey_water", "cek_kapasitas_ipal", "debit_jam",
+           "dimensi_bak", "air_siram", "oli_bekas", "total_b3", "bbm_genset", "total_bbm", "energi_listrik", "kva_kw", "cek_genset"]
+    check(all(i in kf.BY_ID for i in new), "17 rumus baru terdaftar")
+    check(all(kf.HOWTO.get(i, ("", ""))[0] and kf.HOWTO[i][1] and kf.DATA_NEEDED.get(i) for i in new), "petunjuk pakai & data yang dibutuhkan lengkap")
+    check(kp.Formula("massa_dari_volume(1000, 2.65) + grey_water(0.04, 0.01)")({}) == 2650.03 or near_(kp.Formula("massa_dari_volume(1000, 2.65) + grey_water(0.04, 0.01)")({}), 2650.03), "fungsi baru jalan di rumus skenario")
+
+
 # ------------------------------------------------------------------ model multi-faktor
 def t_model():
     import random
@@ -610,6 +669,7 @@ if __name__ == "__main__":
     t_projection()
     t_sim()
     t_formulas()
+    t_dokumen_contoh()
     t_model()
     t_data_api()
     print(f"OK — {OK} pemeriksaan lulus")

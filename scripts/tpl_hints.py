@@ -23,12 +23,14 @@ N = r"\d[\d.,]*"
 SIGNAL = {   # id alat -> regex sinyal perhitungan (huruf kecil)
     "air_bersih": rf"(?:liter|l|lt)\s*/\s*(?:orang|org|kapita)|{N}\s*(?:m3|m³)\s*/\s*(?:hari|hr)",
     "air_limbah": rf"limbah[^.]{{0,160}}{N}\s*(?:m3|m³|liter|l)\s*/\s*(?:hari|hr|jam|detik)|{N}\s*(?:m3|m³)\s*/\s*hari[^.]{{0,80}}limbah",
-    "sampah": rf"(?:kg|liter|l)\s*/\s*(?:orang|org|kapita)\s*/\s*(?:hari|hr)|sampah[^.]{{0,120}}{N}\s*(?:kg|m3|m³)\s*/\s*(?:hari|hr)",
+    "sampah": rf"(?:kg|liter|l)\s*/\s*(?:orang|org|kapita)\s*/\s*(?:hari|hr)|sampah[^.]{{0,120}}{N}\s*(?:kg|m3|m³)\s*/\s*(?:hari|hr)|(?:limbah\s+b3|oli\s+bekas|majun|aki\s+bekas)[^.]{{0,100}}{N}\s*(?:kg|liter|l|ton)\b",
     "tenaga_kerja": rf"{N}\s*(?:orang|org)[^.]{{0,60}}(?:tenaga\s+kerja|pekerja|karyawan)|(?:tenaga\s+kerja|pekerja|karyawan)[^.]{{0,80}}{N}\s*(?:orang|org)",
     "lalu_lintas": rf"smp\s*/\s*jam|\bv\s*/\s*c\b|{N}\s*(?:kendaraan|kend)\s*/\s*(?:hari|jam)|\blhr\b[^.]{{0,40}}{N}",
     "bising": rf"{N}\s*db\s*\(?a?\)?|\bdb\s*\(a\)",
     "udara": rf"(?:µg|ug|mg)\s*/\s*(?:n?m3|m³)|{N}\s*ppm",
     "limpasan_erosi": rf"{N}\s*(?:m3|m³)\s*/\s*(?:detik|dtk|s)\b|{N}\s*mm\s*/\s*(?:jam|hari)|periode\s+ulang\s+{N}|ton\s*/\s*ha\s*/\s*(?:th|tahun)",
+    "material": rf"\b{N}\s*(?:rit|ritase|trip)\b|(?:pasir|batu|agregat|semen|beton|sirtu|material)[^.]{{0,100}}{N}\s*(?:m3|m³|ton|zak|sak)\b",
+    "energi_bbm": rf"(?:solar|bbm|bahan\s+bakar|genset)[^.]{{0,100}}{N}\s*(?:liter|l|kl)\b|{N}\s*(?:kva|kwh)\b|{N}\s*(?:liter|l)\s*/\s*(?:jam|hari|bulan)[^.]{{0,40}}(?:solar|bbm)",
     "penduduk": rf"laju\s+pertumbuhan[^.]{{0,60}}{N}\s*%|{N}\s*jiwa\s*/\s*km",
     "grk": r"ton\s*co2|tco2|co2\s*e|co₂",
     "tambang": rf"stripping\s+ratio|{N}\s*bcm|umur\s+tambang[^.]{{0,40}}{N}|{N}\s*ton\s*/\s*tahun",
@@ -64,11 +66,10 @@ def main():
     ap.add_argument("--cache", default=os.path.join(os.environ.get("CMS_TPL_STATE_DIR") or "/data/tpl", "content_cache.json"))
     ap.add_argument("--out", default=str(tc.VOLUME_DATA / "calc_hints.json"))
     a = ap.parse_args()
-    import tpl_build as tb                                          # noqa: E402  (scripts/ ada di sys.path saat dijalankan langsung)
-    from utils.kd_nas import SynologyReader
     cache = json.loads(Path(a.cache).read_text(encoding="utf-8"))
-    r = SynologyReader()
-    cands = {c["name"]: c for c in tb.pick_candidates(r, tb.load_meta(r), 7)}
+    mf = Path(a.cache).with_name("manifest.json")                  # jenis & kegiatan tiap dokumen: semua yang pernah dibaca, bukan sampel tetap
+    man = json.loads(mf.read_text(encoding="utf-8"))
+    cands = {n: d for n, d in (man.get("docs") or man).items() if isinstance(d, dict) and d.get("kind") and d.get("cat")}
     rx = {t: re.compile(p, re.I) for t, p in SIGNAL.items()}
     cnt = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: [0, 0])))       # (kind,cat) -> key -> tool -> [hit, docs]
     docs_with = defaultdict(lambda: defaultdict(int))

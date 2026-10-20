@@ -913,6 +913,131 @@ def survei_responden(pop, per_kec, cl_pct, e_pct, p_pct, deff, nonresp_pct, mini
             "_table": {"header": ["Kecamatan", "Desa", "Populasi (KK)", "Porsi populasi", "Responden"], "rows": rows}}
 
 
+# =============================================================================== material, angkutan, air limbah (rincian), B3, energi
+# Rumus-rumus ini disarikan dari dokumen contoh (rumus yang benar-benar tertulis di sana); koefisien/standar yang bergantung
+# peraturan atau lokasi (liter air per zak, koefisien BBM, ambang & masa simpan B3) adalah isian pengguna.
+def massa_dari_volume(V, BJ):
+    """massa (ton) = V (m³) × BJ (ton/m³)"""
+    _nn(V=V)
+    _pos(BJ=BJ)
+    return V * BJ
+
+
+def angkutan_material(V, kap, hari, jam, smp):
+    """rit = ⌈V/kap⌉ ; rit/hari = rit/hari kerja ; kendaraan/hari = 2·rit/hari (masuk+keluar) ; /jam = ÷ jam kerja ; smp/jam = ·smp"""
+    _nn(V=V)
+    _pos(kap=kap, hari=hari, jam=jam, smp=smp)
+    rit = math.ceil(V / kap)
+    rit_hari = rit / hari
+    kend_hari = 2 * rit_hari
+    kend_jam = kend_hari / jam
+    return {"rit": float(rit), "rit_hari": rit_hari, "kend_hari": kend_hari, "kend_jam": kend_jam, "smp_jam": kend_jam * smp}
+
+
+def konversi_periode(n, lama_hari, hari_bulan):
+    """per hari = n/lama ; per bulan = per hari × hari/bulan ; per tahun = per bulan × 12"""
+    _nn(n=n)
+    _pos(lama_hari=lama_hari, hari_bulan=hari_bulan)
+    per_hari = n / lama_hari
+    per_bulan = per_hari * hari_bulan
+    return {"per_hari": per_hari, "per_bulan": per_bulan, "per_tahun": per_bulan * 12}
+
+
+def air_semen(zak_hari, hari, L_per_zak):
+    """air = zak × liter/zak"""
+    _nn(zak_hari=zak_hari, hari=hari, L_per_zak=L_per_zak)
+    return {"zak": zak_hari * hari, "L_hari": zak_hari * L_per_zak, "m3_total": zak_hari * hari * L_per_zak / 1000.0}
+
+
+def lumpur_padatan(Q, pct):
+    """lumpur (m³/hari) = Q × persen padatan"""
+    _nn(Q=Q, pct=pct)
+    return Q * pct / 100.0
+
+
+def grey_water(pakai, losses):
+    """grey water = pemakaian − losses"""
+    _nn(pakai=pakai, losses=losses)
+    if losses > pakai:
+        raise CalcError("losses tidak boleh melebihi pemakaian")
+    return pakai - losses
+
+
+def cek_kapasitas_ipal(Q, kap):
+    """rasio = Q/kapasitas ; sisa = kapasitas − Q"""
+    _nn(Q=Q)
+    _pos(kap=kap)
+    return {"rasio": Q / kap * 100.0, "sisa": kap - Q, "ok": 1.0 if Q <= kap else 0.0}
+
+
+def debit_jam(Q_hari, jam):
+    """Q (m³/jam) = Q(m³/hari) / jam operasi ; L/detik = Q·1000/(jam·3600)"""
+    _nn(Q_hari=Q_hari)
+    _pos(jam=jam)
+    return {"m3_jam": Q_hari / jam, "L_detik": Q_hari * 1000.0 / (jam * 3600.0)}
+
+
+def dimensi_bak(P, L, T, Q):
+    """V = P·L·T ; waktu tinggal = V/Q × 24"""
+    _pos(P=P, L=L, T=T, Q=Q)
+    v = P * L * T
+    return {"V": v, "hrt": v / Q * 24.0}
+
+
+def air_siram(dosis, luas, frek):
+    """air sekali siram = dosis (L/m²) × luas RTH ; per hari = × frekuensi"""
+    _nn(dosis=dosis, luas=luas, frek=frek)
+    liter = dosis * luas
+    return {"liter": liter, "m3": liter / 1000.0, "m3_hari": liter / 1000.0 * frek}
+
+
+def oli_bekas(n, vol, interval, dens, hari_bulan):
+    """oli bekas per bulan = alat × volume ganti / interval (bulan) ; kg = liter × densitas"""
+    _nn(n=n, vol=vol)
+    _pos(interval=interval, dens=dens, hari_bulan=hari_bulan)
+    bulan = n * vol / interval
+    return {"L_bulan": bulan, "L_hari": bulan / hari_bulan, "L_tahun": bulan * 12, "kg_bulan": bulan * dens, "kg_hari": bulan * dens / hari_bulan}
+
+
+def _jumlah(xs):
+    if not xs:
+        raise CalcError("isi minimal satu angka")
+    if any(x < 0 for x in xs):
+        raise CalcError("angka tidak boleh negatif")
+    return {"total": sum(xs), "rata": sum(xs) / len(xs), "maks": max(xs), "n": float(len(xs))}
+
+
+def bbm_genset(n, koef, kva, beban, jam, hari_bulan):
+    """BBM (L/hari) = unit × koef (L/kVA·jam) × kVA × beban% × jam"""
+    _nn(n=n, koef=koef, kva=kva, beban=beban, jam=jam, hari_bulan=hari_bulan)
+    hari = n * koef * kva * beban / 100.0 * jam
+    return {"L_hari": hari, "L_bulan": hari * hari_bulan}
+
+
+def energi_listrik(kw, jam, hari_bulan):
+    """kWh/hari = kW × jam ; kWh/bulan = × hari/bulan"""
+    _nn(kw=kw, jam=jam, hari_bulan=hari_bulan)
+    return {"kwh_hari": kw * jam, "kwh_bulan": kw * jam * hari_bulan}
+
+
+def kva_kw(kva, pf):
+    """kW = kVA × faktor daya"""
+    _nn(kva=kva)
+    if not (0 < pf <= 1):
+        raise CalcError("faktor daya harus > 0 dan ≤ 1")
+    return kva * pf
+
+
+def cek_genset(keb, n, kva_unit, standby):
+    """kapasitas efektif = (unit − unit standby) × kVA/unit ; rasio = kapasitas / kebutuhan"""
+    _pos(keb=keb, n=n, kva_unit=kva_unit)
+    _nn(standby=standby)
+    if standby >= n:
+        raise CalcError("unit standby harus lebih sedikit dari jumlah unit")
+    kap = (n - standby) * kva_unit
+    return {"kap": kap, "total": n * kva_unit, "rasio": kap / keb * 100.0, "ok": 1.0 if kap >= keb else 0.0}
+
+
 # =============================================================================== registri
 def V(name, label, unit="", default=None, hint="", typ="number", options=None):
     return {"name": name, "label": label, "unit": unit, "default": default, "hint": hint, "type": typ,
@@ -1211,6 +1336,101 @@ reg("kdb_klb", "KDB, KLB & ruang terbuka hijau", "Tata ruang & lahan",
     "Ketentuan intensitas pemanfaatan ruang (nilai KDB/KLB/RTH dari RTRW/RDTR yang berlaku).", run=lambda i: kdb_klb(i["luas"], i["kdb_pct"], i["klb"], i["rth_pct"]))
 
 
+# ---- material & angkutan material (disarikan dari dokumen contoh)
+MATREF = "Neraca volume-massa & ritase angkutan (praktik umum rencana kegiatan); rumus tertulis di dokumen contoh AMDAL/UKL-UPL."
+reg("massa_dari_volume", "Konversi volume ↔ massa material", "Material & konstruksi", "massa = V × BJ",
+    [V("V", "Volume (in-situ/bcm atau sesuai dokumen)", "m³", 100000), V("BJ", "Berat jenis material", "ton/m³", 2.65, VERIFY + " (contoh dokumen pasir kuarsa/silika ±2,65); ukur utk lokasi")],
+    [("massa", "Massa", "ton")], MATREF, "Samakan basis volume (padat/bcm vs lepas/lcm); faktor pengembangan tidak dihitung di sini.",
+    run=lambda i: {"massa": massa_dari_volume(i["V"], i["BJ"])})
+reg("angkutan_material", "Ritase & lalu lintas angkutan material", "Material & konstruksi",
+    "rit = ⌈V/kapasitas⌉ ; kend/hari = 2·rit/hari kerja ; smp/jam = kend/hari ÷ jam kerja × smp",
+    [V("V", "Volume material yang diangkut", "m³", 1900), V("kap", "Kapasitas muat per truk", "m³/rit", 3), V("hari", "Lama pekerjaan angkut", "hari kerja", 60),
+     V("jam", "Jam kerja angkut per hari", "jam", 8), V("smp", "Ekivalen smp per kendaraan", "smp/kend", 1.3, "dari pedoman kapasitas jalan yang dipakai (MKJI/PKJI); contoh dokumen 1,3 untuk truk")],
+    [("rit", "Total ritase", "rit"), ("rit_hari", "Ritase per hari", "rit/hari"), ("kend_hari", "Kendaraan per hari (masuk + keluar)", "kend/hari"),
+     ("kend_jam", "Kendaraan per jam kerja", "kend/jam"), ("smp_jam", "Arus tambahan", "smp/jam")],
+    MATREF, "Dokumen contoh sering menyamakan truk/hari dengan smp/jam; di sini kendaraan dibagi jam kerja agar arus jam-nya wajar. Tambahkan smp/jam ke arus jalan sebelum menguji V/C.",
+    run=lambda i: angkutan_material(i["V"], i["kap"], i["hari"], i["jam"], i["smp"]))
+reg("konversi_periode", "Konversi periode (per hari, bulan, tahun)", "Material & konstruksi", "per hari = n/lama ; per bulan = per hari × hari/bulan ; per tahun = ×12",
+    [V("n", "Jumlah dalam satu periode", "satuan apa pun", 97222, "mis. ton, liter, kg, m³"), V("lama_hari", "Lama periode tersebut", "hari", 30, "1 bulan = 30; 3 bulan = 90; 1 tahun = 365"),
+     V("hari_bulan", "Hari per bulan yang dipakai", "hari", 30, "samakan dengan basis hari kerja dokumen")],
+    [("per_hari", "Per hari", "/hari"), ("per_bulan", "Per bulan", "/bulan"), ("per_tahun", "Per tahun", "/tahun")], MATREF, "Satuan hasil mengikuti satuan isian n.",
+    run=lambda i: konversi_periode(i["n"], i["lama_hari"], i["hari_bulan"]))
+reg("air_semen", "Kebutuhan air untuk pekerjaan beton/semen", "Material & konstruksi", "air = zak/hari × liter per zak ; total = × hari",
+    [V("zak_hari", "Semen terpakai", "zak/hari", 110, "mis. pekerja × zak per pekerja — ASUMSI proyek"), V("hari", "Lama pekerjaan", "hari", 100),
+     V("L_per_zak", "Air per zak semen", "L/zak", None, "ISI dari standar yang dipakai (contoh dokumen: 215 L per 5 zak = 43 L/zak, mengutip SNI DT-91-0008-2007) — periksa sumbernya")],
+    [("zak", "Total semen", "zak"), ("L_hari", "Air per hari", "L/hari"), ("m3_total", "Air total", "m³")], "Contoh perhitungan di dokumen AMDAL/UKL-UPL konstruksi.",
+    "Liter per zak tidak diberi nilai awal karena bergantung standar/mutu campuran.",
+    run=lambda i: air_semen(i["zak_hari"], i["hari"], i["L_per_zak"]))
+reg("lumpur_padatan", "Lumpur dari debit × persen padatan", "Material & konstruksi", "lumpur = Q × persen padatan",
+    [V("Q", "Debit air bersedimen", "m³/hari", 1.27), V("pct", "Kadar lumpur/padatan", "%", 0.3, "dari uji TSS/gradasi — ASUMSI")],
+    [("lumpur", "Lumpur", "m³/hari")], MATREF, "Hitungan volume sederhana; kadar padatan sebaiknya dari uji laboratorium.",
+    run=lambda i: {"lumpur": lumpur_padatan(i["Q"], i["pct"])})
+
+# ---- air limbah: rincian (IPAL, grey water, penyiraman)
+IPALREF = "Neraca air & sizing sederhana unit pengolahan air limbah; rumus tertulis di dokumen contoh."
+reg("grey_water", "Grey water dari pemakaian air", "Air bersih & air limbah", "grey water = pemakaian − losses",
+    [V("pakai", "Pemakaian air (mis. wastafel/dapur)", "m³/hari", 0.04), V("losses", "Hilang (tidak masuk saluran)", "m³/hari", 0.01, "ASUMSI")],
+    [("gw", "Grey water ke pengolahan", "m³/hari")], IPALREF, "Hasil per sumber dijumlahkan lalu dibandingkan dengan kapasitas IPAL.",
+    run=lambda i: {"gw": grey_water(i["pakai"], i["losses"])})
+reg("cek_kapasitas_ipal", "Pemeriksaan kapasitas IPAL", "Air bersih & air limbah", "rasio = Q/kapasitas ; sisa = kapasitas − Q",
+    [V("Q", "Debit air limbah", "m³/hari", 1.4), V("kap", "Kapasitas IPAL terpasang", "m³/hari", 5)],
+    [("rasio", "Beban terhadap kapasitas", "%"), ("sisa", "Kapasitas tersisa", "m³/hari"), ("ok", "Kapasitas mencukupi? (1=ya)", "")], IPALREF,
+    "Hanya membandingkan debit; kualitas efluen dihitung di rumus 'Efluen & efisiensi pengolahan'.",
+    run=lambda i: cek_kapasitas_ipal(i["Q"], i["kap"]))
+reg("debit_jam", "Debit harian → per jam & L/detik", "Air bersih & air limbah", "Q(m³/jam) = Q(m³/hari)/jam ; L/detik = Q·1000/(jam·3600)",
+    [V("Q_hari", "Debit harian", "m³/hari", 8), V("jam", "Jam operasi per hari", "jam", 24)],
+    [("m3_jam", "Debit per jam", "m³/jam"), ("L_detik", "Debit", "L/detik")], IPALREF,
+    run=lambda i: debit_jam(i["Q_hari"], i["jam"]))
+reg("dimensi_bak", "Volume bak & waktu tinggal", "Air bersih & air limbah", "V = P·L·T ; HRT = V/Q × 24",
+    [V("P", "Panjang", "m", 1.5), V("L", "Lebar", "m", 1.5), V("T", "Kedalaman efektif", "m", 1.2), V("Q", "Debit masuk", "m³/hari", 0.985)],
+    [("V", "Volume bak", "m³"), ("hrt", "Waktu tinggal", "jam")], IPALREF, "Waktu tinggal dibandingkan dengan kriteria desain unit yang dipakai (bukan disimpan di sini).",
+    run=lambda i: dimensi_bak(i["P"], i["L"], i["T"], i["Q"]))
+reg("air_siram", "Air olahan untuk penyiraman RTH", "Air bersih & air limbah", "air = dosis (L/m²) × luas RTH × frekuensi",
+    [V("dosis", "Dosis penyiraman", "L/m²", 5, "ASUMSI desain tanaman"), V("luas", "Luas RTH disiram", "m²", 38874.13), V("frek", "Frekuensi penyiraman", "kali/hari", 1)],
+    [("liter", "Air sekali siram", "liter"), ("m3", "Air sekali siram", "m³"), ("m3_hari", "Air per hari", "m³/hari")], IPALREF,
+    "Bandingkan dengan air olahan yang tersedia (efluen IPAL) untuk menilai kecukupan pemanfaatan kembali.",
+    run=lambda i: air_siram(i["dosis"], i["luas"], i["frek"]))
+
+# ---- limbah B3
+B3REF = "Neraca timbulan limbah B3 dari pemeliharaan alat; rumus tertulis di dokumen contoh. Kategori/ambang/masa simpan menurut peraturan yang berlaku (tidak disimpan di sini)."
+reg("oli_bekas", "Timbulan oli bekas dari pemeliharaan alat", "Limbah B3", "L/bulan = alat × volume ganti / interval (bulan) ; kg = L × densitas",
+    [V("n", "Jumlah alat/genset", "unit", 2), V("vol", "Oli per penggantian", "L/unit", 4, "dari manual alat"), V("interval", "Interval penggantian", "bulan", 4, "dari jadwal servis"),
+     V("dens", "Densitas oli bekas", "kg/L", 0.9, VERIFY + " (contoh dokumen ±0,9); lihat lembar data keselamatan"), V("hari_bulan", "Hari per bulan", "hari", 30)],
+    [("L_bulan", "Oli bekas", "L/bulan"), ("L_hari", "Oli bekas", "L/hari"), ("L_tahun", "Oli bekas", "L/tahun"), ("kg_bulan", "Oli bekas", "kg/bulan"), ("kg_hari", "Oli bekas", "kg/hari")],
+    B3REF, "Hanya oli; majun, aki, filter, lampu dan kemasan dihitung terpisah lalu dijumlahkan dengan 'Jumlah timbulan B3'.",
+    run=lambda i: oli_bekas(i["n"], i["vol"], i["interval"], i["dens"], i["hari_bulan"]))
+reg("total_b3", "Jumlah timbulan limbah B3", "Limbah B3", "total = Σ timbulan tiap jenis",
+    [V("x", "Timbulan tiap jenis (pisah koma, satuan SAMA)", "kg/bulan", "10, 1, 0.5", typ="list")],
+    [("total", "Total", "satuan isian"), ("rata", "Rata-rata per jenis", "satuan isian"), ("maks", "Jenis terbesar", "satuan isian"), ("n", "Jumlah jenis", "jenis")],
+    B3REF, "Ubah dulu semua jenis ke satuan yang sama (kg); gunakan 'Konversi periode' untuk menyamakan per hari/bulan/tahun.",
+    run=lambda i: _jumlah(i["x"]))
+
+# ---- energi & bahan bakar
+ENREF = "Perhitungan kebutuhan BBM/listrik genset di dokumen contoh; koefisien konsumsi bergantung merek dan beban (isian pengguna)."
+reg("bbm_genset", "Kebutuhan BBM genset", "Energi & bahan bakar", "BBM (L/hari) = unit × koef (L/kVA·jam) × kVA × beban% × jam",
+    [V("n", "Jumlah genset", "unit", 68), V("koef", "Koefisien konsumsi BBM", "L/kVA·jam", None, "ISI dari spesifikasi pabrikan/praktik proyek (contoh dokumen: 0,21) — ASUMSI, hanya terlihat di satu dokumen"),
+     V("kva", "Kapasitas per genset", "kVA", 17), V("beban", "Beban rata-rata", "%", 80, "ASUMSI operasi"), V("jam", "Jam operasi per hari", "jam", 8),
+     V("hari_bulan", "Hari operasi per bulan", "hari", 30)],
+    [("L_hari", "BBM", "L/hari"), ("L_bulan", "BBM", "L/bulan")], ENREF, "Koefisien tidak diberi nilai awal. Hasil untuk uraian kebutuhan BBM dan masukan laju emisi pada simulator udara.",
+    run=lambda i: bbm_genset(i["n"], i["koef"], i["kva"], i["beban"], i["jam"], i["hari_bulan"]))
+reg("total_bbm", "Jumlah kebutuhan BBM dari beberapa sumber", "Energi & bahan bakar", "total = Σ kebutuhan tiap sumber",
+    [V("x", "Kebutuhan tiap sumber (pisah koma, satuan SAMA)", "L/bulan", "12435, 134.4", typ="list")],
+    [("total", "Total", "satuan isian"), ("rata", "Rata-rata per sumber", "satuan isian"), ("maks", "Sumber terbesar", "satuan isian"), ("n", "Jumlah sumber", "sumber")],
+    ENREF, "Genset, alat berat, kendaraan, boiler dihitung terpisah lalu dijumlahkan.",
+    run=lambda i: _jumlah(i["x"]))
+reg("energi_listrik", "Energi listrik harian & bulanan", "Energi & bahan bakar", "kWh/hari = kW × jam ; kWh/bulan = × hari/bulan",
+    [V("kw", "Daya beban", "kW", 1.5), V("jam", "Jam operasi per hari", "jam", 24), V("hari_bulan", "Hari operasi per bulan", "hari", 30)],
+    [("kwh_hari", "Energi", "kWh/hari"), ("kwh_bulan", "Energi", "kWh/bulan")], ENREF, run=lambda i: energi_listrik(i["kw"], i["jam"], i["hari_bulan"]))
+reg("kva_kw", "Konversi kVA → kW", "Energi & bahan bakar", "kW = kVA × faktor daya",
+    [V("kva", "Daya semu", "kVA", 350), V("pf", "Faktor daya", "", 0.8, "genset umum ±0,8; lihat plat nama")], [("kw", "Daya nyata", "kW")], ENREF,
+    run=lambda i: {"kw": kva_kw(i["kva"], i["pf"])})
+reg("cek_genset", "Kecukupan genset cadangan", "Energi & bahan bakar", "kapasitas efektif = (unit − standby) × kVA ; rasio = kapasitas/kebutuhan",
+    [V("keb", "Kebutuhan listrik", "kVA", 4515), V("n", "Jumlah genset", "unit", 2), V("kva_unit", "Kapasitas per genset", "kVA", 2500),
+     V("standby", "Unit yang dicadangkan (tidak beroperasi bersamaan)", "unit", 0)],
+    [("kap", "Kapasitas efektif", "kVA"), ("total", "Kapasitas terpasang", "kVA"), ("rasio", "Terhadap kebutuhan", "%"), ("ok", "Mencukupi? (1=ya)", "")], ENREF,
+    run=lambda i: cek_genset(i["keb"], i["n"], i["kva_unit"], i["standby"]))
+
+
 # ---- Andalalin: sebelum vs sesudah
 LL = ("AMDAL", "UKL-UPL", "Andalalin")
 LLREF = "Praktik analisis dampak lalu lintas (Andalalin): pembandingan kondisi tanpa dan dengan proyek; kapasitas & tingkat pelayanan mengikuti pedoman yang dipakai (mis. MKJI/PM Perhubungan)."
@@ -1415,7 +1635,7 @@ e_gum["fn"] = gumbel_x
 _EXTRA = {"laju_aritmatika": laju_aritmatika, "laju_eksponensial": laju_eksponensial, "ugm3_ke_ppm": ugm3_ke_ppm, "gumbel_k": gumbel_k,
           "efluen": efluen, "efisiensi_perlu": efisiensi_perlu, "volume_reaktor": volume_reaktor, "beban_per_kapita": beban_per_kapita,
           "timbulan_sampah": timbulan_sampah, "volume_sampah": volume_sampah, "sampah_residu": sampah_residu, "lhr_proyeksi": lhr_proyeksi,
-          "gauss": gauss}
+          "gauss": gauss, "massa_dari_volume": massa_dari_volume, "lumpur_padatan": lumpur_padatan, "grey_water": grey_water, "kva_kw": kva_kw}
 FORMULA_FUNCS: dict = {"ln": math.log, "log10": math.log10, "radians": math.radians, "sin": math.sin, "cos": math.cos, "tan": math.tan,
                        "atan": math.atan, "gumbel_x": gumbel_x}
 for e in CATALOG:
@@ -1506,7 +1726,7 @@ def public_catalog() -> list[dict]:
 
 CATEGORIES = ["Kependudukan", "Tenaga kerja & sosial", "Survei sosial ekonomi", "Keanekaragaman hayati", "Air bersih & air limbah", "Kualitas air", "Limbah padat", "Kualitas udara",
               "Kebisingan", "Lalu lintas", "Hidrologi & erosi", "Pertambangan & konstruksi", "Tata ruang & lahan",
-              "Gas rumah kaca & karbon", "Analisis biaya-manfaat"]
+              "Gas rumah kaca & karbon", "Analisis biaya-manfaat", "Material & konstruksi", "Limbah B3", "Energi & bahan bakar"]
 
 
 # =============================================================================== petunjuk pemakaian tiap rumus
@@ -1639,6 +1859,45 @@ DATA_NEEDED = {
     "shannon_wiener": ["Cacah individu per jenis — survei lapangan (transek/petak contoh, jaring, plot plankton/bentos)", "Satu daftar untuk satu kelompok biota & satu lokasi/stasiun"],
     "inp_vegetasi": ["Jumlah petak & luas tiap petak — metode survei vegetasi", "Per jenis: jumlah individu, jumlah petak tempat ditemukan, dan diameter → luas bidang dasar"],
 }
+
+HOWTO.update({
+    "massa_dari_volume": ("Mengubah volume produksi/material (m³) menjadi tonase, atau sebaliknya, agar angka di deskripsi kegiatan konsisten.", "Pastikan basis volume sama (padat/bcm atau lepas) dan BJ berasal dari uji material lokasi; tuliskan BJ yang dipakai."),
+    "angkutan_material": ("Menghitung ritase dan arus kendaraan pengangkut material (konstruksi/tambang) sebagai masukan dampak lalu lintas.", "Arus 'smp/jam' ditambahkan ke arus jalan sekitar lalu diuji V/C di kalkulator lalu lintas; ritase dibulatkan ke atas."),
+    "konversi_periode": ("Menyamakan satuan waktu: produksi/timbulan per bulan, per tahun, atau per hari, supaya angka antar bagian dokumen cocok.", "Satuan hasil sama dengan satuan isian; periksa basis hari per bulan agar sama dengan jadwal kerja dokumen."),
+    "air_semen": ("Kebutuhan air pekerjaan beton/semen pada tahap konstruksi.", "Total m³ dimasukkan ke neraca kebutuhan air konstruksi; liter per zak harus Anda isi dan sumbernya dicantumkan."),
+    "lumpur_padatan": ("Volume lumpur dari air bersedimen (limpasan, pencucian) untuk kolam pengendap.", "Kadar padatan dari uji TSS/gradasi; hasil menentukan frekuensi pengerukan."),
+    "grey_water": ("Menghitung air bekas wastafel/dapur yang masuk ke pengolahan (setelah losses).", "Jumlahkan per sumber lalu bandingkan dengan kapasitas IPAL pada 'Pemeriksaan kapasitas IPAL'."),
+    "cek_kapasitas_ipal": ("Memeriksa apakah IPAL terpasang cukup untuk debit air limbah yang dihasilkan.", "Rasio ≤ 100% berarti kapasitas cukup; sisakan kelonggaran untuk fluktuasi sesuai kriteria desain."),
+    "debit_jam": ("Mengubah debit harian menjadi per jam dan L/detik untuk uraian unit pengolahan.", "Gunakan jam operasi yang sama dengan yang tertulis di deskripsi kegiatan."),
+    "dimensi_bak": ("Volume bak (ekualisasi/tampung/IPAL) dari ukuran dan waktu tinggal pada debit tertentu.", "Bandingkan waktu tinggal dengan kriteria desain unit yang dipakai; kedalaman yang diisi adalah kedalaman efektif."),
+    "air_siram": ("Kebutuhan air penyiraman RTH dari air olahan agar pemanfaatan kembali tercantum di rencana pengelolaan.", "Bandingkan m³/hari dengan efluen IPAL yang tersedia untuk menilai kecukupannya."),
+    "oli_bekas": ("Timbulan oli bekas dari alat berat dan genset (jumlah × volume ganti ÷ interval) untuk bagian pengelolaan limbah B3.", "Gabungkan dengan majun, aki, filter dan lampu di 'Jumlah timbulan limbah B3'; kategori dan masa simpan ditentukan menurut peraturan yang berlaku."),
+    "total_b3": ("Menjumlahkan timbulan tiap jenis limbah B3 sebagai dasar kapasitas TPS dan kategori pengelolaan.", "Pastikan semua jenis dalam satuan sama; total per hari menentukan golongan simpan menurut peraturan yang berlaku."),
+    "bbm_genset": ("Kebutuhan BBM genset (jumlah unit, kVA, beban, jam) untuk uraian kebutuhan energi.", "L/hari dan L/bulan; koefisien konsumsi Anda isi dari spesifikasi dan sumbernya dicantumkan."),
+    "total_bbm": ("Menjumlahkan kebutuhan BBM dari genset, alat berat, kendaraan, dan boiler.", "Satuan semua sumber harus sama (mis. L/bulan)."),
+    "energi_listrik": ("Energi listrik harian/bulanan suatu beban (mis. blower IPAL, pompa).", "kWh/bulan dipakai untuk uraian kebutuhan listrik dan perbandingan dengan daya PLN."),
+    "kva_kw": ("Mengubah daya semu genset (kVA) ke daya nyata (kW).", "Faktor daya dari plat nama; umumnya sekitar 0,8."),
+    "cek_genset": ("Memeriksa kecukupan genset cadangan terhadap kebutuhan listrik.", "Rasio ≥ 100% berarti kapasitas efektif memadai; unit standby tidak dihitung beroperasi bersamaan."),
+})
+DATA_NEEDED.update({
+    "massa_dari_volume": ["Volume material/produksi — rencana kegiatan", "Berat jenis — uji material atau data geologi lokasi"],
+    "angkutan_material": ["Volume material & lama pekerjaan — jadwal konstruksi/produksi", "Kapasitas truk — jenis armada rencana", "Ekivalen smp — pedoman kapasitas jalan yang dipakai"],
+    "konversi_periode": ["Angka produksi/timbulan per periode — rencana kegiatan"],
+    "air_semen": ["Jumlah semen terpakai — RAB/jadwal pekerjaan beton", "Air per zak — standar teknis yang dipakai (sebutkan sumbernya)"],
+    "lumpur_padatan": ["Debit air bersedimen — hitungan limpasan/pencucian", "Kadar padatan — uji TSS/gradasi"],
+    "grey_water": ["Pemakaian air per sumber — rencana kebutuhan air", "Perkiraan losses — asumsi desain"],
+    "cek_kapasitas_ipal": ["Debit air limbah — neraca air proyek", "Kapasitas IPAL — spesifikasi unit pengolahan"],
+    "debit_jam": ["Debit harian — neraca air proyek", "Jam operasi — rencana operasi"],
+    "dimensi_bak": ["Ukuran bak — gambar desain unit", "Debit masuk — neraca air proyek"],
+    "air_siram": ["Luas RTH — site plan", "Dosis penyiraman — asumsi desain tanaman/hortikultura"],
+    "oli_bekas": ["Jumlah alat/genset — daftar peralatan", "Volume dan interval ganti oli — manual alat/jadwal servis", "Densitas — lembar data keselamatan oli"],
+    "total_b3": ["Timbulan tiap jenis B3 — hasil rumus oli bekas dan perkiraan jenis lain (majun, aki, filter, lampu, kemasan)"],
+    "bbm_genset": ["Jumlah dan kapasitas genset — daftar peralatan", "Beban dan jam operasi — rencana operasi", "Koefisien konsumsi BBM — spesifikasi pabrikan"],
+    "total_bbm": ["Kebutuhan BBM tiap sumber — hasil hitung genset, alat berat, kendaraan, boiler"],
+    "energi_listrik": ["Daya dan jam operasi beban — daftar peralatan"],
+    "kva_kw": ["Kapasitas kVA dan faktor daya — spesifikasi/plat nama"],
+    "cek_genset": ["Kebutuhan listrik — daftar beban", "Jumlah dan kapasitas genset — daftar peralatan"],
+})
 
 GENERIC_STEPS = ["Pilih rumus dan baca persamaannya.", "Isi setiap kotak dengan angka proyek Anda (satuan tertera). Nilai awal hanya contoh.",
                  "Klik Hitung lalu catat hasil beserta satuannya.", "Cantumkan rumus & rujukan di dokumen; bila memakai nilai asumsi, nyatakan sumbernya."]

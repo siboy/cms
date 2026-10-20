@@ -20,15 +20,15 @@ MODULES: list[dict] = [
     # ---- engine perhitungan & simulasi (per topik)
     {"key": "calc_survei", "group": "Engine", "label": "Kalkulator survei responden", "desc": "Jumlah responden (Cochran, Slovin, dst.), alokasi per desa/kecamatan; di proyek: responden otomatis per unit wilayah."},
     {"key": "calc_lalin", "group": "Engine", "label": "ANDAL lalu lintas", "desc": "Pertumbuhan kendaraan & kepemilikan, pelebaran jalan, sebelum vs sesudah, jam puncak, V/C, kepadatan, waktu tempuh."},
-    {"key": "calc_limbah", "group": "Engine", "label": "Dampak air bersih, air limbah & sampah", "desc": "Kebutuhan air, timbulan air limbah, beban pencemar, IPAL, sampah."},
+    {"key": "calc_limbah", "group": "Engine", "label": "Dampak air bersih, air limbah & sampah", "desc": "Kebutuhan air, timbulan air limbah, beban pencemar, IPAL, sampah, limbah B3."},
     {"key": "calc_kualitas_air", "group": "Engine", "label": "Kualitas air & simulasi sungai", "desc": "Indeks pencemaran, pencampuran, Streeter-Phelps, simulasi pencemaran air sungai 2-D."},
     {"key": "calc_udara", "group": "Engine", "label": "Kualitas udara & simulasi cerobong", "desc": "Dispersi Gauss, emisi, model kotak, simulasi udara cerobong 2-D."},
     {"key": "calc_bising", "group": "Engine", "label": "Kebisingan & simulasi bunyi", "desc": "Perambatan bunyi, Leq/Ldn, penghalang, simulasi kebisingan 2-D."},
     {"key": "calc_hidrologi", "group": "Engine", "label": "Hidrologi, limpasan & erosi", "desc": "Rasional, Mononobe, SCS-CN, Gumbel, Manning, USLE."},
-    {"key": "calc_tambang", "group": "Engine", "label": "Pertambangan & konstruksi", "desc": "Umur tambang & tanah penutup, dewatering, kolam pengendap, getaran peledakan."},
+    {"key": "calc_tambang", "group": "Engine", "label": "Pertambangan & konstruksi", "desc": "Umur tambang & tanah penutup, dewatering, kolam pengendap, getaran peledakan, material & angkutan material."},
     {"key": "calc_sosial", "group": "Engine", "label": "Kependudukan, tenaga kerja & sosial", "desc": "Proyeksi penduduk baku, penambahan tenaga kerja & pendatang, kepadatan."},
     {"key": "calc_hayati", "group": "Engine", "label": "Keanekaragaman hayati", "desc": "Indeks Shannon-Wiener, kemerataan, dominansi, INP vegetasi."},
-    {"key": "calc_grk", "group": "Engine", "label": "Gas rumah kaca & karbon", "desc": "Emisi GRK, CO₂e, emisi pembukaan lahan."},
+    {"key": "calc_grk", "group": "Engine", "label": "Gas rumah kaca & karbon", "desc": "Emisi GRK, CO₂e, emisi pembukaan lahan, kebutuhan BBM & energi genset."},
     {"key": "calc_ekonomi", "group": "Engine", "label": "Ekonomi, tata ruang & lahan", "desc": "NPV/BCR/IRR dan KDB/KLB/RTH."},
 ]
 KEYS = [m["key"] for m in MODULES]
@@ -41,6 +41,7 @@ CATEGORY_MODULE = {
     "Kualitas air": "calc_kualitas_air", "Kualitas udara": "calc_udara", "Kebisingan": "calc_bising", "Lalu lintas": "calc_lalin",
     "Hidrologi & erosi": "calc_hidrologi", "Pertambangan & konstruksi": "calc_tambang", "Tata ruang & lahan": "calc_ekonomi",
     "Gas rumah kaca & karbon": "calc_grk", "Analisis biaya-manfaat": "calc_ekonomi",
+    "Material & konstruksi": "calc_tambang", "Limbah B3": "calc_limbah", "Energi & bahan bakar": "calc_grk",
 }
 SIM_MODULE = {"water": "calc_kualitas_air", "air": "calc_udara", "noise": "calc_bising"}       # simulator 2-D -> modul
 # alat 🧮 (utils/tpl_tools) -> modul
@@ -48,7 +49,7 @@ TOOL_MODULE = {
     "penduduk": "calc_sosial", "tenaga_kerja": "calc_sosial", "air_bersih": "calc_limbah", "air_limbah": "calc_limbah", "sampah": "calc_limbah",
     "air_sungai": "calc_kualitas_air", "udara": "calc_udara", "bising": "calc_bising", "lalu_lintas": "calc_lalin", "limpasan_erosi": "calc_hidrologi",
     "grk": "calc_grk", "biaya_manfaat": "calc_ekonomi", "tata_ruang": "calc_ekonomi", "tambang": "calc_tambang", "keanekaragaman": "calc_hayati",
-    "survei": "calc_survei",
+    "survei": "calc_survei", "material": "calc_tambang", "energi_bbm": "calc_grk",
 }
 
 
