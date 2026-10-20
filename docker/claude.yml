@@ -43,6 +43,9 @@ services:
       # Skills host (read-only: folder `synced` dikelola sinkronisasi akun host; jangan biarkan
       # akun container menimpanya).
       - ${HOST_HOME}/.claude/skills:/claude-home/.claude/skills:ro
+      # Kunci SSH host (read-only) supaya container bisa `ssh vps5` / `ssh demo` (alias dari
+      # ~/.ssh/config). Path container = path host & UID sama, jadi izin 600 kunci tetap valid.
+      - ${HOST_HOME}/.ssh:${HOST_HOME}/.ssh:ro
 
 volumes:
   claude-home:
