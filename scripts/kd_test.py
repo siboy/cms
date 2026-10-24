@@ -360,6 +360,18 @@ def t_dokumen_contoh():
     o = c("air_semen", zak_hari=3000, hari=1, L_per_zak=43)
     check(near_(o["m3_total"], 129) and o["zak"] == 3000, "3000 zak x 43 L = 129 m3 (215 L / 5 zak)")
     check(near_(c("lumpur_padatan", Q=1.27, pct=0.3)["lumpur"], 0.00381), "lumpur = 1,27 m3/hari x 0,3%")
+    o = c("volume_per_siklus", q_prime=1, K=0.8, Cm=2, E=0.75)
+    check(near_(o["q"], 0.8) and near_(o["siklus_jam"], 30) and near_(o["prod_jam"], 18), f"q = 1 x 0,8 = 0,8 m3 (dokumen) ; 30 siklus/jam x 0,75: {o}")
+    o = c("timbulan_tinja", orang=20, laju=0.008, hari=365)
+    check(near_(o["kg_hari"], 0.16) and near_(o["kg_total"], 58.4), f"20 orang x 0,008 kg/orang/hari (dokumen): {o}")
+    o = c("volume_galian", luas=141300, tebal=6, swell_pct=20)
+    check(near_(o["V"], 847800) and near_(o["V_lepas"], 1017360), f"141.300 m2 x 6 m (dokumen) ; +20%: {o}")
+    for fn, bad in (("volume_per_siklus", {"Cm": 0}), ("timbulan_tinja", {"orang": -1}), ("volume_galian", {"tebal": 0})):
+        try:
+            c(fn, **bad)
+            check(False, f"isian salah lolos: {fn}")
+        except kf.CalcError:
+            check(True, "")
     # air limbah rinci
     check(near_(c("grey_water", pakai=0.04, losses=0.01)["gw"], 0.03), "grey water 0,04 - 0,01")
     o = c("cek_kapasitas_ipal", Q=1.4, kap=5)
@@ -394,10 +406,68 @@ def t_dokumen_contoh():
             check(False, f"isian salah lolos: {bad}")
         except kf.CalcError:
             check(True, "")
+    # ARKL inhalasi (Kemenkes 2012): I = C·R·tE·fE·Dt / (Wb·tavg) ; RQ = I/RfC
+    a = dict(C=0.44195, R=0.83, tE=24, fE=350, Dt=30, Wb=60, tavg=30 * 365, RfC=0.0143)
+    hand = 0.44195 * 0.83 * 24 * 350 * 30 / (60 * 30 * 365)
+    o = c("arkl_inhalasi", **a)
+    check(near_(o["I"], hand) and near_(o["RQ"], hand / 0.0143) and o["ok"] == (1 if hand / 0.0143 <= 1 else 0), f"ARKL inhalasi = rumus tangan: {o}")
+    check(c("arkl_inhalasi", **{**a, "C": 0.001})["ok"] == 1 and c("arkl_inhalasi", **{**a, "RfC": 1e-6})["ok"] == 0, "ambang RQ = 1")
+    r = kf.calc("arkl_banding", {"C0": 0.0272, "C1": 0.44195, "RfC": 0.0143, "R": "0.83, 0.5", "tE": "24, 8", "fE": "350", "Dt": "30", "Wb": "60, 15", "tavg": "10950"})
+    o = {x["key"]: x["value"] for x in r["outputs"]}
+    k1 = arkl_hand = lambda C, R, tE, Wb: C * R * tE * 350 * 30 / (Wb * 10950) / 0.0143
+    check(len(r["table"]["rows"]) == 2 and near_(o["rq1_maks"], max(k1(0.44195, 0.83, 24, 60), k1(0.44195, 0.5, 8, 15))) and o["rq1_maks"] > o["rq0_maks"], f"ARKL banding 2 kelompok: {o}")
+    check(near_(o["naik"], o["rq1_maks"] - o["rq0_maks"]), "kenaikan RQ")
+    try:
+        kf.calc("arkl_banding", {"C0": 1, "C1": 2, "RfC": 1, "R": "1, 2, 3", "tE": "1, 2", "fE": "1", "Dt": "1", "Wb": "1", "tavg": "1"})
+        check(False, "panjang daftar tak sama harus ditolak")
+    except kf.CalcError:
+        check(True, "")
+    # getaran alat (FTA): di 25 ft = PPVref persis; makin jauh makin kecil
+    r = kf.calc("ppv_alat", {"ref": 1.518, "jarak_m": "50, 10, 7.62, 40", "n": 1.5})
+    o = {x["key"]: x["value"] for x in r["outputs"]}
+    check(near_(o["in_dekat"], 1.518 * (25 / (7.62 * 3.28084)) ** 1.5) and abs(o["in_dekat"] - 1.518) < 1e-3, "PPV pada 25 ft (7,62 m) = PPV acuan")
+    vals = [float(x[2]) for x in r["table"]["rows"]]
+    check(len(vals) == 4 and vals == sorted(vals, reverse=True) and r["table"]["rows"][0][0] == "7.62", "tabel urut jarak, PPV menurun")
+    check(near_(o["mm_dekat"], o["in_dekat"] * 25.4), "in/detik → mm/detik")
+    # daya tampung sungai (BPM, BPA, DTBP; f = 86,4)
+    r = kf.calc("daya_tampung_sungai", {"Cbm": 50, "CA": "14.4, 60", "Qs": "2"})
+    o = {x["key"]: x["value"] for x in r["outputs"]}
+    rw = r["table"]["rows"]
+    check(near_(o["dtbp_min"], 2 * 50 * 86.4 - 2 * 60 * 86.4) and o["n_lebih"] == 1 and rw[0][5] == "6,151.68" and rw[0][6] == "28.80%" and rw[0][7] == "71.20%", f"DTBP: {o} {rw[0]}")
+    check(near_(c("daya_tampung_sungai", Cbm=50, CA="14.4", Qs="2")["dtbp_rata"], 6151.68), "DTBP titik tunggal")
+    # debu jalan beraspal (AP-42): E = kb (sL/2)^0,65 W^1,5
+    e_ = 1 * (12 / 2) ** 0.65 * 20 ** 1.5
+    o = c("debu_jalan", kb=1, sL=12, W=20, pembagi=1, N=10, panjang=1, lebar=6)
+    check(near_(o["E"], e_) and near_(o["VKT"], 10) and near_(o["beban"], e_ * 10) and near_(o["laju"], e_ * 10 / 3600) and near_(o["laju_luas"], e_ * 10 / 3600 / 6000), f"debu jalan: {o}")
+    check(near_(c("debu_jalan", kb=1, sL=12, W=20, pembagi=3, N=10, panjang=1, lebar=6)["E"], 1 * 6 ** 0.65 * (20 / 3) ** 1.5), "pembagi bobot (W/3)")
+    check(near_(c("emisi_kendali", EF=2, A=100, ER=90)["Q"], 20) and near_(c("emisi_kendali", EF=2, A=100, ER=0)["Q"], 200), "Q = EF·A·(1−ER)")
+    check(near_(c("bbm_kendaraan", rit=10, jarak=2, unit=3, kml=4)["L"], 15), "(10 rit × 2 km) × 3 / 4 km/L = 15 L (dokumen menulis 3 L)")
+    # air larian sebelum vs sesudah
+    r = kf.calc("larian_banding", {"I": 5.67, "A0": "1000", "C0": "0.25", "A1": "200, 800", "C1": "1, 0.25"})
+    o = {x["key"]: x["value"] for x in r["outputs"]}
+    check(near_(o["q0"], 0.25 * 1000 * 0.00567) and near_(o["q1"], 400 * 0.00567) and near_(o["selisih"], 0.8505) and len(r["table"]["rows"]) == 5, f"air larian: {o}")
+    # sumur resapan luas serap (contoh dokumen: 13,824/2,4 = 5,76 ; /13,35 = 0,43 -> 1)
+    o = c("sumur_resapan_serap", Q=13.824, k=2.4, d=1, h=4)
+    check(near_(o["perlu"], 5.76) and near_(o["luas"], 13.3518, 1e-4) and near_(o["n_pecah"], 0.4314, 1e-3) and o["n"] == 1, f"sumur resapan: {o}")
+    check(c("sumur_resapan_serap", Q=60, k=2.4, d=1, h=4)["n"] == 2, "pembulatan ke atas")
+    # biopori (contoh dokumen: 21.948 m2 × 5,67 mm / 96,5 L = 1.290 lubang)
+    o = c("biopori", A=21948, I=5.67, v=96.5)
+    check(o["n"] == 1290 and near_(o["air"], 21948 * 5.67), f"biopori: {o}")
+    o = c("dimensi_bak", P=1.5, L=1.5, T=1.2, Q=0.985)
+    check(near_(o["interval"], 2.7 / 0.985), "interval penyedotan = V/Q")
+    for bad in (("daya_tampung_sungai", {"Cbm": 50, "CA": "1,2,3", "Qs": "1,2"}), ("larian_banding", {"I": 5, "A0": "10", "C0": "1.5", "A1": "10", "C1": "0.5"}),
+                ("emisi_kendali", {"EF": 1, "A": 1, "ER": 120}), ("biopori", {"A": 1, "I": 1, "v": ""}), ("sumur_resapan_serap", {"Q": 1, "k": ""}), ("debu_jalan", {"kb": "", "sL": 1})):
+        try:
+            c(bad[0], **bad[1])
+            check(False, f"isian salah lolos: {bad}")
+        except kf.CalcError:
+            check(True, "")
     # semua id baru punya petunjuk & muncul di mesin rumus bila skalar
     new = ["massa_dari_volume", "angkutan_material", "konversi_periode", "air_semen", "lumpur_padatan", "grey_water", "cek_kapasitas_ipal", "debit_jam",
-           "dimensi_bak", "air_siram", "oli_bekas", "total_b3", "bbm_genset", "total_bbm", "energi_listrik", "kva_kw", "cek_genset"]
-    check(all(i in kf.BY_ID for i in new), "17 rumus baru terdaftar")
+           "dimensi_bak", "air_siram", "oli_bekas", "total_b3", "bbm_genset", "total_bbm", "energi_listrik", "kva_kw", "cek_genset",
+           "arkl_inhalasi", "arkl_banding", "ppv_alat", "daya_tampung_sungai", "debu_jalan", "emisi_kendali", "bbm_kendaraan", "larian_banding",
+           "sumur_resapan_serap", "biopori", "volume_per_siklus", "timbulan_tinja", "volume_galian"]
+    check(all(i in kf.BY_ID for i in new), "30 rumus baru terdaftar")
     check(all(kf.HOWTO.get(i, ("", ""))[0] and kf.HOWTO[i][1] and kf.DATA_NEEDED.get(i) for i in new), "petunjuk pakai & data yang dibutuhkan lengkap")
     check(kp.Formula("massa_dari_volume(1000, 2.65) + grey_water(0.04, 0.01)")({}) == 2650.03 or near_(kp.Formula("massa_dari_volume(1000, 2.65) + grey_water(0.04, 0.01)")({}), 2650.03), "fungsi baru jalan di rumus skenario")
 

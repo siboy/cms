@@ -232,6 +232,8 @@ def main():
     ap.add_argument("--per-group", type=int, default=0, help="batas dokumen BARU per kelompok (default = batas bawaan per jenis dokumen)")
     ap.add_argument("--max-new", type=int, default=0, help="batas total dokumen baru dalam satu kali jalan (0 = tak dibatasi)")
     ap.add_argument("--list", action="store_true", help="ringkasan manifes + sisa dokumen di NAS yang belum dibaca; lalu selesai")
+    ap.add_argument("--reclassify", action="store_true", help="hitung ulang kategori semua dokumen di manifes dari judul proyek (aturan tpl_catalog.CATEGORIES terbaru), "
+                    "lalu bangun ulang SEMUA template dari cache -- tanpa membaca dokumen lagi")
     ap.add_argument("--bootstrap", action="store_true", help="isi manifes dari cache lama (dokumen yang sudah pernah dibaca); lalu selesai")
     a = ap.parse_args()
     cp, mp, csvp = state_paths(a.state_dir)
@@ -263,9 +265,27 @@ def main():
         pool = Counter(c["kind"] for c in allc if c["name"] not in man)
         summarize(man, dict(pool))
         return
-    cands = pick_candidates(r, meta, a.seed, exclude=set(man) if a.new_only else (), per_group=a.per_group or None)
+    if a.reclassify:
+        from collections import Counter
+        moved = Counter()
+        for e in man.values():
+            mt = meta.get(e["pid"])
+            if not mt:
+                continue                                       # tanpa judul proyek -> kategori lama dipertahankan
+            new = tc.classify(mt["title"])
+            if new != e["cat"]:
+                moved[(e["cat"], new)] += 1
+                e["cat"] = new
+            e["used_in"] = []
+        for (a_, b_), n in sorted(moved.items(), key=lambda x: -x[1]):
+            print(f"  pindah {a_} -> {b_}: {n}")
+        print(f"{sum(moved.values())} dokumen berpindah kategori", flush=True)
+        a.new_only = True                                      # selanjutnya perilaku bangun-ulang dari cache (tanpa dokumen baru)
+        cands = []
+    else:
+        cands = pick_candidates(r, meta, a.seed, exclude=set(man) if a.new_only else (), per_group=a.per_group or None)
     only = {x.strip() for x in a.only.split(",") if x.strip()}
-    if only:
+    if only and not a.reclassify:
         cands = [c for c in cands if f"{c['kind']}:{c['cat']}" in only or f"{c['kind']}:umum" in only]
     if a.new_only and a.max_new:
         cands = cands[: a.max_new]
@@ -281,7 +301,7 @@ def main():
               "sumber": "dokumen contoh amdalnet (outline konsensus) + kerangka baku KA", "templates": templates}
     out = Path(a.out)
     src = out if out.is_file() else tc.bundle_path()            # volume belum berisi -> gabung dari salinan image, jangan kehilangan template lama
-    if (a.merge or a.new_only) and src.is_file():
+    if (a.merge or (a.new_only and not a.reclassify)) and src.is_file():
         old = json.loads(src.read_text(encoding="utf-8")).get("templates", [])
         new_ids = {t["id"] for t in templates}
         bundle["templates"] = [t for t in old if t["id"] not in new_ids] + templates
