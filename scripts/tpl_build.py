@@ -40,9 +40,12 @@ from utils.tpl_outline import extract_content  # noqa: E402
 BASE = "/TIMDATA/amdalnet"
 KIND_RE = re.compile(r"^(\d+)_(dokumen_ukl_upl|dokumen_andal|dokumen_rkl_rpl)_(\d+)_")
 KIND_OF = {"dokumen_ukl_upl": "ukl_upl", "dokumen_andal": "andal", "dokumen_rkl_rpl": "rkl_rpl"}
+# KA/DPDPH: folder sendiri (dokumen/dpdph_ka), nama "<id>_dpdph_ka_v<versi>_..." dan tidak ada di parquet metadata -> kategori 'umum'.
+# Hanya DICATAT di manifes (arsipnya formulir kosong, <MIN_HEADINGS heading): tidak dipakai membangun template; ka-umum tetap kerangka baku.
+KA_RE = re.compile(r"^(\d+)_dpdph_ka_v(\d+)_")
 # batas ukuran berkas yang diunduh (ANDAL bisa ratusan MB karena gambar) & jumlah contoh per kelompok
-MAX_BYTES = {"ukl_upl": 12_000_000, "andal": 30_000_000, "rkl_rpl": 20_000_000}
-PER_GROUP = {"ukl_upl": 40, "andal": 10, "rkl_rpl": 16}
+MAX_BYTES = {"ukl_upl": 12_000_000, "andal": 30_000_000, "rkl_rpl": 20_000_000, "ka": 12_000_000}
+PER_GROUP = {"ukl_upl": 40, "andal": 10, "rkl_rpl": 16, "ka": 10}
 MIN_GROUP = {"ukl_upl": 4, "andal": 3, "rkl_rpl": 3}          # contoh minimal agar jenis kegiatan punya template sendiri
 MIN_HEADINGS = 6
 
@@ -73,14 +76,17 @@ def load_meta(r: SynologyReader) -> dict[int, dict]:
 
 def pick_candidates(r: SynologyReader, meta: dict, seed: int, exclude=(), per_group: int | None = None) -> list[dict]:
     files = []
-    for sub in ("amdal", "ukl_upl"):
+    for sub in ("amdal", "ukl_upl", "dpdph_ka"):
         files += [dict(f, folder=sub) for f in list_all(r, f"{BASE}/dokumen/{sub}") if not f.get("isdir")]
     best: dict = {}                                            # (id, kind) -> berkas versi tertinggi
     for f in files:
-        m = KIND_RE.match(f["name"])
-        if not m:
+        m, mk = KIND_RE.match(f["name"]), KA_RE.match(f["name"])
+        if mk:
+            pid, kind, ver = int(mk.group(1)), "ka", int(mk.group(2))
+        elif m:
+            pid, kind, ver = int(m.group(1)), KIND_OF[m.group(2)], int(m.group(3))
+        else:
             continue
-        pid, kind, ver = int(m.group(1)), KIND_OF[m.group(2)], int(m.group(3))
         size = (f.get("additional") or {}).get("size") or 0
         if not 0 < size <= MAX_BYTES[kind]:
             continue
@@ -90,10 +96,10 @@ def pick_candidates(r: SynologyReader, meta: dict, seed: int, exclude=(), per_gr
     rnd = random.Random(seed)
     groups: dict = {}
     for (pid, kind), c in best.items():
-        mt = meta.get(pid)
+        mt = meta.get(pid) or ({"title": "", "mark": "", "applicant": ""} if kind == "ka" else None)
         if not mt:
             continue                                           # tanpa judul proyek -> jenis kegiatan tak diketahui
-        c["cat"] = tc.classify(mt["title"])
+        c["cat"] = "umum" if kind == "ka" else tc.classify(mt["title"])
         c["applicant"], c["title"] = mt["applicant"], mt["title"]
         c["ok"] = "terbit" in mt["mark"].lower()               # SKKL/PKPLH terbit = dokumen sudah lolos
         if c["name"] in exclude:                               # sudah pernah dibaca (manifes) -> jangan diambil lagi
@@ -137,7 +143,7 @@ def summarize(man: dict, pool: dict | None = None):
     from collections import Counter
     n = Counter((e["kind"], e["status"].split(":")[0]) for e in man.values())
     print(f"{len(man)} dokumen tercatat di manifes")
-    for kind in ("ukl_upl", "andal", "rkl_rpl"):
+    for kind in ("ukl_upl", "andal", "rkl_rpl", "ka"):
         tot = sum(v for (k, _), v in n.items() if k == kind)
         det = ", ".join(f"{st}={v}" for (k, st), v in sorted(n.items()) if k == kind)
         extra = f" | masih tersedia di NAS (belum dibaca): {pool.get(kind, 0)}" if pool else ""
