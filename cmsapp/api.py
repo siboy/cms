@@ -12,6 +12,8 @@ from flask import (Blueprint, Response, abort, current_app, g, jsonify, request,
 from werkzeug.utils import secure_filename
 
 from cmsapp import auth, export, mailer, realtime
+from utils import blockbot
+from utils import modules as mods
 from utils.blockstore import ConflictError, KINDS, LockedError
 
 bp = Blueprint("api", __name__, url_prefix="/api")
@@ -890,6 +892,8 @@ def comments(doc_id):
             kinds = {}
             items = [c for c in items if block_visible(doc_id, c["block_id"],
                      kinds.setdefault(c["block_id"], S().get_block(c["block_id"])["kind"]), visible_heads)]
+        for c in items:
+            c["bot"] = c.get("author") == blockbot.BOT_AUTHOR          # UI: lencana 🤖
         return dict(comments=items)
     return etag_json(doc_id, build)
 
@@ -908,6 +912,8 @@ def add_comment(bid):
     c = S().add_comment(bid, g.user["username"], text, d.get("parent_id"))
     emit(c["doc_id"], "comment", id=bid, cid=c["id"], log_action="comment.add", log_summary=snip(text, 120))
     _notify_comment(b["doc_id"], bid, d.get("parent_id"), text)
+    if mods.is_on("panduan_blok"):                      # pertanyaan di kotak komentar -> dijawab otomatis oleh worker (utils/blockbot.py)
+        blockbot.enqueue(R(), b["doc_id"], bid, c["id"], d.get("parent_id"), g.user["username"], text)
     return jsonify(id=c["id"]), 201
 
 

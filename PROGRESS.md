@@ -683,3 +683,21 @@ Urutan blok = kolom `seq` DOUBLE (sisip = titik tengah). Hapus = soft delete. Ri
 - Menyisipkan string ber-`\n`/`\t` lewat skrip python heredoc bisa berubah jadi karakter sungguhan; pakai Edit tool. Heredoc bash sering gagal di sesi ini -> pakai Write tool.
 - Auto-mode classifier sesi Claude menolak `git push`/ganti remote (Data Exfiltration); pengguna push sendiri. `.gitignore` mengabaikan `CLAUDE.md` dan `.claude/`.
 - Server dbscraping dipakai layanan lain (sekda, newflask, dll.; `sekda-redis` bukan milik kita) — jangan sentuh container/port lain.
+
+## 7. Panduan otomatis di kotak komentar blok (modul `panduan_blok`) — 25 Okt 2026 (kode siap, BELUM dideploy)
+- **Ide:** pertanyaan yang ditulis di kotak komentar sebuah blok dijawab otomatis di utas yang sama ("🤖 Panduan otomatis") bila jawabannya ada di bagian itu.
+- **Pemicu** (`utils/blockbot.wants_bot`): komentar MANUSIA berupa pertanyaan ('?', kata tanya di awal, atau `@panduan`), min. 10 karakter; `#manual` mematikan; bot tak menjawab dirinya.
+- **Mesin = pencarian deterministik, tanpa LLM** (`utils/blockbot.answer`): (1) petunjuk template per judul + alat hitung (`tpl_catalog.load_guidance/calc_hints`, `tpl_tools`);
+  (2) teks resmi peraturan (`reg_fts` di `/data/tpl/kb/kb.sqlite`); (3) dokumen contoh (`chunks_fts`, "n dari m dokumen"). Tanpa kb.sqlite hanya lapis 1.
+  Semua dikutip dari sumbernya dan diberi label ATURAN RESMI vs DOKUMEN CONTOH; tak ada angka/pasal karangan.
+- **Kenyambungan** (inti kualitas): kata pertanyaan diberi bobot kelangkaan + stem ringan; sumber dipakai bila cakupannya >= 0.6; peraturan dicari hanya bila ada topik BARU
+  (kata di luar judul+panduan+konteks dokumen) DAN spesifik (>= 3 kata isi atau menyentuh judul); dokumen contoh hanya bila pertanyaan menyangkut bagian itu; selain itu DIAM
+  (kecuali `@panduan` -> jawaban jujur "belum ada panduan khusus"). Kata pengisi ('dipakai', 'diuraikan', ...) ada di `STOP`.
+- **Alur:** `api.add_comment` -> `blockbot.enqueue` (Redis list `cms:panduan:q`, batas 6/menit/pengguna, fail-open) -> `cmsapp.worker` (BRPOP dua antrean) -> `run_job`
+  -> `store.add_comment(BOT_AUTHOR, parent=akar utas)` + `realtime.publish('comment')` + notifikasi in-app ke penanya. Dedup: satu jawaban per pertanyaan.
+- **UI:** `GET /docs/<id>/comments` menambah `bot:true`; `index.html` menampilkan 🤖 dan garis ungu pada komentar bot (dua tempat render).
+- **Modul:** `panduan_blok` (grup Platform) — diaktifkan OPERATOR lewat cmspanel (`CMS_MODULES`); worker harus di-restart agar env baru terbaca. Env opsional: `CMS_KB_DB`, `CMS_PANDUAN_BOT`, `CMS_PANDUAN_DEADLINE`.
+- **Uji:** `scripts/panduan_test.py` (36 pemeriksaan: pemicu, kutipan, kasus diam, bobot kata, dedup, antrean+batas laju, API+gating modul); regresi `modules/tpl/kd/projsite*/tablemodel/panel_test` tetap lulus.
+  Uji data asli (KB 5,4 GB, baca-saja): 0,0-0,5 dtk per jawaban.
+- **Deploy (belum dilakukan, aksi produksi):** build image baru (`bash scripts/collab_deploy.sh`), aktifkan `panduan_blok` di cmspanel untuk tenant, restart `app` + `worker`. Hanya tenant dengan `/data/tpl/kb/kb.sqlite` (chp) mendapat lapis peraturan/dokumen contoh.
+- **Batas:** korpus = dokumen yang DIAJUKAN (tak ada data penilai); teks PP 22/2021 hasil OCR (salah huruf -> bisa luput); status berlaku peraturan tak diverifikasi (kolom `catatan` ditampilkan bila ada).

@@ -24,7 +24,7 @@ header b{flex:1}#login{max-width:320px;margin:15vh auto;display:grid;gap:8px}
 textarea{width:100%;min-height:90px}table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:3px 6px}
 td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 #bar{position:fixed;right:12px;bottom:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;max-width:320px}
-.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px;max-height:90vh;overflow-y:auto}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.dlg>*{min-width:0}.dlg select,.dlg input,.dlg textarea{width:100%;max-width:100%;box-sizing:border-box}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:30vh}}
+.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.bot{border-left-color:#7c3aed}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px;max-height:90vh;overflow-y:auto}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.dlg>*{min-width:0}.dlg select,.dlg input,.dlg textarea{width:100%;max-width:100%;box-sizing:border-box}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:30vh}}
 .tw{overflow:auto;max-width:100%}.tw table{width:auto;min-width:100%}.tw td,.tw th{min-width:120px;vertical-align:top;padding:6px 8px;white-space:pre-wrap;word-break:break-word}.tw th{background:var(--bg)}
 .tw td[contenteditable]{min-height:2.4em;font-size:13px}
 .fmask{position:fixed;inset:0;background:var(--bg);z-index:19;display:flex;flex-direction:column}.fhead{padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -1440,7 +1440,7 @@ async function blockNotesDlg(docId,blockId,label){const m=document.createElement
  const paint=async()=>{
   let list=[];try{list=(await api('GET',`/docs/${docId}/comments?block_id=${blockId}`)).comments}catch(e){}
   const line=c=>`<div style="padding:4px 0;border-bottom:1px solid var(--line)${c.resolved_at?';opacity:.55':''}">
-   <small>${esc(c.author)} · ${esc(c.created_at||'')}${c.resolved_at?' · ✔ selesai oleh '+esc(c.resolved_by):''}</small>
+   <small>${c.bot?'🤖 ':''}${esc(c.author)} · ${esc(c.created_at||'')}${c.resolved_at?' · ✔ selesai oleh '+esc(c.resolved_by):''}</small>
    <div style="white-space:pre-wrap">${esc(c.text)}</div>
    <button type=button data-done="${c.id}" data-cur="${c.resolved_at?1:0}">${c.resolved_at?'Buka lagi':'Selesai'}</button>
    ${c.author===me.username||me.is_super?`<button type=button data-delc="${c.id}">Hapus</button>`:''}
@@ -1530,8 +1530,8 @@ async function loadCmts(){try{const {comments}=await api('GET',`/docs/${doc}/com
  for(const c of comments)(cmts[c.block_id]=cmts[c.block_id]||[]).push(c)}catch(e){}}
 function toggleCm(id){openCm.has(id)?openCm.delete(id):openCm.add(id);refreshBlock(id)}
 function cmPanel(b){const box=document.createElement('div');box.className='cm';const list=cmts[b.id]||[];
- const line=(c,re)=>{const d=document.createElement('div');d.className='c'+(re?' re':'')+(c.resolved_at?' done':'');
-  d.innerHTML=`<small>${esc(c.author)} · ${esc(c.created_at||'')}${c.resolved_at?' · ✔ selesai oleh '+esc(c.resolved_by):''}</small><div style="white-space:pre-wrap">${esc(c.text)}</div>`;
+ const line=(c,re)=>{const d=document.createElement('div');d.className='c'+(re?' re':'')+(c.bot?' bot':'')+(c.resolved_at?' done':'');
+  d.innerHTML=`<small>${c.bot?'🤖 ':''}${esc(c.author)} · ${esc(c.created_at||'')}${c.resolved_at?' · ✔ selesai oleh '+esc(c.resolved_by):''}</small><div style="white-space:pre-wrap">${esc(c.text)}</div>`;
   const bt=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.style.fontSize='11px';x.onclick=()=>f().catch(e=>note(e.message,1));d.append(' ',x)};
   if(!re)bt('Balas',async()=>{const t=prompt('Balasan:');if(t)await api('POST',`/blocks/${b.id}/comments`,{text:t,parent_id:c.id})});
   if(!re)bt(c.resolved_at?'Buka lagi':'Selesai',()=>api('POST',`/comments/${c.id}/resolve`,{resolved:!c.resolved_at}));

@@ -17,6 +17,7 @@ MODULES: list[dict] = [
     {"key": "proyeksi", "group": "Platform", "label": "Proyeksi & model multi-faktor", "desc": "Proyeksi 5 tahun + skenario, model multi-faktor, rumus skenario sendiri."},
     {"key": "proyek_lokasi", "group": "Platform", "label": "Proyek: lokasi & wilayah studi", "desc": "Layer koordinat (peta SVG, impor CSV) dan checklist wilayah studi kab/kota-kecamatan-desa."},
     {"key": "proyek_simulasi", "group": "Platform", "label": "Proyek: tugas & pelacakan simulasi", "desc": "Penugasan simulasi ke tenaga ahli dan status sudah/belum disimulasikan di detail proyek."},
+    {"key": "panduan_blok", "group": "Platform", "label": "Panduan otomatis di kotak komentar blok", "desc": "Pertanyaan di kotak komentar sebuah blok dijawab otomatis di utas yang sama: petunjuk template, alat hitung, kutipan peraturan resmi, dan praktik dokumen contoh (butuh basis pengetahuan /data/tpl/kb)."},
     # ---- engine perhitungan & simulasi (per topik)
     {"key": "calc_survei", "group": "Engine", "label": "Kalkulator survei responden", "desc": "Jumlah responden (Cochran, Slovin, dst.), alokasi per desa/kecamatan; di proyek: responden otomatis per unit wilayah."},
     {"key": "calc_lalin", "group": "Engine", "label": "ANDAL lalu lintas", "desc": "Pertumbuhan kendaraan & kepemilikan, pelebaran jalan, sebelum vs sesudah, jam puncak, V/C, kepadatan, waktu tempuh."},

@@ -2,10 +2,13 @@
 import os
 import time
 
+import json
+
 from cmsapp import export
 from cmsapp.config import Config
 from cmsapp.realtime import make_redis
-from utils import blockstore
+from utils import blockbot, blockstore
+from utils import modules as mods
 
 
 def main():
@@ -15,7 +18,15 @@ def main():
     last_prune = 0.0
     print("worker ekspor siap", flush=True)
     while True:
-        item = r.brpop(export.QUEUE, timeout=5)      # < socket_timeout Redis (10s), jangan lebih
+        item = r.brpop([export.QUEUE, blockbot.QUEUE], timeout=5)      # < socket_timeout Redis (10s), jangan lebih
+        if item and item[0] == blockbot.QUEUE:
+            try:
+                if mods.is_on("panduan_blok"):
+                    cid = blockbot.run_job(r, store, json.loads(item[1]))
+                    print(f"panduan -> komentar {cid}", flush=True)
+            except Exception as e:                                 # noqa: BLE001  (satu pertanyaan gagal tak boleh mematikan worker ekspor)
+                print("panduan gagal:", repr(e)[:200], flush=True)
+            item = None
         if item:
             jid = item[1]
             t0 = time.time()

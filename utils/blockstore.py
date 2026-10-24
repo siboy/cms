@@ -375,6 +375,11 @@ class BlockStore:
         blocks = [self._row_to_block(r) for r in rows]
         return {"meta": _jload(doc["manifest"]), "blocks": blocks, "assets": assets, "media_dir": media_dir}
 
+    def get_doc_title(self, doc_id: int) -> str:
+        with self._tx() as c:
+            r = self._one(c, "SELECT filename FROM cms_documents WHERE id=?", (doc_id,))
+        return (r or {}).get("filename") or ""
+
     def get_doc_meta(self, doc_id: int) -> dict:
         with self._tx() as c:
             doc = self._one(c, "SELECT manifest FROM cms_documents WHERE id=?", (doc_id,))
