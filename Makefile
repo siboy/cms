@@ -5,8 +5,15 @@
 # jalur razan (opsional).
 # ============================================================
 
+ifeq ($(OS),Windows_NT)
+FLASK_DIR := C:/flask
+PY := python
+GITTOKEN = $(shell $(PY) $(FLASK_DIR)/razan/get_gittoken.py)
+else
 FLASK_DIR := $(HOME)/flask
-GITTOKEN = $(shell python3 $(FLASK_DIR)/razan/get_gittoken.py 2>/dev/null)
+PY := python3
+GITTOKEN = $(shell $(PY) $(FLASK_DIR)/razan/get_gittoken.py 2>/dev/null)
+endif
 
 COLLAB_DIR ?= $(HOME)/cms-collab
 DC = docker compose -f $(COLLAB_DIR)/collab.yml --env-file $(COLLAB_DIR)/.env
@@ -93,7 +100,7 @@ drop-schema:
 # ---- Git Commands ----
 pull:
 	@git pull $(GITTOKEN)
-	@git log -6 --pretty=format:"%h | %ad | %s" --date=format:"%Y-%m-%d %H:%M"
+	@$(PY) scripts/gitlog.py
 
 push:
 	@git push $(GITTOKEN)
