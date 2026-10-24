@@ -43,10 +43,10 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", J
 
 
 # ---------------------------------------------------------------- util
-def sh(args: list[str], timeout: int = 60, cwd: str | None = None) -> tuple[int, str]:
+def sh(args: list[str], timeout: int = 60, cwd: str | None = None, env: dict | None = None) -> tuple[int, str]:
     """Jalankan perintah tanpa shell (aman dari injeksi); return (rc, output gabungan)."""
     try:
-        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout, cwd=cwd)
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env)
         return p.returncode, (p.stdout or "") + (p.stderr or "")
     except subprocess.TimeoutExpired:
         return 124, f"timeout {timeout}s: {' '.join(args[:4])}…"
@@ -205,6 +205,155 @@ def tenant_modules(env: dict) -> set:
 
 def templates_state(env: dict) -> str:
     return "on" if "templates" in tenant_modules(env) else "off"
+
+
+# ---------------------------------------------------------------- monitor backup (restic ke minipc)
+BACKUP_STALE_H = float(os.environ.get("PANEL_BACKUP_STALE_H", 26))       # backup harian: lewat ini = peringatan; 2x = bahaya
+BACKUP_HOST = os.environ.get("PANEL_BACKUP_HOST", "minipc")
+_remote_cache: dict = {"t": 0, "v": None}
+
+
+def read_json(path: str, default=None):
+    try:
+        return json.load(open(path, encoding="utf-8"))
+    except Exception:                                   # noqa: BLE001
+        return default
+
+
+def backup_running(slug: str) -> bool:
+    """True bila tenant_backup.sh sedang memegang kunci backup tenant ini."""
+    import fcntl
+    path = os.path.join(BASE, slug, ".backup.lock")
+    if not os.path.exists(path):
+        return False
+    with open(path, "a") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(f, fcntl.LOCK_UN)
+            return False
+        except OSError:
+            return True
+
+
+def cron_slugs() -> set:
+    rc, out = sh(["crontab", "-l"], 10)
+    return {l.split("tenant_backup.sh")[1].split()[0] for l in out.splitlines() if "tenant_backup.sh" in l and not l.strip().startswith("#")
+            and len(l.split("tenant_backup.sh")[1].split()) > 0} if rc == 0 else set()
+
+
+def backup_view(slug: str, cron: set, now: float | None = None) -> dict:
+    """Ringkasan + penilaian satu tenant: state ok | warn | bad | running | none, beserta alasan yang bisa dibaca manusia."""
+    now = now or time.time()
+    d = os.path.join(BASE, slug)
+    st = read_json(os.path.join(d, "backup-status.json"), None)
+    hist = []
+    try:
+        hist = [json.loads(l) for l in open(os.path.join(d, "backup-history.jsonl"), encoding="utf-8").read().splitlines()[-10:] if l.strip()][::-1]
+    except Exception:                                   # noqa: BLE001
+        pass
+    reasons, state = [], "ok"
+
+    def worse(new, why):
+        nonlocal state
+        reasons.append(why)
+        rank = {"ok": 0, "warn": 1, "bad": 2}
+        if rank[new] > rank[state]:
+            state = new
+    has_restic = os.path.isfile(os.path.join(d, ".restic.env"))
+    if not has_restic:
+        worse("bad", "repositori restic belum disiapkan (jalankan scripts/restic_setup.sh)")
+    age_h = None
+    if not st:
+        worse("bad", "belum pernah ada catatan backup")
+    else:
+        last = st.get("last_ok_epoch") or 0
+        age_h = round((now - last) / 3600, 1) if last else None
+        if st.get("status") == "fallback":
+            worse("warn", "backup terakhir ke restic GAGAL; hanya cadangan lokal (minipc mati/tak terjangkau?)")
+        elif st.get("status") == "failed":
+            worse("bad", "backup terakhir gagal: " + (st.get("note") or ""))
+        if age_h is None:
+            worse("bad", "belum pernah ada backup restic yang berhasil")
+        elif age_h > BACKUP_STALE_H * 2:
+            worse("bad", f"backup sukses terakhir {age_h:.0f} jam lalu (batas {BACKUP_STALE_H * 2:.0f} jam)")
+        elif age_h > BACKUP_STALE_H:
+            worse("warn", f"backup sukses terakhir {age_h:.0f} jam lalu (seharusnya harian)")
+        if st.get("check_ok") is False:
+            worse("bad", f"restic check GAGAL ({st.get('check_at')}): repositori mungkin rusak")
+    if slug not in cron:
+        worse("warn", "tidak ada jadwal cron untuk tenant ini")
+    running = backup_running(slug)
+    return {"slug": slug, "state": "running" if running else state, "reasons": reasons, "age_h": age_h, "status": st, "history": hist, "cron": slug in cron,
+            "company": (read_json(os.path.join(d, "panel.json"), {}) or {}).get("company") or slug, "stale_h": BACKUP_STALE_H}
+
+
+def tenant_slugs() -> list[str]:
+    return [s for s in sorted(os.listdir(BASE)) if os.path.isfile(os.path.join(BASE, s, ".env"))] if os.path.isdir(BASE) else []
+
+
+@app.get("/api/backups")
+def api_backups():
+    cron = cron_slugs()
+    items = [backup_view(s, cron) for s in tenant_slugs()]
+    bad = sum(1 for i in items if i["state"] == "bad"); warn = sum(1 for i in items if i["state"] == "warn")
+    return jsonify(backups=items, summary={"ok": len(items) - bad - warn, "warn": warn, "bad": bad, "state": "bad" if bad else "warn" if warn else "ok"})
+
+
+@app.get("/api/backups/remote")
+def api_backups_remote():
+    """Ruang disk target backup (drive D: minipc). Di-cache 2 menit karena butuh SSH."""
+    if time.time() - _remote_cache["t"] < 120 and _remote_cache["v"]:
+        return jsonify(_remote_cache["v"])
+    rc, out = sh(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", BACKUP_HOST,
+                  "Get-Volume -DriveLetter D | Select-Object Size,SizeRemaining,HealthStatus | ConvertTo-Json -Compress"], 30)
+    try:
+        j = json.loads(out.strip().splitlines()[-1])
+        v = {"reachable": True, "size": j["Size"], "free": j["SizeRemaining"], "health": str(j.get("HealthStatus")), "host": BACKUP_HOST}
+    except Exception:                                   # noqa: BLE001
+        v = {"reachable": False, "error": out[-200:] or "tidak terjangkau", "host": BACKUP_HOST}
+    _remote_cache.update(t=time.time(), v=v)
+    return jsonify(v)
+
+
+def restic_env(slug: str) -> dict | None:
+    envf = os.path.join(tenant_dir(slug), ".restic.env")
+    if not os.path.isfile(envf):
+        return None
+    e = dict(os.environ)
+    for line in open(envf, encoding="utf-8"):
+        line = line.strip()
+        if line.startswith("export ") and "=" in line:
+            k, v = line[7:].split("=", 1)
+            e[k] = v.strip().strip('"')
+    return e
+
+
+@app.get("/api/backups/<slug>/live")
+def api_backup_live(slug):
+    """Cek langsung ke repositori restic (lewat SSH ke minipc): terjangkau? daftar snapshot terakhir."""
+    e = restic_env(slug)
+    if e is None:
+        return jsonify(error="repositori restic belum disiapkan"), 400
+    rc, out = sh(["restic", "-o", "sftp.command=" + e.get("RESTIC_SFTP_COMMAND", ""), "snapshots", "--json", "--host", slug], 90, env=e)
+    if rc != 0:
+        return jsonify(reachable=False, error=out[-400:]), 200
+    try:
+        snaps = json.loads(out[out.index("["):])
+    except Exception:                                   # noqa: BLE001
+        return jsonify(reachable=False, error="keluaran restic tak terbaca: " + out[-200:]), 200
+    snaps.sort(key=lambda x: x.get("time", ""))
+    return jsonify(reachable=True, count=len(snaps), last=[{"time": x["time"][:19].replace("T", " "), "tags": x.get("tags"), "id": x.get("short_id")} for x in snaps[-6:]][::-1])
+
+
+@app.post("/api/backups/<slug>/run")
+def api_backup_run(slug):
+    tenant_dir(slug)
+    if backup_running(slug):
+        return jsonify(error="backup sedang berjalan"), 409
+    log = open(os.path.join(BASE, slug, "backup.log"), "ab")
+    subprocess.Popen(["bash", os.path.join(REPO, "scripts", "tenant_backup.sh"), slug], cwd=REPO, stdout=log, stderr=log, stdin=subprocess.DEVNULL,
+                     start_new_session=True)
+    return jsonify(ok=True, started=True), 202
 
 
 @app.get("/api/tenants")
@@ -411,7 +560,7 @@ def home():
 .kmenu{position:absolute;right:8px;top:30px;z-index:20;min-width:230px;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:8px;box-shadow:0 6px 20px #0003;padding:4px}
 .kmenu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px}.kmenu button:hover{background:var(--acc-soft,#2563eb1a)}
 .kmenu .kh{font-size:11px;color:var(--mut);padding:4px 10px}.tpl-on{color:var(--ok)}.tpl-off{color:orange}</style>
-<header><b>🏢 CMS Control Panel — semua tenant</b><a href="/modules"><button type=button>🧩 Fitur &amp; modul per perusahaan</button></a><button class=p id=bnew>+ Perusahaan baru</button></header>
+<header><b>🏢 CMS Control Panel — semua tenant</b><a href="/backups"><button type=button id=bkb>💾 Backup <span id=bkd>…</span></button></a><a href="/modules"><button type=button>🧩 Fitur &amp; modul per perusahaan</button></a><button class=p id=bnew>+ Perusahaan baru</button></header>
 <main><div class=grid id=cards>memuat…</div></main>
 <script>
 const H={'Content-Type':'application/json','X-PANEL':'1'};
@@ -509,6 +658,52 @@ function addAdmin(slug){dlg(`<b>👤 Tambah admin utk ${esc(slug)}</b>
  async f=>{const d=Object.fromEntries(f.entries());const r=await api('POST',`/api/tenants/${slug}/admins`,d);
   alert(`Admin ${r.username} dibuat, password: ${r.password}`)})}
 paint();setInterval(paint,15000);
+async function bk(){try{const s=(await api('GET','/api/backups')).summary;document.querySelector('#bkd').textContent=s.state==='ok'?'✅':s.state==='warn'?'⚠':'🚨';document.querySelector('#bkb').title=`${s.ok} normal · ${s.warn} perhatian · ${s.bad} bermasalah`}catch(e){}}
+bk();setInterval(bk,120000);
+</script>""")
+
+
+@app.get("/backups")
+def backups_page():
+    return _page("""
+<style>main{max-width:1180px!important}.bk{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px}.b-ok{border-left:5px solid var(--ok)}.b-warn{border-left:5px solid orange}.b-bad{border-left:5px solid var(--bad)}.b-running{border-left:5px solid var(--acc)}
+.pill{display:inline-block;border-radius:10px;padding:1px 9px;font-size:12px;color:#fff}.p-ok{background:var(--ok)}.p-warn{background:orange}.p-bad{background:var(--bad)}.p-running{background:var(--acc)}.p-none{background:var(--mut)}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:2px 8px;font-size:13px;margin:6px 0}.kv span:nth-child(odd){color:var(--mut)}table.h{width:100%;border-collapse:collapse;font-size:12px}.h td{border-top:1px solid var(--line);padding:2px 6px}
+.why{font-size:12.5px;margin:4px 0;padding:6px 10px;border-radius:6px;background:#f59e0b22}.bar3{height:8px;background:var(--line);border-radius:6px;overflow:hidden}.bar3>i{display:block;height:100%;background:var(--acc)}</style>
+<header><a href="/"><button type=button>← Panel</button></a><b>💾 Monitor backup</b><button id=rf type=button>↻ Segarkan</button></header>
+<main><div id=sum class=card style="margin-bottom:12px">memuat…</div><div class=bk id=list></div></main>
+<script>
+const H={'Content-Type':'application/json','X-PANEL':'1'};
+const api=(m,u,b)=>fetch(u,{method:m,headers:H,body:b?JSON.stringify(b):undefined}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const gb=b=>b==null?'?':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576).toFixed(1)+' MB';
+const LBL={ok:'Normal',warn:'Perlu perhatian',bad:'BERMASALAH',running:'Sedang berjalan',none:'-'};
+async function load(){
+ const [b,r]=await Promise.all([api('GET','/api/backups'),api('GET','/api/backups/remote').catch(e=>({reachable:false,error:e.message}))]);
+ const s=b.summary;
+ document.querySelector('#sum').innerHTML=`<div class=row><b style="flex:1">${s.state==='ok'?'✅ Semua backup normal':s.state==='warn'?'⚠ Ada backup yang perlu perhatian':'🚨 Ada backup BERMASALAH'}</b><small>${s.ok} normal · ${s.warn} perhatian · ${s.bad} bermasalah</small></div>
+  <div class=kv><span>Target backup</span><span>${esc(r.host||'minipc')}: ${r.reachable?`<b style="color:var(--ok)">terjangkau</b> · drive D: ${gb(r.free)} bebas dari ${gb(r.size)} (${esc(r.health||'')})`:`<b style="color:var(--bad)">TIDAK terjangkau</b> <small>${esc(r.error||'')}</small>`}</span></div>
+  ${r.reachable?`<div class=bar3><i style="width:${Math.round((1-r.free/r.size)*100)}%${r.free/r.size<.1?';background:var(--bad)':''}"></i></div>`:''}
+  <small>Backup harian dinilai normal bila backup restic sukses terakhir &le; ${b.backups[0]?b.backups[0].stale_h:26} jam, jadwal cron ada, dan <code>restic check</code> mingguan bersih.</small>`;
+ document.querySelector('#list').innerHTML=b.backups.map(t=>{const st=t.status||{},cls='b-'+t.state;
+  return `<div class="card ${cls}" data-slug="${esc(t.slug)}"><div class=row><b style="flex:1">${esc(t.company)}</b><small>cms-${esc(t.slug)}</small><span class="pill p-${t.state}">${LBL[t.state]||t.state}</span></div>
+   ${t.reasons.map(x=>`<div class=why>⚠ ${esc(x)}</div>`).join('')}
+   <div class=kv><span>Backup sukses terakhir</span><span>${esc(st.last_ok_at||'belum pernah')}${t.age_h!=null?` <small>(${t.age_h} jam lalu)</small>`:''}</span>
+    <span>Percobaan terakhir</span><span>${esc(st.at||'-')} · ${esc(st.status||'-')}${st.duration_s!=null?` · ${st.duration_s} dtk`:''}${st.note?` <small>${esc(st.note)}</small>`:''}</span>
+    <span>Snapshot</span><span>${st.snapshots??'-'} ${st.snapshots_by_tag?`<small>(MySQL ${st.snapshots_by_tag.mysql}, data ${st.snapshots_by_tag.data})</small>`:''}</span>
+    <span>Ukuran repositori</span><span>${gb(st.repo_bytes)}</span>
+    <span>restic check (mingguan)</span><span>${st.check_at?`${st.check_ok?'✅ bersih':'❌ GAGAL'} · ${esc(st.check_at)}`:'<small>belum pernah (jalan tiap Minggu)</small>'}</span>
+    <span>Jadwal cron</span><span>${t.cron?'✅ ada':'❌ tidak ada'}</span><span>Repositori</span><span><small>${esc(st.repo||'-')}</small></span></div>
+   <div class=row><button data-live>🔎 Cek langsung</button><button data-run ${t.state==='running'?'disabled':''}>▶ Backup sekarang</button><button data-hist>🕑 Riwayat</button></div>
+   <div data-out></div></div>`}).join('');
+ document.querySelectorAll('[data-live]').forEach(b=>b.onclick=async()=>{const c=b.closest('.card'),o=c.querySelector('[data-out]'),slug=c.dataset.slug;o.innerHTML='<small>memeriksa repositori di minipc…</small>';
+  try{const r=await api('GET',`/api/backups/${slug}/live`);o.innerHTML=r.reachable?`<div class=kv><span>Repositori</span><span><b style="color:var(--ok)">terjangkau</b> · ${r.count} snapshot</span></div><table class=h>${r.last.map(x=>`<tr><td>${esc(x.time)}</td><td>${esc((x.tags||[]).join(','))}</td><td>${esc(x.id)}</td></tr>`).join('')}</table>`:`<div class=why style="background:#d1242f22">🚨 repositori TIDAK terjangkau: ${esc(r.error||'')}</div>`}catch(e){o.innerHTML='<span style="color:var(--bad)">'+esc(e.message)+'</span>'}});
+ document.querySelectorAll('[data-run]').forEach(b=>b.onclick=async()=>{const c=b.closest('.card'),slug=c.dataset.slug;if(!confirm(`Jalankan backup ${slug} sekarang? (±20 detik)`))return;
+  try{await api('POST',`/api/backups/${slug}/run`);b.disabled=true;b.textContent='berjalan…';setTimeout(load,6000)}catch(e){alert(e.message)}});
+ const hist={};b.backups.forEach(t=>hist[t.slug]=t.history);
+ document.querySelectorAll('[data-hist]').forEach(bt=>bt.onclick=()=>{const c=bt.closest('.card'),o=c.querySelector('[data-out]'),h=hist[c.dataset.slug]||[];
+  o.innerHTML=h.length?`<table class=h>${h.map(x=>`<tr><td>${esc(x.at)}</td><td>${esc(x.status)}</td><td>${x.duration_s} dtk</td><td>${esc(x.note||'')}</td></tr>`).join('')}</table>`:'<small>belum ada riwayat</small>'});}
+document.querySelector('#rf').onclick=load;load();setInterval(load,60000);
 </script>""")
 
 
