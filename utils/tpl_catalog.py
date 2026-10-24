@@ -50,10 +50,10 @@ KINDS = {
 CATEGORIES = [
     ("pertambangan", "Pertambangan & Penggalian",
      ["tambang", "pertambangan", "penambangan", "batubara", "batu bara", "nikel", "bauksit", "emas", "galian", "quarry",
-      "mineral", "sirtu", "andesit", "tras", "kerikil", "krikil", "pasir", "batuan", "timah", "tembaga", "bijih"]),
+      "mineral", "sirtu", "andesit", "tras", "kerikil", "krikil", "pasir", "batuan", "timah", "tembaga", "bijih",]),
     ("migas", "Minyak, Gas & SPBU",
      ["spbu", "spbe", "bahan bakar", "minyak", "migas", "lpg", "kilang", "pertashop", "avtur", "pipa gas", "pipa minyak",
-      "stasiun pengisian", "depo bbm", "gas bumi"]),
+      "stasiun pengisian", "depo bbm", "gas bumi", "lng", "regasifikasi"]),
     ("ketenagalistrikan", "Ketenagalistrikan & Energi",
      ["pltu", "pltd", "plta", "pltm", "plts", "pltgu", "pltmh", "pltb", "pltp", "pltbm", "pembangkit", "panas bumi",
       "geotermal", "listrik", "sutt", "sutet", "gardu", "transmisi", "biomassa", "biogas", "tenaga surya"]),
@@ -91,6 +91,19 @@ CATEGORIES = [
       "cafe", "perdagangan", "laundry", "bengkel", "showroom"]),
     ("telekomunikasi", "Telekomunikasi & Menara", ["menara", "bts", "telekomunikasi", "tower", "data center"]),
 ]
+# Kata kunci CADANGAN: dipakai hanya bila aturan di atas tak cocok sama sekali (judul yang hanya menyebut kegiatan teknis, mis.
+# "Penggalian Tanah Liat", "Pemboran Sumur Eksplorasi"). Sengaja terpisah agar klasifikasi yang sudah benar tidak ikut bergeser.
+CATEGORIES_FALLBACK = [
+    ("pertambangan", ["penggalian", "silika", "silica", "granit", "gamping", "kapur", "tanah liat", "batu hias", "batu belah", "kuarsa", "feldspar",
+                      "zeolit", "bentonit", "dolomit", "marmer", "tanah urug", "tanah uruk", "lempung", "pengerukan"]),
+    ("migas", ["pemboran", "pengeboran", "seismik", "sumur eksplorasi", "sumur eksploitasi", "sumur pengembangan", "wilayah kerja",
+               "well pad", "flowline", "pengembangan lapangan"]),
+    ("peternakan_pertanian", ["farm", "broiler", "petelur", "pembibitan", "kandang", "ras pedaging"]),
+    ("perikanan", ["crustacea", "pembesaran", "payau", "pembenihan", "keramba"]),
+    ("kehutanan", ["satwa liar", "tumbuhan alam", "penangkaran", "perhutanan", "agroforestri", "restorasi ekosistem"]),
+    ("sumber_daya_air", ["pengaman pantai", "revetmen", "breakwater", "pemecah gelombang", "long storage", "longstorage"]),
+    ("telekomunikasi", ["kabel laut", "kabel serat", "serat optik"]),
+]
 CAT_LABEL = {k: lbl for k, lbl, _ in CATEGORIES}
 CAT_LABEL["umum"] = "Umum (semua jenis kegiatan)"
 CAT_LABEL["lainnya"] = "Kegiatan Lainnya"
@@ -98,10 +111,17 @@ _CAT_RE = [(k, re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in s
            for k, _lbl, kw in CATEGORIES]
 
 
+_FB_RE = [(k, re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in sorted(kw, key=len, reverse=True)) + r")(?![a-z0-9])"))
+          for k, kw in CATEGORIES_FALLBACK]
+
+
 def classify(title: str) -> str:
-    """Jenis kegiatan dari judul proyek; 'lainnya' bila tak ada kata kunci yang cocok."""
+    """Jenis kegiatan dari judul proyek; aturan utama dulu, lalu kata kunci cadangan; 'lainnya' bila tak ada yang cocok."""
     t = (title or "").lower()
     for k, rx in _CAT_RE:
+        if rx.search(t):
+            return k
+    for k, rx in _FB_RE:
         if rx.search(t):
             return k
     return "lainnya"

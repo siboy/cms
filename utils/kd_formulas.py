@@ -949,6 +949,28 @@ def air_semen(zak_hari, hari, L_per_zak):
     return {"zak": zak_hari * hari, "L_hari": zak_hari * L_per_zak, "m3_total": zak_hari * hari * L_per_zak / 1000.0}
 
 
+def volume_per_siklus(q_prime, K, Cm, E):
+    """q = q' × K (m³/siklus) ; siklus/jam = 60/Cm ; produksi/jam = q × siklus/jam × E"""
+    _pos(q_prime=q_prime, K=K, Cm=Cm, E=E)
+    q = q_prime * K
+    siklus = 60.0 / Cm
+    return {"q": q, "siklus_jam": siklus, "prod_jam": q * siklus * E}
+
+
+def timbulan_tinja(orang, laju, hari):
+    """tinja (kg/hari) = orang × laju (kg/orang/hari) ; total = × hari"""
+    _nn(orang=orang, laju=laju, hari=hari)
+    return {"kg_hari": orang * laju, "kg_total": orang * laju * hari}
+
+
+def volume_galian(luas, tebal, swell_pct):
+    """V in-situ (m³) = luas × tebal ; V lepas = V × (1 + faktor pengembangan)"""
+    _pos(luas=luas, tebal=tebal)
+    _nn(swell_pct=swell_pct)
+    v = luas * tebal
+    return {"V": v, "V_lepas": v * (1 + swell_pct / 100.0)}
+
+
 def lumpur_padatan(Q, pct):
     """lumpur (m³/hari) = Q × persen padatan"""
     _nn(Q=Q, pct=pct)
@@ -981,7 +1003,7 @@ def dimensi_bak(P, L, T, Q):
     """V = P·L·T ; waktu tinggal = V/Q × 24"""
     _pos(P=P, L=L, T=T, Q=Q)
     v = P * L * T
-    return {"V": v, "hrt": v / Q * 24.0}
+    return {"V": v, "hrt": v / Q * 24.0, "interval": v / Q}
 
 
 def air_siram(dosis, luas, frek):
@@ -1036,6 +1058,149 @@ def cek_genset(keb, n, kva_unit, standby):
         raise CalcError("unit standby harus lebih sedikit dari jumlah unit")
     kap = (n - standby) * kva_unit
     return {"kap": kap, "total": n * kva_unit, "rasio": kap / keb * 100.0, "ok": 1.0 if kap >= keb else 0.0}
+
+
+# ---- risiko kesehatan lingkungan (ARKL) & getaran alat konstruksi (disarikan dari dokumen contoh)
+def arkl_inhalasi(C, R, tE, fE, Dt, Wb, tavg, RfC):
+    """I = C·R·tE·fE·Dt / (Wb·tavg) ; RQ = I / RfC   (Kemenkes 2012, pemajanan inhalasi non-karsinogenik)"""
+    _nn(C=C)
+    _pos(R=R, tE=tE, fE=fE, Dt=Dt, Wb=Wb, tavg=tavg, RfC=RfC)
+    i = C * R * tE * fE * Dt / (Wb * tavg)
+    return {"I": i, "RQ": i / RfC, "ok": 1.0 if i / RfC <= 1 else 0.0}
+
+
+def arkl_banding(C0, C1, RfC, R, tE, fE, Dt, Wb, tavg):
+    """RQ per kelompok reseptor, tanpa proyek (C0) vs dengan proyek (C1); daftar parameter sama panjang (atau satu nilai utk semua)"""
+    _nn(C0=C0, C1=C1)
+    _pos(RfC=RfC)
+    cols = {"R": R, "tE": tE, "fE": fE, "Dt": Dt, "Wb": Wb, "tavg": tavg}
+    n = max(len(v) for v in cols.values())
+    for k, v in cols.items():
+        if len(v) not in (1, n):
+            raise CalcError(f"daftar '{k}' harus berisi 1 nilai atau {n} nilai (sama dengan kelompok lain)")
+        if any(x <= 0 for x in v):
+            raise CalcError(f"'{k}' harus > 0")
+    g = lambda k, j: cols[k][j] if len(cols[k]) > 1 else cols[k][0]
+    rows, rq0s, rq1s = [], [], []
+    for j in range(n):
+        a = arkl_inhalasi(C0, g("R", j), g("tE", j), g("fE", j), g("Dt", j), g("Wb", j), g("tavg", j), RfC)
+        b = arkl_inhalasi(C1, g("R", j), g("tE", j), g("fE", j), g("Dt", j), g("Wb", j), g("tavg", j), RfC)
+        rq0s.append(a["RQ"]); rq1s.append(b["RQ"])
+        rows.append([f"Kelompok {j + 1}", f"{a['I']:.3e}", f"{a['RQ']:.4g}", f"{b['I']:.3e}", f"{b['RQ']:.4g}", f"{b['RQ'] - a['RQ']:+.4g}", "RQ ≤ 1" if b["RQ"] <= 1 else "RQ > 1 (perlu pengelolaan)"])
+    return {"rq0_maks": max(rq0s), "rq1_maks": max(rq1s), "naik": max(rq1s) - max(rq0s), "n_lebih": float(sum(1 for x in rq1s if x > 1)),
+            "_table": {"header": ["Kelompok", "Asupan tanpa proyek (mg/kg/hari)", "RQ tanpa proyek", "Asupan dengan proyek (mg/kg/hari)", "RQ dengan proyek", "Selisih RQ", "Status dengan proyek"], "rows": rows}}
+
+
+def ppv_alat(ref, jarak_m, n):
+    """PPV(D) = PPVref·(25/D)^n  (D dalam ft, PPVref pada 25 ft; FTA 2006)"""
+    _pos(ref=ref, n=n)
+    if not jarak_m or any(x <= 0 for x in jarak_m):
+        raise CalcError("isi jarak > 0 (pisah koma)")
+    rows = []
+    for d in sorted(jarak_m):
+        ft = d * 3.28084
+        v = ref * (25.0 / ft) ** n
+        rows.append([f"{d:g}", f"{ft:.1f}", f"{v:.4f}", f"{v * 25.4:.3f}"])
+    d0 = min(jarak_m)
+    v0 = ref * (25.0 / (d0 * 3.28084)) ** n
+    return {"in_dekat": v0, "mm_dekat": v0 * 25.4,
+            "_table": {"header": ["Jarak (m)", "Jarak (ft)", "PPV (in/detik)", "PPV (mm/detik)"], "rows": rows}}
+
+
+# ---- daya tampung sungai, debu jalan, emisi berefisiensi, BBM kendaraan, air larian & resapan (disarikan dari dokumen contoh)
+def daya_tampung_sungai(Cbm, CA, Qs):
+    """BPM = Qs·Cbm·f ; BPA = Qs·CA·f ; DTBP = BPM − BPA ; f = 86,4 (mg/L × m³/detik → kg/hari)"""
+    _nn(Cbm=Cbm)
+    n = max(len(CA), len(Qs))
+    for k, v in (("CA", CA), ("Qs", Qs)):
+        if len(v) not in (1, n):
+            raise CalcError(f"daftar '{k}' harus berisi 1 nilai atau {n} nilai (satu per titik)")
+        if any(x < 0 for x in v):
+            raise CalcError(f"'{k}' tidak boleh negatif")
+    if any(x <= 0 for x in Qs):
+        raise CalcError("debit sungai harus > 0")
+    f = 86.4
+    rows, dt, lebih = [], [], 0
+    for j in range(n):
+        ca = CA[j] if len(CA) > 1 else CA[0]
+        q = Qs[j] if len(Qs) > 1 else Qs[0]
+        bpm, bpa = q * Cbm * f, q * ca * f
+        d = bpm - bpa
+        dt.append(d)
+        lebih += 1 if d < 0 else 0
+        pct = (bpa / bpm * 100.0) if bpm > 0 else float("nan")
+        rows.append([f"Titik {j + 1}", f"{ca:g}", f"{q:g}", f"{bpm:,.2f}", f"{bpa:,.2f}", f"{d:,.2f}",
+                     "-" if bpm <= 0 else f"{pct:.2f}%", "-" if bpm <= 0 else f"{100 - pct:.2f}%"])
+    return {"dtbp_min": min(dt), "dtbp_rata": sum(dt) / len(dt), "n_lebih": float(lebih),
+            "_table": {"header": ["Titik", "Hasil uji (mg/L)", "Debit sungai (m³/detik)", "BPM (kg/hari)", "BPA (kg/hari)", "DTBP (kg/hari)", "BPA (%)", "DTBP (%)"], "rows": rows}}
+
+
+def debu_jalan(kb, sL, W, pembagi, N, panjang, lebar):
+    """E = kb·(sL/2)^0,65·(W/pembagi)^1,5 (g/VKT) ; VKT = N·panjang ; beban = E·VKT ; laju = beban/3600 ; per luas = laju/(panjang·1000·lebar)"""
+    _pos(kb=kb, sL=sL, W=W, pembagi=pembagi, panjang=panjang, lebar=lebar)
+    _nn(N=N)
+    e = kb * (sL / 2.0) ** 0.65 * (W / pembagi) ** 1.5
+    vkt = N * panjang
+    beban = e * vkt
+    laju = beban / 3600.0
+    return {"E": e, "VKT": vkt, "beban": beban, "laju": laju, "laju_luas": laju / (panjang * 1000.0 * lebar)}
+
+
+def emisi_kendali(EF, A, ER):
+    """Q = EF·A·(1 − ER/100)"""
+    _nn(EF=EF, A=A)
+    if not (0 <= ER <= 100):
+        raise CalcError("efisiensi pengendalian harus 0-100%")
+    return EF * A * (1 - ER / 100.0)
+
+
+def bbm_kendaraan(rit, jarak, unit, kml):
+    """BBM (L) = rit × jarak (km/rit) × unit / konsumsi (km/L)"""
+    _nn(rit=rit, jarak=jarak, unit=unit)
+    _pos(kml=kml)
+    return rit * jarak * unit / kml
+
+
+def larian_banding(I, A0, C0, A1, C1):
+    """Q = Σ C·I·A tiap jenis penutup lahan ; selisih = sesudah − sebelum   (I dalam mm/hari → m/hari)"""
+    _nn(I=I)
+    for k, a, c in (("sebelum", A0, C0), ("sesudah", A1, C1)):
+        if len(a) != len(c) or not a:
+            raise CalcError(f"luas dan koefisien {k} proyek harus sama panjang dan tidak kosong")
+        if any(x < 0 for x in a) or any(not (0 <= x <= 1) for x in c):
+            raise CalcError("luas tidak boleh negatif dan koefisien C harus 0-1")
+    i = I / 1000.0
+    rows, q0, q1 = [], 0.0, 0.0
+    for tag, A, C in (("Sebelum", A0, C0), ("Sesudah", A1, C1)):
+        for j, (a, c) in enumerate(zip(A, C), 1):
+            q = c * i * a
+            if tag == "Sebelum":
+                q0 += q
+            else:
+                q1 += q
+            rows.append([f"{tag} {j}", f"{a:,.2f}", f"{c:g}", f"{I:g}", f"{q:,.3f}"])
+    rows.append(["Total sebelum", f"{sum(A0):,.2f}", "", "", f"{q0:,.3f}"])
+    rows.append(["Total sesudah", f"{sum(A1):,.2f}", "", "", f"{q1:,.3f}"])
+    return {"q0": q0, "q1": q1, "selisih": q1 - q0, "naik_pct": ((q1 - q0) / q0 * 100.0) if q0 > 0 else float("nan"),
+            "_table": {"header": ["Penutup lahan", "Luas (m²)", "Koefisien C", "Intensitas hujan (mm/hari)", "Air larian (m³/hari)"], "rows": rows}}
+
+
+def sumur_resapan_serap(Q, k, d, h):
+    """luas bidang resapan perlu = Q/k ; luas sumur = π d²/4 + π d h ; jumlah = ⌈perlu / luas sumur⌉"""
+    _nn(Q=Q)
+    _pos(k=k, d=d, h=h)
+    perlu = Q / k
+    dasar = math.pi * d * d / 4.0
+    selimut = math.pi * d * h
+    return {"perlu": perlu, "dasar": dasar, "selimut": selimut, "luas": dasar + selimut, "n": float(math.ceil(perlu / (dasar + selimut) - 1e-9)), "n_pecah": perlu / (dasar + selimut)}
+
+
+def biopori(A, I, v):
+    """air hujan = A·I (L/hari, I dalam mm/hari) ; jumlah lubang n = A·I / v"""
+    _nn(A=A, I=I)
+    _pos(v=v)
+    air = A * I
+    return {"air": air, "n": float(math.ceil(air / v - 1e-9)), "n_pecah": air / v}
 
 
 # =============================================================================== registri
@@ -1366,6 +1531,25 @@ reg("lumpur_padatan", "Lumpur dari debit × persen padatan", "Material & konstru
     [("lumpur", "Lumpur", "m³/hari")], MATREF, "Hitungan volume sederhana; kadar padatan sebaiknya dari uji laboratorium.",
     run=lambda i: {"lumpur": lumpur_padatan(i["Q"], i["pct"])})
 
+reg("volume_per_siklus", "Produksi alat per siklus & per jam", "Material & konstruksi", "q = q' × K ; produksi/jam = q × (60/Cm) × E",
+    [V("q_prime", "Kapasitas bucket/bak alat", "m³", 1, "dari spesifikasi alat yang direncanakan"), V("K", "Faktor pengisian", "-", 0.8, "ASUMSI — tergantung jenis material & alat"),
+     V("Cm", "Waktu siklus", "menit", None, "ISI dari spesifikasi/pengamatan alat"), V("E", "Efisiensi kerja", "-", None, "ISI (0-1) — kondisi lapangan/operator")],
+    [("q", "Produksi per siklus", "m³/siklus"), ("siklus_jam", "Siklus per jam", "siklus/jam"), ("prod_jam", "Produksi per jam", "m³/jam")],
+    MATREF, "Rumus dasar q = q'·K tertulis di dokumen contoh; waktu siklus dan efisiensi tidak diberi nilai awal karena bergantung alat dan lapangan.",
+    run=lambda i: volume_per_siklus(i["q_prime"], i["K"], i["Cm"], i["E"]))
+reg("timbulan_tinja", "Timbulan limbah tinja pekerja", "Limbah padat", "tinja = orang × laju ; total = × hari",
+    [V("orang", "Jumlah pekerja/pengguna", "orang", 20), V("laju", "Laju timbulan tinja", "kg/orang/hari", None, "ISI dari acuan yang dipakai (contoh dokumen: 0,008 kg/orang/hari) — periksa sumbernya"),
+     V("hari", "Lama kegiatan", "hari", 365)],
+    [("kg_hari", "Tinja per hari", "kg/hari"), ("kg_total", "Tinja selama kegiatan", "kg")], "Contoh perhitungan di dokumen AMDAL/UKL-UPL (pengelolaan limbah domestik).",
+    "Laju timbulan tidak diberi nilai awal karena bergantung acuan; hasil menjadi masukan kapasitas septic tank/pengurasan.",
+    run=lambda i: timbulan_tinja(i["orang"], i["laju"], i["hari"]))
+reg("volume_galian", "Volume galian/timbunan dari luas × tebal", "Material & konstruksi", "V = luas × tebal ; V lepas = V × (1 + pengembangan%)",
+    [V("luas", "Luas bidang", "m²", 141300, "dari peta/rencana tapak"), V("tebal", "Tebal rata-rata", "m", 6, "dari pengukuran/bor — ASUMSI bila belum ada"),
+     V("swell_pct", "Faktor pengembangan (swell)", "%", 0, "ISI dari uji/ acuan material; 0 = hitung volume padat (in-situ) saja")],
+    [("V", "Volume padat (in-situ)", "m³"), ("V_lepas", "Volume lepas", "m³")], MATREF,
+    "Hasil dapat menjadi V pada kalkulator Ritase & angkutan material; samakan basis volume (padat vs lepas).",
+    run=lambda i: volume_galian(i["luas"], i["tebal"], i["swell_pct"]))
+
 # ---- air limbah: rincian (IPAL, grey water, penyiraman)
 IPALREF = "Neraca air & sizing sederhana unit pengolahan air limbah; rumus tertulis di dokumen contoh."
 reg("grey_water", "Grey water dari pemakaian air", "Air bersih & air limbah", "grey water = pemakaian − losses",
@@ -1383,7 +1567,8 @@ reg("debit_jam", "Debit harian → per jam & L/detik", "Air bersih & air limbah"
     run=lambda i: debit_jam(i["Q_hari"], i["jam"]))
 reg("dimensi_bak", "Volume bak & waktu tinggal", "Air bersih & air limbah", "V = P·L·T ; HRT = V/Q × 24",
     [V("P", "Panjang", "m", 1.5), V("L", "Lebar", "m", 1.5), V("T", "Kedalaman efektif", "m", 1.2), V("Q", "Debit masuk", "m³/hari", 0.985)],
-    [("V", "Volume bak", "m³"), ("hrt", "Waktu tinggal", "jam")], IPALREF, "Waktu tinggal dibandingkan dengan kriteria desain unit yang dipakai (bukan disimpan di sini).",
+    [("V", "Volume bak", "m³"), ("hrt", "Waktu tinggal", "jam"), ("interval", "Waktu bak penuh bila tidak dikuras (interval penyedotan)", "hari")], IPALREF,
+    "Waktu tinggal dibandingkan dengan kriteria desain unit yang dipakai (bukan disimpan di sini). Interval penyedotan = V/Q, dipakai pada tangki septik/bak tampung yang disedot berkala.",
     run=lambda i: dimensi_bak(i["P"], i["L"], i["T"], i["Q"]))
 reg("air_siram", "Air olahan untuk penyiraman RTH", "Air bersih & air limbah", "air = dosis (L/m²) × luas RTH × frekuensi",
     [V("dosis", "Dosis penyiraman", "L/m²", 5, "ASUMSI desain tanaman"), V("luas", "Luas RTH disiram", "m²", 38874.13), V("frek", "Frekuensi penyiraman", "kali/hari", 1)],
@@ -1429,6 +1614,95 @@ reg("cek_genset", "Kecukupan genset cadangan", "Energi & bahan bakar", "kapasita
      V("standby", "Unit yang dicadangkan (tidak beroperasi bersamaan)", "unit", 0)],
     [("kap", "Kapasitas efektif", "kVA"), ("total", "Kapasitas terpasang", "kVA"), ("rasio", "Terhadap kebutuhan", "%"), ("ok", "Mencukupi? (1=ya)", "")], ENREF,
     run=lambda i: cek_genset(i["keb"], i["n"], i["kva_unit"], i["standby"]))
+
+
+# ---- daya tampung sungai, debu jalan, emisi berefisiensi, BBM kendaraan, air larian & resapan
+DTREF = "Pedoman Penetapan Daya Tampung Beban Pencemaran Air pada Sumber Air (KepMen LH 110/2003) sebagaimana dikutip dokumen contoh; faktor konversi 86,4 tertulis di dokumen."
+reg("daya_tampung_sungai", "Daya tampung beban pencemar sungai (BPM, BPA, DTBP)", "Kualitas air", "BPM = Qs·Cbm·86,4 ; BPA = Qs·CA·86,4 ; DTBP = BPM − BPA",
+    [V("Cbm", "Baku mutu parameter", "mg/L", None, "ISI dari peraturan/kelas air yang ditetapkan untuk sungai"),
+     V("CA", "Hasil uji tiap titik (pisah koma)", "mg/L", None, "1 nilai = sama utk semua titik", typ="list"),
+     V("Qs", "Debit sungai tiap titik (pisah koma)", "m³/detik", None, typ="list")],
+    [("dtbp_min", "DTBP terkecil", "kg/hari"), ("dtbp_rata", "DTBP rata-rata", "kg/hari"), ("n_lebih", "Titik yang melampaui baku (DTBP < 0)", "titik")], DTREF,
+    "Tabel per titik memuat BPA dan DTBP dalam % seperti di dokumen contoh. Satu parameter per perhitungan. Baku mutu tidak punya nilai awal.",
+    run=lambda i: daya_tampung_sungai(i["Cbm"], i["CA"], i["Qs"]))
+reg("debu_jalan", "Debu jalan beraspal/berbeton (emisi partikulat dan laju emisi)", "Kualitas udara",
+    "E = kb·(sL/2)^0,65·(W/p)^1,5 [g/VKT] ; VKT = N·panjang ; laju = E·VKT/3600",
+    [V("kb", "Faktor ukuran partikel kb", "g/VKT", None, "dari tabel ukuran partikel (PM2,5/PM10/TSP) di rujukan US EPA yang dipakai"),
+     V("sL", "Muatan lumpur permukaan jalan sL", "g/m²", None, "dari tabel rujukan menurut jenis jalan (dokumen contoh: 12 untuk jalan beton) atau ukur"),
+     V("W", "Berat rata-rata kendaraan", "ton", 20, "dokumen contoh: truk pengangkut 20 ton"),
+     V("pembagi", "Pembagi bobot", "ton", 1, "dokumen contoh menulis W^1,5 (pembagi 1); sebagian edisi AP-42 memakai (W/3)^1,5 — samakan dengan edisi yang dirujuk"),
+     V("N", "Jumlah kendaraan", "kend/jam", 10), V("panjang", "Panjang ruas", "km", 1), V("lebar", "Lebar jalan", "m", 6)],
+    [("E", "Faktor emisi", "g/VKT"), ("VKT", "Jarak tempuh kendaraan", "km/jam"), ("beban", "Beban emisi", "g/jam"), ("laju", "Laju emisi", "g/detik"), ("laju_luas", "Laju emisi per luas jalan", "g/detik·m²")],
+    "US EPA (1998), AP-42 bab 13.2.1 (debu jalan beraspal), sebagaimana dikutip dokumen contoh.",
+    "Hasil (laju emisi per luas) menjadi masukan sumber garis/area pada pemodelan dispersi. kb dan sL tanpa nilai awal karena bergantung ukuran partikel dan kondisi jalan.",
+    run=lambda i: debu_jalan(i["kb"], i["sL"], i["W"], i["pembagi"], i["N"], i["panjang"], i["lebar"]))
+reg("emisi_kendali", "Laju emisi dengan efisiensi pengendalian", "Kualitas udara", "Q = EF · A · (1 − ER/100)",
+    [V("EF", "Faktor emisi", "satuan emisi/satuan aktivitas", None, "ISI dari rujukan faktor emisi yang dipakai (sebutkan sumbernya)"), V("A", "Intensitas aktivitas", "satuan aktivitas/waktu", 100),
+     V("ER", "Efisiensi pengendalian", "%", 0, "0 bila tanpa alat pengendali")],
+    [("Q", "Laju emisi", "satuan emisi/waktu")], "Pedoman perhitungan beban emisi (KLH, 2007) sebagaimana dikutip dokumen contoh.",
+    "Pengembangan dari 'Emisi dari data aktivitas × faktor emisi' dengan efisiensi alat pengendali.",
+    run=lambda i: {"Q": emisi_kendali(i["EF"], i["A"], i["ER"])})
+reg("bbm_kendaraan", "Kebutuhan BBM kendaraan angkut", "Energi & bahan bakar", "BBM = ritase × jarak × unit / konsumsi (km/L)",
+    [V("rit", "Ritase per hari", "rit/hari", 10), V("jarak", "Jarak per ritase (pulang-pergi)", "km/rit", 2), V("unit", "Jumlah kendaraan", "unit", 3),
+     V("kml", "Konsumsi BBM", "km/L", None, "ISI dari spesifikasi/pedoman inventarisasi emisi yang dipakai (dokumen contoh mengutip 4 km/L untuk truk)")],
+    [("L", "BBM", "L/hari")], "Pedoman inventarisasi emisi pencemar udara di perkotaan (KLH, 2013) sebagaimana dikutip dokumen contoh.",
+    "Contoh di dokumen (10 rit × 2 km × 3 unit ÷ 4 km/L) menurut rumus ini = 15 L/hari; dokumen menuliskan 3 L — periksa angka Anda sendiri.",
+    run=lambda i: {"L": bbm_kendaraan(i["rit"], i["jarak"], i["unit"], i["kml"])})
+reg("larian_banding", "Air larian sebelum vs sesudah proyek", "Hidrologi & erosi", "Q = Σ C·I·A tiap penutup lahan ; selisih = sesudah − sebelum",
+    [V("I", "Intensitas hujan harian", "mm/hari", None, "dari analisis curah hujan lokasi (mis. hujan rencana)"),
+     V("A0", "Luas tiap penutup lahan SEBELUM proyek (pisah koma)", "m²", None, typ="list"), V("C0", "Koefisien C tiap penutup SEBELUM", "", None, "urutan sama dengan luas; C dari tabel koefisien yang dipakai", typ="list"),
+     V("A1", "Luas tiap penutup lahan SESUDAH proyek (pisah koma)", "m²", None, typ="list"), V("C1", "Koefisien C tiap penutup SESUDAH", "", None, typ="list")],
+    [("q0", "Air larian sebelum proyek", "m³/hari"), ("q1", "Air larian sesudah proyek", "m³/hari"), ("selisih", "Peningkatan air larian", "m³/hari"), ("naik_pct", "Peningkatan", "%")],
+    "Metode koefisien limpasan (varian Rasional) sebagaimana tabel air larian di dokumen contoh.",
+    "Tabel per penutup lahan siap disisipkan. Peningkatan air larian menjadi dasar kebutuhan sumur resapan/biopori/kolam.",
+    run=lambda i: larian_banding(i["I"], i["A0"], i["C0"], i["A1"], i["C1"]))
+reg("sumur_resapan_serap", "Jumlah sumur resapan (metode luas serap)", "Hidrologi & erosi", "luas perlu = Q/k ; luas sumur = π d²/4 + π d h ; jumlah = ⌈luas perlu / luas sumur⌉",
+    [V("Q", "Air larian yang diresapkan", "m³/hari", None, "mis. peningkatan air larian dari 'Air larian sebelum vs sesudah'"),
+     V("k", "Permeabilitas tanah", "m/hari", None, "ISI dari uji/rujukan tanah (1 cm/jam = 0,24 m/hari)"),
+     V("d", "Diameter sumur", "m", 1), V("h", "Kedalaman efektif sumur", "m", 4)],
+    [("perlu", "Luas bidang resapan perlu", "m²"), ("luas", "Luas bidang serap per sumur (dasar + selimut)", "m²"), ("n", "Jumlah sumur resapan", "unit"), ("n_pecah", "Jumlah sebelum pembulatan", "unit")],
+    "Metode luas bidang serap (Arsyad, 1976) sebagaimana contoh perhitungan di dokumen contoh.",
+    "Metode lain (SNI 03-2453-2002/Sunjoto) atau ketentuan jumlah sumur menurut luas tutupan bangunan tidak dihitung di sini; permeabilitas tanpa nilai awal.",
+    run=lambda i: sumur_resapan_serap(i["Q"], i["k"], i["d"], i["h"]))
+reg("biopori", "Jumlah lubang resapan biopori", "Hidrologi & erosi", "air hujan = A·I ; n = A·I / v",
+    [V("A", "Luas lahan terbangun", "m²", None), V("I", "Intensitas hujan harian", "mm/hari", None, "1 mm di 1 m² = 1 L"),
+     V("v", "Laju resapan per lubang", "L/hari", None, "ISI dari uji lapangan/rujukan (dokumen contoh: 96,5 L/hari per lubang Ø30 cm)")],
+    [("air", "Air hujan di lahan terbangun", "L/hari"), ("n", "Jumlah lubang resapan", "lubang"), ("n_pecah", "Jumlah sebelum pembulatan", "lubang")],
+    "Perhitungan jumlah lubang resapan biopori (n = I·A/v) di dokumen contoh.",
+    "Contoh di dokumen: 21.948 m² × 5,67 mm/hari ÷ 96,5 L/hari = 1.290 lubang. Ketentuan jumlah lubang menurut luas tutupan (peraturan) tidak dihitung di sini.",
+    run=lambda i: biopori(i["A"], i["I"], i["v"]))
+
+# ---- ARKL & getaran alat konstruksi
+ARKLREF = "Pedoman Analisis Risiko Kesehatan Lingkungan (Kemenkes RI, 2012) sebagaimana dikutip dokumen contoh."
+reg("arkl_inhalasi", "Risiko kesehatan inhalasi (ARKL) — satu reseptor", "Kualitas udara", "I = C·R·tE·fE·Dt / (Wb·tavg) ; RQ = I / RfC",
+    [V("C", "Konsentrasi agen risiko di udara", "mg/m³", None, "mis. hasil prakiraan PM10/SO₂/NO₂ (µg/m³ ÷ 1000 = mg/m³)"),
+     V("R", "Laju inhalasi", "m³/jam", None, "ISI menurut kelompok reseptor (dewasa/anak/pekerja) dan pedoman yang dipakai"),
+     V("tE", "Lama pajanan per hari", "jam/hari", None, "ISI sesuai pola kehadiran reseptor"), V("fE", "Frekuensi pajanan", "hari/tahun", None, "ISI sesuai pola kehadiran reseptor"),
+     V("Dt", "Durasi pajanan", "tahun", None, "ISI: real-time (lama kegiatan) atau lifetime menurut pedoman"),
+     V("Wb", "Berat badan", "kg", None, "ISI menurut kelompok reseptor"),
+     V("tavg", "Periode rata-rata", "hari", None, "non-karsinogenik: Dt × 365; ISI sesuai pedoman"),
+     V("RfC", "Nilai acuan pemajanan (RfC)", "mg/kg/hari", None, "ISI dari rujukan toksikologi; satuannya harus sama dengan asupan")],
+    [("I", "Asupan (intake)", "mg/kg/hari"), ("RQ", "Tingkat risiko RQ", ""), ("ok", "RQ ≤ 1 (aman)? (1=ya)", "")], ARKLREF,
+    "Tidak ada nilai awal: semua parameter pajanan dan RfC bergantung reseptor, pedoman, dan rujukan toksikologi. Dokumen contoh menulis satuan laju inhalasi 'm³/hari' pada judul kolom; di sini m³/jam agar konsisten dengan tE (jam/hari) — samakan dengan pedoman yang dipakai. Non-karsinogenik saja.",
+    run=lambda i: arkl_inhalasi(i["C"], i["R"], i["tE"], i["fE"], i["Dt"], i["Wb"], i["tavg"], i["RfC"]))
+reg("arkl_banding", "Risiko kesehatan — banding tanpa vs dengan proyek (kelompok reseptor)", "Kualitas udara",
+    "RQ = C·R·tE·fE·Dt / (Wb·tavg·RfC) ; tiap kelompok, C tanpa vs dengan proyek",
+    [V("C0", "Konsentrasi tanpa proyek (KLTP)", "mg/m³", None, "dari rona awal / pengukuran"), V("C1", "Konsentrasi dengan proyek (KLDP)", "mg/m³", None, "dari prakiraan dispersi (mis. simulasi udara)"),
+     V("RfC", "Nilai acuan pemajanan (RfC)", "mg/kg/hari", None, "ISI dari rujukan toksikologi"),
+     V("R", "Laju inhalasi tiap kelompok (pisah koma)", "m³/jam", None, "1 nilai = sama utk semua kelompok", typ="list"),
+     V("tE", "Lama pajanan per hari", "jam/hari", None, typ="list"), V("fE", "Frekuensi pajanan", "hari/tahun", None, typ="list"),
+     V("Dt", "Durasi pajanan", "tahun", None, typ="list"), V("Wb", "Berat badan", "kg", None, typ="list"), V("tavg", "Periode rata-rata", "hari", None, typ="list")],
+    [("rq0_maks", "RQ tertinggi tanpa proyek", ""), ("rq1_maks", "RQ tertinggi dengan proyek", ""), ("naik", "Kenaikan RQ tertinggi", ""), ("n_lebih", "Kelompok dengan RQ > 1", "kelompok")], ARKLREF,
+    "Meniru tabel KLTP/KLDP di dokumen contoh (mis. pedagang vs pemukim). Isi satu nilai per kelompok pada tiap daftar, urutan kelompok sama; tabel rinci siap disisipkan. Tanpa nilai awal karena semua parameter bergantung reseptor dan pedoman.",
+    run=lambda i: arkl_banding(i["C0"], i["C1"], i["RfC"], i["R"], i["tE"], i["fE"], i["Dt"], i["Wb"], i["tavg"]))
+reg("ppv_alat", "Getaran alat konstruksi terhadap jarak (FTA)", "Pertambangan & konstruksi", "PPV(D) = PPVref·(25/D)^n  ; D dalam ft",
+    [V("ref", "PPV acuan alat pada 25 ft (7,62 m)", "in/detik", 1.518, "tabel alat FTA; nilai awal = pile driver impact seperti di dokumen contoh"),
+     V("jarak_m", "Jarak ke penerima (pisah koma)", "m", "10, 20, 30, 40, 50", typ="list"),
+     V("n", "Eksponen peluruhan jarak", "", 1.5, "FTA 2006 (rujukan dokumen contoh); " + VERIFY)],
+    [("in_dekat", "PPV di jarak terdekat", "in/detik"), ("mm_dekat", "PPV di jarak terdekat", "mm/detik")],
+    "Transit Noise and Vibration Impact Assessment (FTA, 2006), dikutip dokumen contoh.",
+    "Untuk alat konstruksi (pemancangan, getar, bulldozer). Berbeda dengan 'Getaran peledakan' (skala jarak). Bandingkan PPV dengan batas getaran/kerusakan menurut peraturan yang berlaku — tidak disimpan di sini.",
+    run=lambda i: ppv_alat(i["ref"], i["jarak_m"], i["n"]))
 
 
 # ---- Andalalin: sebelum vs sesudah
@@ -1635,7 +1909,7 @@ e_gum["fn"] = gumbel_x
 _EXTRA = {"laju_aritmatika": laju_aritmatika, "laju_eksponensial": laju_eksponensial, "ugm3_ke_ppm": ugm3_ke_ppm, "gumbel_k": gumbel_k,
           "efluen": efluen, "efisiensi_perlu": efisiensi_perlu, "volume_reaktor": volume_reaktor, "beban_per_kapita": beban_per_kapita,
           "timbulan_sampah": timbulan_sampah, "volume_sampah": volume_sampah, "sampah_residu": sampah_residu, "lhr_proyeksi": lhr_proyeksi,
-          "gauss": gauss, "massa_dari_volume": massa_dari_volume, "lumpur_padatan": lumpur_padatan, "grey_water": grey_water, "kva_kw": kva_kw}
+          "gauss": gauss, "massa_dari_volume": massa_dari_volume, "lumpur_padatan": lumpur_padatan, "grey_water": grey_water, "kva_kw": kva_kw, "emisi_kendali": emisi_kendali, "bbm_kendaraan": bbm_kendaraan}
 FORMULA_FUNCS: dict = {"ln": math.log, "log10": math.log10, "radians": math.radians, "sin": math.sin, "cos": math.cos, "tan": math.tan,
                        "atan": math.atan, "gumbel_x": gumbel_x}
 for e in CATALOG:
@@ -1861,7 +2135,20 @@ DATA_NEEDED = {
 }
 
 HOWTO.update({
+    "daya_tampung_sungai": ("Menilai daya tampung beban pencemar sungai penerima (BPM, BPA, DTBP) per titik sampling untuk satu parameter.", "DTBP > 0 = sungai masih mampu menerima beban; DTBP < 0 = beban aktual melampaui beban maksimum menurut baku mutu. Ulangi per parameter."),
+    "debu_jalan": ("Emisi debu dari jalan angkut/jalan lingkungan akibat lalu lintas kendaraan, sebagai masukan dispersi udara.", "Laju emisi per luas (g/detik·m²) dipakai sebagai sumber area/garis; catat edisi AP-42, kb, dan sL yang dipakai."),
+    "emisi_kendali": ("Laju emisi suatu sumber dengan memperhitungkan efisiensi alat pengendali.", "Hasil dipakai sebagai laju emisi pada simulasi udara; sebutkan sumber faktor emisi dan efisiensi alat."),
+    "bbm_kendaraan": ("Kebutuhan BBM kendaraan pengangkut dari ritase, jarak, jumlah unit, dan konsumsi.", "L/hari masuk ke neraca kebutuhan BBM dan perhitungan emisi kendaraan."),
+    "larian_banding": ("Membandingkan air larian sebelum dan sesudah proyek dari perubahan penutup lahan.", "Peningkatan m³/hari menjadi dasar jumlah sumur resapan/biopori/kolam; tabel per penutup lahan siap disisipkan."),
+    "sumur_resapan_serap": ("Jumlah sumur resapan untuk meresapkan peningkatan air larian (metode luas bidang serap).", "Jumlah dibulatkan ke atas; bandingkan dengan jumlah menurut ketentuan luas tutupan yang berlaku."),
+    "biopori": ("Jumlah lubang resapan biopori untuk lahan terbangun dari intensitas hujan dan laju resapan.", "Jumlah dibulatkan ke atas; laju resapan harus dari uji lapangan atau rujukan yang Anda cantumkan."),
+    "arkl_inhalasi": ("Analisis risiko kesehatan akibat pemajanan inhalasi (mis. PM10, SO₂, NO₂ dari kegiatan) untuk satu kelompok reseptor.", "RQ ≤ 1 = risiko tidak melebihi batas aman; RQ > 1 perlu pengelolaan. Sebut sumber RfC dan parameter pajanan di dokumen."),
+    "arkl_banding": ("Membandingkan risiko kesehatan kondisi tanpa proyek vs dengan proyek untuk beberapa kelompok (pedagang, pemukim, anak, pekerja).", "Lihat RQ dengan proyek per kelompok dan kenaikannya; tabel hasil siap disisipkan ke bagian dampak kesehatan masyarakat."),
+    "ppv_alat": ("Memperkirakan getaran alat konstruksi (pemancangan, bor, bulldozer) pada beberapa jarak ke permukiman.", "PPV makin kecil dengan jarak; tabel per jarak siap disisipkan. Bandingkan dengan batas getaran yang berlaku (isian Anda)."),
     "massa_dari_volume": ("Mengubah volume produksi/material (m³) menjadi tonase, atau sebaliknya, agar angka di deskripsi kegiatan konsisten.", "Pastikan basis volume sama (padat/bcm atau lepas) dan BJ berasal dari uji material lokasi; tuliskan BJ yang dipakai."),
+    "volume_per_siklus": ("Menghitung produksi alat berat (excavator, loader, dump) per siklus dan per jam untuk memperkirakan lama pekerjaan atau jumlah alat.", "Bandingkan hasil per jam dengan target volume harian; waktu siklus dan efisiensi harus dari spesifikasi/pengamatan, bukan asumsi umum."),
+    "timbulan_tinja": ("Memperkirakan timbulan tinja pekerja/penghuni sebagai dasar kapasitas septic tank dan jadwal pengurasan.", "Tuliskan acuan laju timbulan; hasil kg/hari dipakai bersama kalkulator septic tank/IPAL."),
+    "volume_galian": ("Menghitung volume galian/timbunan/cadangan dari luas dan tebal rata-rata, termasuk volume lepas bila ada faktor pengembangan.", "Gunakan volume yang basisnya sama (padat atau lepas) saat dihubungkan ke ritase angkutan."),
     "angkutan_material": ("Menghitung ritase dan arus kendaraan pengangkut material (konstruksi/tambang) sebagai masukan dampak lalu lintas.", "Arus 'smp/jam' ditambahkan ke arus jalan sekitar lalu diuji V/C di kalkulator lalu lintas; ritase dibulatkan ke atas."),
     "konversi_periode": ("Menyamakan satuan waktu: produksi/timbulan per bulan, per tahun, atau per hari, supaya angka antar bagian dokumen cocok.", "Satuan hasil sama dengan satuan isian; periksa basis hari per bulan agar sama dengan jadwal kerja dokumen."),
     "air_semen": ("Kebutuhan air pekerjaan beton/semen pada tahap konstruksi.", "Total m³ dimasukkan ke neraca kebutuhan air konstruksi; liter per zak harus Anda isi dan sumbernya dicantumkan."),
@@ -1880,7 +2167,20 @@ HOWTO.update({
     "cek_genset": ("Memeriksa kecukupan genset cadangan terhadap kebutuhan listrik.", "Rasio ≥ 100% berarti kapasitas efektif memadai; unit standby tidak dihitung beroperasi bersamaan."),
 })
 DATA_NEEDED.update({
+    "daya_tampung_sungai": ["Hasil uji kualitas air sungai per titik — laboratorium terakreditasi", "Debit sungai per titik — pengukuran atau data instansi", "Baku mutu kelas air — penetapan kelas air sungai"],
+    "debu_jalan": ["Jumlah dan berat kendaraan, panjang dan lebar ruas — rencana lalu lintas angkutan", "kb dan sL — tabel rujukan US EPA yang dipakai atau pengukuran muatan lumpur"],
+    "emisi_kendali": ["Faktor emisi — rujukan (sebutkan)", "Intensitas aktivitas — rencana kegiatan", "Efisiensi alat pengendali — spesifikasi alat"],
+    "bbm_kendaraan": ["Ritase, jarak, jumlah unit — rencana angkutan", "Konsumsi BBM (km/L) — spesifikasi kendaraan atau pedoman"],
+    "larian_banding": ["Luas tiap penutup lahan sebelum dan sesudah — site plan", "Koefisien limpasan (C) — tabel yang dirujuk", "Intensitas hujan harian — analisis curah hujan"],
+    "sumur_resapan_serap": ["Peningkatan air larian — hasil 'Air larian sebelum vs sesudah'", "Permeabilitas tanah — uji lapangan atau rujukan tanah"],
+    "biopori": ["Luas lahan terbangun — site plan", "Intensitas hujan harian — analisis curah hujan", "Laju resapan per lubang — uji lapangan"],
+    "arkl_inhalasi": ["Konsentrasi agen risiko — prakiraan dispersi atau pengukuran udara", "Laju inhalasi, berat badan, pola pajanan — pedoman ARKL dan survei reseptor", "RfC — rujukan toksikologi (sebutkan sumbernya)"],
+    "arkl_banding": ["Konsentrasi tanpa dan dengan proyek — rona awal dan prakiraan dispersi", "Parameter pajanan tiap kelompok — survei reseptor", "RfC — rujukan toksikologi"],
+    "ppv_alat": ["PPV acuan alat pada 25 ft — tabel FTA atau spesifikasi alat", "Jarak ke permukiman/bangunan — peta/layout"],
     "massa_dari_volume": ["Volume material/produksi — rencana kegiatan", "Berat jenis — uji material atau data geologi lokasi"],
+    "volume_per_siklus": ["Spesifikasi alat (kapasitas bucket, waktu siklus) — daftar peralatan rencana kegiatan", "Faktor pengisian & efisiensi — pengamatan/acuan alat"],
+    "timbulan_tinja": ["Jumlah pekerja/penghuni — rencana tenaga kerja", "Laju timbulan tinja — acuan yang dipakai (sebutkan sumbernya)"],
+    "volume_galian": ["Luas bidang — peta/rencana tapak", "Tebal rata-rata — pengukuran/bor/geologi", "Faktor pengembangan — uji atau acuan material"],
     "angkutan_material": ["Volume material & lama pekerjaan — jadwal konstruksi/produksi", "Kapasitas truk — jenis armada rencana", "Ekivalen smp — pedoman kapasitas jalan yang dipakai"],
     "konversi_periode": ["Angka produksi/timbulan per periode — rencana kegiatan"],
     "air_semen": ["Jumlah semen terpakai — RAB/jadwal pekerjaan beton", "Air per zak — standar teknis yang dipakai (sebutkan sumbernya)"],
