@@ -14,7 +14,7 @@
 .ps td.n,.ps th.n{text-align:right;font-variant-numeric:tabular-nums}.ps .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:5px}
 .ps .mapbox{border:1px solid var(--line);border-radius:6px;overflow:auto;background:#fff}.ps .mapbox img{display:block;max-width:100%;height:auto}
 .ps .tree{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:6px 10px}.ps .tree div.ch{margin-left:20px}
-.ps .tree label{display:inline-flex;gap:6px;align-items:center;margin:2px 0}.ps .tgl{cursor:pointer;color:var(--acc);margin-right:4px;user-select:none}
+.ps .tree label{display:inline-flex;gap:6px;align-items:center;margin:2px 0}.ps .tgl{cursor:pointer;color:var(--acc);margin-right:2px;padding:2px 8px;font-size:15px;user-select:none}
 .ps .prog{height:10px;background:var(--line);border-radius:6px;overflow:hidden}.ps .prog>i{display:block;height:100%;background:#2da44e}
 .ps .ok{color:#2da44e}.ps .warnb{color:#b45309}.ps .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ps .sum{font-size:12px;color:var(--mut)}
 .ps .grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}.ps .grid2 label{display:flex;flex-direction:column;font-size:12px;gap:2px}`;
@@ -259,21 +259,30 @@
     try { (await kids('')).forEach(p => $('#rgProv').insertAdjacentHTML('beforeend', `<option value="${p.code}">${esc(p.name)}</option>`)); } catch (e) { $('#rgTree').innerHTML = `<span class=err>${esc(e.message)}</span>`; return; }
     const item = (it, depth) => `<div class=ch data-code="${it.code}" data-d="${depth}" style="margin-left:${depth ? 0 : 0}px"><span class=tgl data-t="${it.code}">${depth < 3 ? '▸' : '·'}</span><label><input type=checkbox data-c="${it.code}" data-n="${esc(it.name)}" ${sel.has(it.code) ? 'checked' : ''}>${esc(it.name)} <span class=sum>${it.penduduk != null ? nf(it.penduduk) + ' jiwa' : ''}</span></label><div class=sub></div></div>`;
     const level = code => code.split('.').length;
+    // buka satu node (muat anak). deep=true: anak yang punya turunan tercentang ikut dibuka, supaya pilihan tersimpan langsung terlihat
+    const hasSel = code => [...sel.keys()].some(k => k.startsWith(code + '.'));
+    const openNode = async (ch, deep) => {
+      const tg = ch.querySelector(':scope > .tgl'), box = ch.querySelector(':scope > .sub');
+      if (box.dataset.open) return;
+      box.dataset.open = 1; tg.textContent = '▾'; box.innerHTML = '<span class=sum>memuat…</span>';
+      try { box.innerHTML = (await kids(tg.dataset.t)).map(i => item(i, 2)).join(''); } catch (x) { box.innerHTML = `<span class=err>${esc(x.message)}</span>`; return; }
+      if (deep) for (const c of box.querySelectorAll(':scope > div.ch')) if (level(c.dataset.code) < 4 && hasSel(c.dataset.code)) await openNode(c, true);
+    };
     $('#rgProv').onchange = async () => {
       const p = $('#rgProv').value; if (!p) return;
       $('#rgTree').innerHTML = (await kids(p)).map(i => item(i, 1)).join('');
+      for (const c of $('#rgTree').querySelectorAll(':scope > div.ch')) if (hasSel(c.dataset.code)) await openNode(c, true);
     };
     $('#rgTree').onclick = async e => {
       const t = e.target.closest('.tgl');
       if (t && t.dataset.t && level(t.dataset.t) < 4) {
-        const box = t.closest('div.ch').querySelector(':scope > .sub');
+        const ch = t.closest('div.ch'), box = ch.querySelector(':scope > .sub');
         if (box.dataset.open) { box.innerHTML = ''; delete box.dataset.open; t.textContent = '▸'; return; }
-        box.dataset.open = 1; t.textContent = '▾'; box.innerHTML = '<span class=sum>memuat…</span>';
-        try { box.innerHTML = (await kids(t.dataset.t)).map(i => item(i, 2)).join(''); } catch (x) { box.innerHTML = `<span class=err>${esc(x.message)}</span>`; }
-        return;
+        return openNode(ch);
       }
       const c = e.target.closest('input[data-c]'); if (!c) return;
       const code = c.dataset.c;
+      if (c.checked && level(code) < 4) openNode(c.closest('div.ch'));      // centang kab/kota -> kecamatan langsung tampil; centang kecamatan -> desa tampil
       if (c.checked) {
         sel.set(code, c.dataset.n);                                  // induk otomatis ikut tercentang
         let p = code; while (level(p) > 2) { p = p.slice(0, p.lastIndexOf('.')); const pc = $('#rgTree').querySelector(`input[data-c="${p}"]`); if (pc) pc.checked = true; if (!sel.has(p)) sel.set(p, (pc && pc.dataset.n) || p); }
