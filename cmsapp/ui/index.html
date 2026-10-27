@@ -218,6 +218,7 @@ header b{letter-spacing:.2px}
 </nav></header>
 <div id="app"></div><div id="bar" hidden></div>
 <script src="/proj-site.js?v=1"></script>
+<script src="/act-ui.js?v=1"></script>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
 let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,section=null,es=null,outline=[],locks={},hb=null,shareTok=null;
@@ -534,18 +535,19 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
- const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['lokasi','Lokasi & Survei','📍'],['simulasi','Simulasi','🧮'],['aktivitas','Aktivitas','🕑']];
+ const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['lokasi','Lokasi & Survei','📍'],['simulasi','Simulasi','🧮'],['tindak','Aktivitas','🗂'],['aktivitas','Log','🕑']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
-async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,lokasi:tabLokasi,simulasi:tabSimulasi,aktivitas:tabAktivitas};
+async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,lokasi:tabLokasi,simulasi:tabSimulasi,aktivitas:tabAktivitas,tindak:()=>window.tabTindak()};
  stopChat();try{await fns[curTab]()}catch(e){note(e.message,1)}}
 const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blok','block.delete':'🗑 hapus blok','block.move':'🔀 pindah blok',
  'block.restore':'♻️ pulihkan blok','block.revert':'⏪ kembalikan versi','block.hidden':'🙈 sembunyikan/tampilkan',
  'comment.add':'💬 komentar','comment.resolve':'✔ komentar selesai/dibuka','comment.delete':'💬 hapus komentar',
  'doc.upload':'📄 unggah dokumen','doc.export':'📤 ekspor DOCX','pic.assign':'📌 tandai PIC','pic.unassign':'📌 lepas PIC',
  'project.create':'🆕 proyek dibuat','project.update':'⚙ proyek diubah','project.file_upload':'📁 unggah berkas',
- 'user.file_upload':'📁 unggah berkas pribadi'};
+ 'user.file_upload':'📁 unggah berkas pribadi',
+ 'act.create':'🗂 catatan aktivitas ditambah','act.update':'🗂 catatan aktivitas diubah','act.delete':'🗂 catatan aktivitas dihapus'};
 async function tabAktivitas(){
  const item=it=>{const lbl=ACT_LABELS[it.action]||('⚙ '+it.action);const sp=lbl.indexOf(' ');
   const ic=lbl.slice(0,sp),verb=lbl.slice(sp+1);

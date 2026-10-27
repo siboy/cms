@@ -706,3 +706,155 @@ CREATE TABLE IF NOT EXISTS cms_project_sim_runs (
     INDEX idx_psr_sim (sim_id),
     CONSTRAINT fk_psr_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---- Tab "Aktivitas" proyek: isu penilai, sidang/BA, request, masalah, pertanyaan pemrakarsa, jurnal laporan (2026-10-27)
+-- RANCANGAN (belum dijalankan) - tab "Aktivitas" proyek: penilai/isu, sidang/BA, request, masalah, pertanyaan pemrakarsa, jurnal laporan
+-- Untuk repo cms (WSL /root/cms), ditempel ke scripts/init_schema.sql (idempoten, gaya sama dgn tabel lain).
+-- Berlaku PER TENANT (cms-utama dan cms-chp = DB terpisah); data diimpor ke tenant sesuai pihak_kontrak.
+-- Sebelum diterapkan: mysqldump kedua tenant ke ~/audeaude_backup_cms_<ts>/.
+
+-- 1) kolom tambahan cms_projects (pola prosedur sementara seperti migrasi sebelumnya)
+DROP PROCEDURE IF EXISTS cms_tmp_add_act_project_cols;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_add_act_project_cols()
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='contract_party') THEN
+    ALTER TABLE cms_projects ADD COLUMN contract_party VARCHAR(40) DEFAULT NULL;   -- CHP/JLI/RDH/AHK/Personal (pihak yg meneken kontrak)
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='lpjp_flag') THEN
+    ALTER TABLE cms_projects ADD COLUMN lpjp_flag VARCHAR(40) DEFAULT NULL;        -- bendera LPJP di Amdalnet (bisa beda dari contract_party)
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='doc_kind') THEN
+    ALTER TABLE cms_projects ADD COLUMN doc_kind VARCHAR(255) DEFAULT NULL;         -- AMDAL / Addendum / UKL-UPL / Pertek / DELH / Andalalin
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='authority') THEN
+    ALTER TABLE cms_projects ADD COLUMN authority VARCHAR(80) DEFAULT NULL;        -- kewenangan: Pusat KLH / Prov X / Kab Y
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_projects' AND COLUMN_NAME='source_key') THEN
+    ALTER TABLE cms_projects ADD COLUMN source_key VARCHAR(64) DEFAULT NULL;       -- kunci impor idempoten, mis. wa2020:gnm
+    ALTER TABLE cms_projects ADD UNIQUE KEY uq_proj_source (source_key);
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_add_act_project_cols();
+DROP PROCEDURE cms_tmp_add_act_project_cols;
+
+-- 2) sidang / rapat / berita acara
+CREATE TABLE IF NOT EXISTS cms_act_meeting (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    kind        ENUM('kp','rapat_ka','rapat_andal','tuklh','verifikasi_ptsp','evaluasi_perbaikan','survei','lain') NOT NULL DEFAULT 'lain',
+    meeting_date DATE DEFAULT NULL,
+    doc_number  VARCHAR(120) DEFAULT NULL,          -- nomor BA / surat
+    chairperson VARCHAR(255) DEFAULT NULL,          -- pimpinan rapat
+    attendees   TEXT,                               -- pakar & instansi hadir
+    outcome     TEXT,                               -- ringkasan hasil / butir kesepakatan
+    file_id     INT DEFAULT NULL,                   -- -> cms_project_files (BA yg diunggah)
+    source_key  VARCHAR(64) DEFAULT NULL,
+    created_by  VARCHAR(100) DEFAULT NULL, created_at VARCHAR(19) DEFAULT NULL, updated_at VARCHAR(19) DEFAULT NULL, deleted_at VARCHAR(19) DEFAULT NULL,
+    INDEX idx_am_project (project_id, meeting_date),
+    UNIQUE KEY uq_am_source (project_id, source_key),
+    CONSTRAINT fk_am_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 3) isu yang disorot penilai + cara menjawab (satu baris = satu butir)
+CREATE TABLE IF NOT EXISTS cms_act_review_item (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    project_id    INT NOT NULL,
+    meeting_id    INT DEFAULT NULL,
+    stage         VARCHAR(160) DEFAULT NULL,         -- KA / ANDAL / Pertek AL / SKKLH / uji admin ...
+    event_date    DATE DEFAULT NULL,
+    reviewer_name VARCHAR(255) DEFAULT NULL,         -- orang / pakar
+    reviewer_org  VARCHAR(255) DEFAULT NULL,         -- PTSP KLH, Dit LLJ, DLH Prov ...
+    reviewer_kind ENUM('pakar','kementerian','dinas_daerah','ptsp','masyarakat','lain') NOT NULL DEFAULT 'lain',
+    theme         VARCHAR(80) DEFAULT NULL,          -- Neraca air / Layout peta / Limbah B3 ...
+    issue_text    TEXT NOT NULL,
+    response_text TEXT,
+    status        ENUM('open','dijawab','sebagian','tidak_perlu') NOT NULL DEFAULT 'open',
+    answered_by   VARCHAR(100) DEFAULT NULL, answered_at VARCHAR(19) DEFAULT NULL,
+    source_key    VARCHAR(64) DEFAULT NULL,
+    created_by    VARCHAR(100) DEFAULT NULL, created_at VARCHAR(19) DEFAULT NULL, updated_at VARCHAR(19) DEFAULT NULL, deleted_at VARCHAR(19) DEFAULT NULL,
+    INDEX idx_ar_project (project_id, status), INDEX idx_ar_theme (theme), INDEX idx_ar_org (reviewer_org),
+    UNIQUE KEY uq_ar_source (project_id, source_key),
+    CONSTRAINT fk_ar_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ar_meet FOREIGN KEY (meeting_id) REFERENCES cms_act_meeting(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 4) request: yang harus disiapkan pemrakarsa / diminta konsultan
+CREATE TABLE IF NOT EXISTS cms_act_request (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    project_id    INT NOT NULL,
+    item          VARCHAR(500) NOT NULL,
+    direction     ENUM('ke_pemrakarsa','ke_konsultan') NOT NULL DEFAULT 'ke_pemrakarsa',
+    requested_at  DATE DEFAULT NULL, due_date DATE DEFAULT NULL, received_at DATE DEFAULT NULL,
+    status        ENUM('open','sebagian','diterima','batal') NOT NULL DEFAULT 'open',
+    assignee      VARCHAR(255) DEFAULT NULL,
+    note          TEXT, source_key VARCHAR(64) DEFAULT NULL,
+    created_by    VARCHAR(100) DEFAULT NULL, created_at VARCHAR(19) DEFAULT NULL, updated_at VARCHAR(19) DEFAULT NULL, deleted_at VARCHAR(19) DEFAULT NULL,
+    INDEX idx_rq_project (project_id, status), UNIQUE KEY uq_rq_source (project_id, source_key),
+    CONSTRAINT fk_rq_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 5) masalah (tim, pemrakarsa, pembayaran, regulasi, dokumen, jadwal)
+CREATE TABLE IF NOT EXISTS cms_act_issue (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    category    ENUM('pemrakarsa','tim','pembayaran','regulasi','dokumen','jadwal','lain') NOT NULL DEFAULT 'lain',
+    title       VARCHAR(500) NOT NULL,
+    detail      TEXT,
+    raised_at   DATE DEFAULT NULL, resolved_at DATE DEFAULT NULL,
+    status      ENUM('open','pantau','selesai') NOT NULL DEFAULT 'open',
+    owner       VARCHAR(255) DEFAULT NULL,
+    source_key  VARCHAR(64) DEFAULT NULL,
+    created_by  VARCHAR(100) DEFAULT NULL, created_at VARCHAR(19) DEFAULT NULL, updated_at VARCHAR(19) DEFAULT NULL, deleted_at VARCHAR(19) DEFAULT NULL,
+    INDEX idx_ai_project (project_id, status), UNIQUE KEY uq_ai_source (project_id, source_key),
+    CONSTRAINT fk_ai_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 6) pertanyaan / permintaan dari pemrakarsa
+CREATE TABLE IF NOT EXISTS cms_act_question (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    asked_at    DATE DEFAULT NULL,
+    asked_by    VARCHAR(255) DEFAULT NULL,
+    question    TEXT NOT NULL,
+    topic       VARCHAR(160) DEFAULT NULL,          -- apa yang dipermasalahkan
+    status      ENUM('open','dijawab') NOT NULL DEFAULT 'open',
+    answer_text TEXT, answered_at DATE DEFAULT NULL,
+    source_key  VARCHAR(64) DEFAULT NULL,
+    created_by  VARCHAR(100) DEFAULT NULL, created_at VARCHAR(19) DEFAULT NULL, updated_at VARCHAR(19) DEFAULT NULL, deleted_at VARCHAR(19) DEFAULT NULL,
+    INDEX idx_aq_project (project_id, status), UNIQUE KEY uq_aq_source (project_id, source_key),
+    CONSTRAINT fk_aq_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 7) jurnal laporan (daftar dokumen/laporan proyek: KA, ANDAL, RKL-RPL, Pertek, Rintek, BA KP ...)
+CREATE TABLE IF NOT EXISTS cms_act_report (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    kind        VARCHAR(80) NOT NULL,               -- Formulir KA / ANDAL / RKL-RPL / Pertek AL / Rintek LB3 / Laporan KP ...
+    title       VARCHAR(500) NOT NULL,
+    version_label VARCHAR(40) DEFAULT NULL,         -- draft1 / rev2 / final
+    report_date DATE DEFAULT NULL,
+    status      ENUM('disusun','diajukan','revisi','disetujui','final') NOT NULL DEFAULT 'disusun',
+    file_id     INT DEFAULT NULL,
+    source_key  VARCHAR(64) DEFAULT NULL,
+    created_by  VARCHAR(100) DEFAULT NULL, created_at VARCHAR(19) DEFAULT NULL, updated_at VARCHAR(19) DEFAULT NULL, deleted_at VARCHAR(19) DEFAULT NULL,
+    INDEX idx_arp_project (project_id, report_date), UNIQUE KEY uq_arp_source (project_id, source_key),
+    CONSTRAINT fk_arp_proj FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 8) cms_project_files.category: tambah 'berita_acara' dan 'saran_penilai' (hanya bila belum ada; baris lama tak berubah)
+DROP PROCEDURE IF EXISTS cms_tmp_file_cat;
+DELIMITER $$
+CREATE PROCEDURE cms_tmp_file_cat()
+BEGIN
+  IF (SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='cms_project_files' AND COLUMN_NAME='category') NOT LIKE '%berita_acara%' THEN
+    ALTER TABLE cms_project_files MODIFY category ENUM('surat','data_mentah','dokumen_pendukung','galeri','tender','pitching','lab','mom','berita_acara','saran_penilai') NOT NULL;
+  END IF;
+END$$
+DELIMITER ;
+CALL cms_tmp_file_cat();
+DROP PROCEDURE cms_tmp_file_cat;
+
+-- Yang DIPAKAI ULANG (tanpa perubahan): tim -> cms_user_project_roles (title = Pimpro/KTPA/ATPA/TA Fiskim..., anggota eksternal = external_name),
+-- timeline & kurva S -> cms_project_tasks (start/end/progress), PIC -> cms_projects.pic, pemrakarsa -> client + pemrakarsa_contact.
