@@ -278,14 +278,16 @@ def my_sims(store, user_id: int) -> list[dict]:
 
 
 # ------------------------------------------------------------------------------------------ alamat lokasi proyek
-SITE_COLS = ("address", "prov_code", "prov_name", "kab_code", "kab_name", "kec_code", "kec_name", "desa_code", "desa_name", "lat", "lon")
+SITE_COLS = ("address", "prov_code", "prov_name", "kab_code", "kab_name", "kec_code", "kec_name", "desa_code", "desa_name", "desa_json", "lat", "lon")
 
 
 def get_site(store, pid: int) -> dict:
     with store._tx() as c:
         _exists(store, c, pid)
         r = store._one(c, "SELECT * FROM cms_project_site WHERE project_id=?", (pid,))
-    return {k: (r or {}).get(k) for k in SITE_COLS} | {"updated_by": (r or {}).get("updated_by"), "updated_at": (r or {}).get("updated_at")}
+    out = {k: (r or {}).get(k) for k in SITE_COLS if k != "desa_json"}
+    out["desa"] = json.loads((r or {}).get("desa_json") or "null") or ([{"code": r["desa_code"], "name": r["desa_name"]}] if r and r.get("desa_code") else [])
+    return out | {"updated_by": (r or {}).get("updated_by"), "updated_at": (r or {}).get("updated_at")}
 
 
 def set_site(store, pid: int, f: dict, user: str = "") -> None:

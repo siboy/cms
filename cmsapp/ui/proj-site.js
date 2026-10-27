@@ -61,13 +61,28 @@
     box.innerHTML = `<div class=row2><b>📌 Alamat lokasi proyek</b><span class=sum id=siInfo style="margin-left:auto">${s.updated_at ? 'diperbarui ' + esc(s.updated_at.slice(0, 16)) + (s.updated_by ? ' oleh ' + esc(s.updated_by) : '') : 'belum diisi'}</span></div>
      ${manage ? `<div class=row2 style="margin:8px 0"><select id=siLy style="min-width:220px">${ly.length ? ly.map(l => `<option value="${l.info.center[0]},${l.info.center[1]}">Titik pusat layer: ${esc(l.name)} (${l.info.center[0].toFixed(5)}, ${l.info.center[1].toFixed(5)})</option>`).join('') : '<option value="">— belum ada layer koordinat —</option>'}</select>
        <button type=button id=siGeo ${ly.length ? '' : 'disabled'} title="Mengirim satu titik koordinat itu ke OpenStreetMap (Nominatim) untuk dicari alamatnya">🔎 Cari alamat dari koordinat</button><span class=sum id=siMsg></span></div>` : ''}
-     <div class=grid2 style="margin:6px 0">${LV.map(([k, lb]) => `<label>${lb}<select id=si_${k} ${dis}><option value="">— pilih —</option></select></label>`).join('')}</div>
+     <div class=grid2 style="margin:6px 0">${LV.filter(x => x[0] !== 'desa').map(([k, lb]) => `<label>${lb}<select id=si_${k} ${dis}><option value="">— pilih —</option></select></label>`).join('')}</div>
+     <div style="margin:6px 0"><div class=row2><b style="font-size:13px">Desa/Kelurahan</b><span class=sum id=siDesaN></span>${manage ? '<button type=button id=siAll>Pilih semua</button><button type=button id=siNone>Kosongkan</button><input id=siQ placeholder="🔍 cari desa…" style="max-width:160px">' : ''}</div>
+      <div class=tree id=siDesa style="margin-top:4px"><span class=sum>Pilih kecamatan dulu.</span></div></div>
      <label style="display:flex;flex-direction:column;font-size:12px;gap:2px">Alamat lokasi (jalan, RT/RW, patokan)<textarea id=siAddr rows=2 ${dis} maxlength=500 placeholder="mis. Jl. Raya Anyer KM 12, Kramatwatu">${esc(s.address || '')}</textarea></label>
      ${manage ? '<div class=row2 style="justify-content:flex-end;margin-top:8px"><span id=siErr class=err></span><button type=button class=p id=siSave>Simpan alamat</button></div>' : ''}
      <div id=siRona style="margin-top:10px"></div>`;
     const sel = k => $('#si_' + k), parentOf = {prov: '', kab: 'prov', kec: 'kab', desa: 'kec'};
     let lat = s.lat, lon = s.lon, dataErr = null;
+    const desaN = () => { const n = $('#siDesa').querySelectorAll('input:checked').length; $('#siDesaN').textContent = n ? n + ' desa dipilih' : ''; };
+    const fillDesa = async (parent, want) => {               // checkbox desa sekecamatan (banyak pilihan)
+      const bx = $('#siDesa'), ws = new Set(want || []);
+      if (!parent) { bx.innerHTML = '<span class=sum>Pilih kecamatan dulu.</span>'; desaN(); return; }
+      bx.textContent = 'memuat…';
+      try {
+        const r = await api('GET', `/kd/regions?parent=${encodeURIComponent(parent)}`);
+        bx.innerHTML = r.items.map(x => `<label style="display:flex;width:100%" data-n="${esc(x.name.toLowerCase())}"><input type=checkbox value="${esc(x.code)}" ${ws.has(x.code) ? 'checked' : ''} ${dis}> ${esc(x.name)} <span class=sum>&nbsp;${x.penduduk != null ? nf(x.penduduk) + ' jiwa' : ''}</span></label>`).join('') || '<span class=sum>Tidak ada desa.</span>';
+        bx.querySelectorAll('input').forEach(i => i.onchange = desaN);
+      } catch (e) { dataErr = e.message; bx.textContent = e.message; }
+      desaN();
+    };
     const fill = async (k, parent, want) => {                 // isi pilihan satu tingkat dari Data Desa
+      if (k === 'desa') return fillDesa(parent, want);
       const el = sel(k); el.innerHTML = '<option value="">— pilih —</option>';
       if (k !== 'prov' && !parent) return;
       try {
@@ -80,21 +95,27 @@
       if (!r) { $('#siRona').innerHTML = ''; return; }
       const nm = {prov: 'Provinsi', kab: 'Kab/Kota', kecamatan: 'Kecamatan', desa: 'Desa/Kelurahan', kabkota: 'Kab/Kota', provinsi: 'Provinsi'};
       let g = '', rows = '';
+      const multi = (r.names || []).length > 1, perCol = multi && r.names.length <= 8, nc = 3 + (perCol ? r.names.length : 0);
+      const fv = (it, v) => v == null ? '–' : it.kind === 'ratio' ? nf(v, 2) : nf(v);
       for (const it of r.items) {
-        if (it.group !== g) { g = it.group; rows += `<tr><th colspan=3 style="background:var(--line)">${esc(g)}</th></tr>`; }
-        rows += `<tr><td>${esc(it.label)}</td><td class=n>${it.kind === 'ratio' ? nf(it.value, 2) : nf(it.value)}${it.unit && it.kind !== 'ratio' ? ' ' + esc(it.unit) : ''}</td><td class="n sum">${it.pct != null ? nf(it.pct, 1) + '%' : ''}</td></tr>`;
+        if (it.group !== g) { g = it.group; rows += `<tr><th colspan=${nc} style="background:var(--line)">${esc(g)}</th></tr>`; }
+        rows += `<tr><td>${esc(it.label)}</td><td class=n>${fv(it, it.value)}${it.unit && it.kind !== 'ratio' && it.value != null ? ' ' + esc(it.unit) : ''}</td><td class="n sum">${it.pct != null ? nf(it.pct, 1) + '%' : ''}</td>${perCol ? it.per.map(v => `<td class="n sum">${fv(it, v)}</td>`).join('') : ''}</tr>`;
       }
-      $('#siRona').innerHTML = `<b>Rona sosial wilayah — ${esc(r.name || r.code)}</b> <span class=sum>(${esc(nm[r.level] || r.level)} · Data Desa Kemendagri${r.period ? ' · ' + esc(r.period) : ''})</span>
-        <table style="margin-top:6px"><tr><th>Indikator</th><th class=n>Nilai</th><th class=n>% penduduk</th></tr>${rows || '<tr><td colspan=3 class=sum>Tidak ada data indikator untuk wilayah ini.</td></tr>'}</table>`;
+      $('#siRona').innerHTML = `<b>Rona sosial wilayah — ${multi ? r.names.length + ' desa' + (perCol ? '' : '') : esc(r.name || r.code)}</b> <span class=sum>(${esc(nm[r.level] || r.level)} · Data Desa Kemendagri${r.period ? ' · ' + esc(r.period) : ''})</span>
+        ${multi ? '<div class=sum>Kolom Nilai = total gabungan desa terpilih; rasio tidak dijumlahkan.</div>' : ''}<div style="overflow:auto"><table style="margin-top:6px"><tr><th>Indikator</th><th class=n>${multi ? 'Total' : 'Nilai'}</th><th class=n>% penduduk</th>${perCol ? r.names.map(n => `<th class=n>${esc(n)}</th>`).join('') : ''}</tr>${rows || `<tr><td colspan=${nc} class=sum>Tidak ada data indikator untuk wilayah ini.</td></tr>`}</table></div>`;
     };
     rona(S.rona);
-    await fill('prov', '', s.prov_code); await fill('kab', s.prov_code, s.kab_code); await fill('kec', s.kab_code, s.kec_code); await fill('desa', s.kec_code, s.desa_code);
+    await fill('prov', '', s.prov_code); await fill('kab', s.prov_code, s.kab_code); await fill('kec', s.kab_code, s.kec_code); await fill('desa', s.kec_code, s.desa.map(d => d.code));
     if (dataErr) $('#siInfo').textContent = 'Data Desa tidak tersedia: ' + dataErr;
     if (!manage) return;
     for (const k of ['prov', 'kab', 'kec']) {                 // pilihan bertingkat
       const nxt = LV[LV.findIndex(x => x[0] === k) + 1][0];
-      sel(k).onchange = async () => { for (let i = LV.findIndex(x => x[0] === nxt); i < 4; i++) sel(LV[i][0]).innerHTML = '<option value="">— pilih —</option>'; await fill(nxt, sel(k).value); };
+      sel(k).onchange = async () => { for (let i = LV.findIndex(x => x[0] === nxt); i < 3; i++) sel(LV[i][0]).innerHTML = '<option value="">— pilih —</option>'; if (k !== 'kec') $('#siDesa').innerHTML = '<span class=sum>Pilih kecamatan dulu.</span>'; desaN(); await fill(nxt, sel(k).value); };
     }
+    const boxes = () => [...$('#siDesa').querySelectorAll('label')].filter(l => l.style.display !== 'none').map(l => l.querySelector('input'));
+    $('#siAll').onclick = () => { boxes().forEach(i => i.checked = true); desaN(); };
+    $('#siNone').onclick = () => { $('#siDesa').querySelectorAll('input').forEach(i => i.checked = false); desaN(); };
+    $('#siQ').oninput = () => { const q = $('#siQ').value.trim().toLowerCase(); $('#siDesa').querySelectorAll('label').forEach(l => l.style.display = !q || l.dataset.n.includes(q) ? 'flex' : 'none'); };
     $('#siGeo').onclick = async () => {
       const [a, b] = $('#siLy').value.split(',').map(Number), msg = $('#siMsg'); msg.textContent = 'mencari…';
       try {
@@ -102,7 +123,7 @@
         $('#siAddr').value = r.display_name || '';
         const m = r.match || {};
         await fill('prov', '', m.prov && m.prov.code); await fill('kab', m.prov && m.prov.code, m.kab && m.kab.code);
-        await fill('kec', m.kab && m.kab.code, m.kec && m.kec.code); await fill('desa', m.kec && m.kec.code, m.desa && m.desa.code);
+        await fill('kec', m.kab && m.kab.code, m.kec && m.kec.code); await fill('desa', m.kec && m.kec.code, m.desa ? [m.desa.code] : []);
         const got = ['prov', 'kab', 'kec', 'desa'].filter(k => m[k]).length;
         msg.innerHTML = `<span class=${got === 4 ? 'ok' : 'warnb'}>${got === 4 ? '✓ cocok sampai desa' : got + ' dari 4 tingkat cocok dengan Data Desa — lengkapi manual'}</span> · periksa lalu <b>Simpan alamat</b>`;
       } catch (e) { msg.innerHTML = `<span class=err>${esc(e.message)}</span>`; }
@@ -110,7 +131,7 @@
     $('#siSave').onclick = async () => {
       $('#siErr').textContent = '';
       try {
-        await api('PUT', `/projects/${pid}/site`, {address: $('#siAddr').value, prov_code: sel('prov').value, kab_code: sel('kab').value, kec_code: sel('kec').value, desa_code: sel('desa').value, lat, lon});
+        await api('PUT', `/projects/${pid}/site`, {address: $('#siAddr').value, prov_code: sel('prov').value, kab_code: sel('kab').value, kec_code: sel('kec').value, desa_codes: [...$('#siDesa').querySelectorAll('input:checked')].map(i => i.value), lat, lon});
         note('Alamat lokasi disimpan'); paintSite(pid, manage);
       } catch (e) { $('#siErr').textContent = e.message; }
     };

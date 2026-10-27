@@ -185,6 +185,7 @@ def regions_set(pid):
 
 
 # ------------------------------------------------------------------------------------------ alamat lokasi + rona wilayah
+import json as _json
 import re as _re
 import threading as _th
 import time as _time
@@ -206,16 +207,19 @@ def _norm(s: str) -> str:
     return _re.sub(r"\s+", " ", s).strip()
 
 
-def _rona(code: str) -> dict | None:
-    """Indikator Data Desa untuk wilayah `code` (level terdalam yang dipilih). None bila modul/sumber tak tersedia."""
+def _rona(codes) -> dict | None:
+    """Indikator Data Desa untuk satu wilayah, atau beberapa desa SEKECAMATAN (nilai jumlah = total, plus nilai per desa).
+    None bila modul/sumber tak tersedia."""
     from utils import kd_catalog as cat
-    if not code or not mods.is_on("data_desa"):
+    codes = [codes] if isinstance(codes, str) else list(codes or [])
+    if not codes or not mods.is_on("data_desa"):
         return None
     kd = _kd()
     if kd is None:
         return None
+    code = codes[0]
     parent = code.rsplit(".", 1)[0] if "." in code else ""
-    items, period, name = [], None, None
+    items, period, names = [], None, {}
     for key in RONA_KEYS:
         ind = cat.INDICATORS.get(key)
         if not ind:
@@ -225,12 +229,26 @@ def _rona(code: str) -> dict | None:
         except Exception:                                   # noqa: BLE001
             continue
         period = period or r.get("period")
-        row = next((x for x in r["rows"] if x["code"] == code), None)
-        if row:
-            name = row.get("name")
+        byc = {x["code"]: x for x in r["rows"]}
+        rows = [byc[c] for c in codes if c in byc]
+        if rows:
+            for x in rows:
+                names[x["code"]] = x.get("name")
+            vals = [x["value"] for x in rows if x["value"] is not None]
+            if len(codes) == 1:
+                tot, pct = rows[0]["value"], rows[0].get("pct")
+            else:                                           # beberapa desa: jumlah dijumlahkan; rasio tidak bisa dijumlah
+                tot, pct = (sum(vals) if vals and ind["kind"] == "count" else None), None
             items.append({"key": key, "label": ind["label"], "group": ind["group"], "unit": ind.get("unit"), "kind": ind["kind"],
-                          "value": row["value"], "pct": row.get("pct")})
-    return {"code": code, "name": name, "level": ps.level_of(code) if "." in code else "provinsi", "period": period, "items": items}
+                          "value": tot, "pct": pct, "per": [byc[c]["value"] if c in byc else None for c in codes]})
+    if len(codes) > 1:                                      # % penduduk untuk gabungan = nilai / total penduduk gabungan
+        pop = next((i["value"] for i in items if i["key"] == "jumlah_penduduk"), None)
+        for i in items:
+            if pop and i["kind"] == "count" and i["value"] is not None:
+                i["pct"] = i["value"] / pop * 100
+    name = ", ".join(names.get(c) or c for c in codes)
+    return {"code": code, "codes": codes, "names": [names.get(c) or c for c in codes], "name": name,
+            "level": ps.level_of(code) if "." in code else "provinsi", "period": period, "items": items}
 
 
 @bp.get("/projects/<int:pid>/site")
@@ -239,15 +257,15 @@ def _rona(code: str) -> dict | None:
 def site_get(pid):
     _project_visible(pid)
     s = pst.get_site(S(), pid)
-    code = s["desa_code"] or s["kec_code"] or s["kab_code"] or s["prov_code"]
-    return jsonify(site=s, rona=_rona(code) if code else None)
+    codes = [d["code"] for d in s["desa"]] or [c for c in (s["kec_code"], s["kab_code"], s["prov_code"]) if c][:1]
+    return jsonify(site=s, rona=_rona(codes) if codes else None)
 
 
 @bp.put("/projects/<int:pid>/site")
 @auth.require()
 @guard("proyek_lokasi")
 def site_set(pid):
-    """Body: {address, prov_code, kab_code, kec_code, desa_code, lat?, lon?}. Nama wilayah DIISI SERVER dari Data Desa (bukan dari klien)."""
+    """Body: {address, prov_code, kab_code, kec_code, desa_codes: [kode desa sekecamatan], lat?, lon?}. Nama wilayah DIISI SERVER dari Data Desa (bukan dari klien)."""
     _manage(pid)
     d = body()
     f = {"address": (d.get("address") or "").strip()[:500] or None, "lat": None, "lon": None}
@@ -256,7 +274,7 @@ def site_set(pid):
         ps.check_latlon(f["lat"], f["lon"])
     prev = ""
     kd = None
-    for key in ("prov_code", "kab_code", "kec_code", "desa_code"):
+    for key in ("prov_code", "kab_code", "kec_code"):
         code = (d.get(key) or "").strip()
         if not code:
             f[key], f[key.replace("_code", "_name")] = None, None
@@ -272,9 +290,25 @@ def site_set(pid):
             raise ValueError("sumber data wilayah (Data Desa) belum terhubung")
         f[key], f[key.replace("_code", "_name")] = code, kd.region_info(code)["name"]
         prev = code
+    codes = list(dict.fromkeys(str(c).strip() for c in (d.get("desa_codes") or ([d["desa_code"]] if d.get("desa_code") else [])) if str(c).strip()))
+    f["desa_code"] = f["desa_name"] = f["desa_json"] = None
+    if codes:
+        if not f.get("kec_code"):
+            raise ValueError("pilih kecamatan dulu sebelum memilih desa")
+        if len(codes) > 80:
+            raise ValueError("maksimal 80 desa per proyek")
+        kd = kd or _kd()
+        if kd is None:
+            raise ValueError("sumber data wilayah (Data Desa) belum terhubung")
+        nm = {c["code"]: c["name"] for c in kd.children(f["kec_code"])}
+        bad = [c for c in codes if c not in nm]
+        if bad:
+            raise ValueError(f"desa {bad[0]} bukan bagian dari kecamatan terpilih")
+        f["desa_json"] = _json.dumps([{"code": c, "name": nm[c]} for c in codes], ensure_ascii=False)
+        f["desa_code"], f["desa_name"] = codes[0], nm[codes[0]]
     pst.set_site(S(), pid, f, user=g.user["username"])
     S().log_activity(g.user["username"], "project.update", target_type="project", target_id=pid, project_id=pid,
-                     summary="alamat lokasi: " + ", ".join(x for x in (f.get("desa_name"), f.get("kec_name"), f.get("kab_name"), f.get("prov_name")) if x))
+                     summary="alamat lokasi: " + ", ".join(x for x in ((f"{len(codes)} desa" if len(codes) > 1 else f.get("desa_name")), f.get("kec_name"), f.get("kab_name"), f.get("prov_name")) if x))
     return jsonify(ok=True)
 
 

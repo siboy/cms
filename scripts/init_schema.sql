@@ -684,6 +684,7 @@ CREATE TABLE IF NOT EXISTS cms_project_site (
     kec_name    VARCHAR(255) DEFAULT NULL,
     desa_code   VARCHAR(13) DEFAULT NULL,
     desa_name   VARCHAR(255) DEFAULT NULL,
+    desa_json   MEDIUMTEXT DEFAULT NULL,                -- SEMUA desa terpilih (satu kecamatan): [{"code","name"}]; desa_code/desa_name = yang pertama
     lat         DOUBLE DEFAULT NULL,                    -- titik pusat yang dipakai mencari alamat
     lon         DOUBLE DEFAULT NULL,
     updated_by  VARCHAR(100) DEFAULT NULL,
