@@ -558,14 +558,14 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
   template_project_id:f.template_project_id?(f.template_project_id.value||null):null});
   m.remove();projectsView()}catch(x){note(x.message,1)}}}
 
-async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';if(curTab==='pic')curTab='laporan';if(curTab==='lokasi')curTab='ringkasan';curCat='surat';
+async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';if(curTab==='tim'){curTab='ringkasan';pendScroll='secTim'}if(curTab==='pic')curTab='laporan';if(curTab==='lokasi')curTab='ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
- const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['simulasi','Simulasi','🧮'],['tindak','LogBook','📒']];
+ const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['kalender','Kalender','📅'],['simulasi','Simulasi','🧮'],['tindak','LogBook','📒']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
-async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,tim:tabTim,pic:tabPic,lokasi:tabLokasi,simulasi:tabSimulasi,aktivitas:tabAktivitas,tindak:()=>window.tabTindak()};
+async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,kalender:tabKalender,tim:tabTim,pic:tabPic,lokasi:tabLokasi,simulasi:tabSimulasi,aktivitas:tabAktivitas,tindak:()=>window.tabTindak()};
  stopChat();try{await fns[curTab]()}catch(e){note(e.message,1)}}
 const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blok','block.delete':'🗑 hapus blok','block.move':'🔀 pindah blok',
  'block.restore':'♻️ pulihkan blok','block.revert':'⏪ kembalikan versi','block.hidden':'🙈 sembunyikan/tampilkan',
@@ -603,14 +603,14 @@ async function tabAktivitas(host){
  const io=new IntersectionObserver(en=>{if(en[0].isIntersecting)load()},{rootMargin:'300px'});
  io.observe($('#actsent'));
  await load()}
-async function tabTim(){const {team,can_manage,can_appoint}=await api('GET',`/projects/${curProj}/team`);
+async function tabTim(host){const H=host||$('#ptab');const {team,can_manage,can_appoint}=await api('GET',`/projects/${curProj}/team`);
  const canManage=!!can_manage;                       // admin ATAU Ketua Tim proyek ini (diputuskan server)
  let avail=[],opts=ROLE_SUGGEST;if(canManage){try{const inTeam=new Set(team.filter(t=>t.user_id).map(t=>t.user_id));
   avail=(await api('GET',`/projects/${curProj}/team/candidates`)).users.filter(u=>!inTeam.has(u.id))}catch(e){}
   opts=await roleOptions()}
  const nameOf=t=>(t.is_external?`${esc(t.external_name)} <span class=badge style="background:var(--mut)">Eksternal</span>`:esc(t.name||t.username))
   +(t.is_leader?' <span class=badge style="background:#b8860b" title="Ketua Tim — boleh kelola tim proyek ini">👑 Ketua Tim</span>':'');
- $('#ptab').innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b>${canManage?'<button type=button id=timport>📥 Impor dari proyek lain…</button>':''}</div>
+ H.innerHTML=`<div class=rc><div class=rh><b>Tim Proyek</b>${canManage?'<button type=button id=timport>📥 Impor dari proyek lain…</button>':''}</div>
  <p style="color:var(--mut);font-size:12px">Tim hanya bisa diubah oleh <b>admin</b> atau <b>👑 Ketua Tim</b> yang ditunjuk admin utk proyek ini. Hanya orang yang masuk tim di sini yang bisa ditandai PIC di tab PIC (anggota eksternal tanpa akun CMS tak bisa jadi PIC). Role dipakai juga di rekap pengalaman proyek (CV).</p>
  <div class="otable timwrap"><table><tr><th>Nama</th><th>Role</th>${canManage?'<th></th>':''}</tr>
  ${team.map(t=>`<tr><td>${nameOf(t)}${t.external_contact?`<br><small style="color:var(--mut)">${esc(t.external_contact)}</small>`:''}</td><td>${canManage?`<span data-title="${t.row_id}"></span>`:esc(t.title||ROLE_DEFAULT)}</td>
@@ -632,20 +632,20 @@ async function tabTim(){const {team,can_manage,can_appoint}=await api('GET',`/pr
    const s=document.createElement('select');s.style.cssText='font-size:13px;max-width:240px;width:100%';
    s.innerHTML=[...new Set([cur,...opts])].map(r=>`<option value="${esc(r)}" ${r===cur?'selected':''}>${esc(r)}</option>`).join('')
     +'<option value="__o">✏️ Role lain…</option>';
-   const set=async v=>{try{await api('PATCH',`/projects/${curProj}/team/${t.row_id}`,{title:v});tabTim()}catch(e){note(e.message,1);s.value=cur}};
+   const set=async v=>{try{await api('PATCH',`/projects/${curProj}/team/${t.row_id}`,{title:v});tabTim(H)}catch(e){note(e.message,1);s.value=cur}};
    s.onchange=()=>{if(s.value==='__o'){const v=prompt('Role baru:',cur);(v&&v.trim())?set(v.trim()):s.value=cur}else set(s.value)};
    el.append(s)});
   document.querySelectorAll('[data-rm]').forEach(b=>b.onclick=async()=>{if(!confirm('Keluarkan dari tim?'))return;
-   try{await api('DELETE',`/projects/${curProj}/team/${b.dataset.rm}`);tabTim()}catch(e){note(e.message,1)}});
+   try{await api('DELETE',`/projects/${curProj}/team/${b.dataset.rm}`);tabTim(H)}catch(e){note(e.message,1)}});
   document.querySelectorAll('[data-ldr]').forEach(b=>b.onclick=async()=>{
-   try{await api('PATCH',`/projects/${curProj}/team/${b.dataset.ldr}`,{is_leader:!!+b.dataset.v});tabTim()}catch(e){note(e.message,1)}});
+   try{await api('PATCH',`/projects/${curProj}/team/${b.dataset.ldr}`,{is_leader:!!+b.dataset.v});tabTim(H)}catch(e){note(e.message,1)}});
   const f=$('#fteam');
   f.kind.onchange=()=>{const ext=f.kind.value==='eksternal';f.user_id.hidden=ext;f.user_id.required=!ext;
    f.external_name.hidden=!ext;f.external_name.required=ext;f.external_contact.hidden=!ext};
   f.onsubmit=async e=>{e.preventDefault();
    try{await api('POST',`/projects/${curProj}/team`,f.kind.value==='eksternal'
      ?{external_name:f.external_name.value,external_contact:f.external_contact.value,title:f.title.value}
-     :{user_id:+f.user_id.value,title:f.title.value});tabTim()}catch(x){note(x.message,1)}};
+     :{user_id:+f.user_id.value,title:f.title.value});tabTim(H)}catch(x){note(x.message,1)}};
   $('#timport').onclick=()=>teamImportDlg()}}
 async function teamImportDlg(){const {projects}=await api('GET','/projects');
  const others=projects.filter(p=>p.id!==curProj);
@@ -657,7 +657,7 @@ async function teamImportDlg(){const {projects}=await api('GET','/projects');
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
  f.onsubmit=async e=>{e.preventDefault();if(!f.src.value)return note('Pilih proyek sumber dulu',1);
   try{const r=await api('POST',`/projects/${curProj}/team/import`,{src_project_id:+f.src.value});
-   m.remove();note(`${r.imported} anggota diimpor`);tabTim()}catch(x){note(x.message,1)}}}
+   m.remove();note(`${r.imported} anggota diimpor`);tabTim(H)}catch(x){note(x.message,1)}}}
 
 async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${curProj}`);const adm=hasPerm('project_manage');
  $('#ptab').innerHTML=`<div class=rc>
@@ -678,6 +678,8 @@ async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${cur
  <label>Status <select id=pstatus>${['planning','ongoing','on_hold','completed'].map(s=>`<option value=${s} ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></label>
  <label title="Kosong = ikut hitungan Gantt. Terisi: bila Gantt lebih besar dipakai Gantt; bila lebih kecil dipakai rata-rata (override+Gantt)/2 — klaim manual selalu ditarik ke kenyataan">Override progress % <input type=number id=pov min=0 max=100 value="${p.progress_override??''}" placeholder="(dari Gantt)" style="width:70px"></label>
  </div>`:''}</div>`;
+ {const ht=document.createElement('div');ht.id='secTim';ht.style.marginTop='12px';$('#ptab').append(ht);tabTim(ht).catch(e=>{ht.textContent=e.message});
+  if(pendScroll==='secTim'){pendScroll=null;setTimeout(()=>ht.scrollIntoView({behavior:'smooth',block:'start'}),400)}}
  {const h=document.createElement('div');h.id='secLok';h.style.marginTop='12px';$('#ptab').append(h);if(window.tabLokasi)window.tabLokasi(h).catch(e=>{h.textContent=e.message})}
  if(!adm)return;
  $('#ptab').querySelectorAll('[data-f]').forEach(el=>el.onblur=()=>api('PATCH',`/projects/${curProj}`,{[el.dataset.f]:el.textContent.trim()}).catch(e=>note(e.message,1)));
@@ -708,11 +710,6 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
    <button type=button id=tkadd>+ Task</button></div>
    <p style="color:var(--mut);font-size:12px;margin:2px 0 8px">Dari Diskusi: tulis <b>#task @nama</b> (atau <b>#namatopik @tim</b> / <b>@all</b>) — otomatis masuk daftar task orang yang di-tag. Tanpa tag = catatan tugasmu sendiri.</p>
    <div id=tklist style="display:grid;gap:6px"></div></div>`
- +`<div class=rc data-rt=kalender><div class=rh style="gap:6px"><b>📅 Kalender</b>
-   <button type=button id=calprev style="padding:2px 9px">‹</button><b id=calttl style="font-size:13px"></b><button type=button id=calnext style="padding:2px 9px">›</button>
-   <label style="font-size:11.5px;color:var(--mut);display:flex;gap:4px;align-items:center;margin-left:auto"><input type=checkbox id=callall ${calAll?'checked':''}> semua proyek saya</label></div>
-   <p style="color:var(--mut)!important;font-size:12px;margin:2px 0 8px">Klik tanggal utk menjadwalkan (survei, uji lab, rapat, dll). Jadwal = baris Gantt chart proyek — satu data, dua tampilan. Jadwal proyek lain bergaris oranye.</p>
-   <div id=calgrid></div></div>`
  +`</div><div class=chatwrap><div class=chatbox id=cbox>
    <div class=chathead>💬 Diskusi Tim <small style="font-weight:400;color:var(--mut)">tempel (Ctrl+V) / seret gambar ke sini</small></div>
    <div class=chatlog id=clog></div>
@@ -721,13 +718,10 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
     <textarea id=cin rows=2 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
     <button class=p type=button id=csend>➤</button></div>
   </div></div></div>
- <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=pic>👤 PIC</button><button data-m=dokumen>📂 Dok</button><button data-m=task>✅ Task</button><button data-m=kalender>📅 Kal</button></div>`;
+ <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=pic>👤 PIC</button><button data-m=dokumen>📂 Dok</button><button data-m=task>✅ Task</button></div>`;
  initChat();renderTasks();renderBerkas();calCur=calCur||new Date();renderCal();
  $('#tkall').onchange=e=>{tkAll=e.target.checked;renderTasks()};
  $('#tkadd').onclick=taskAddDlg;
- $('#calprev').onclick=()=>{calCur=new Date(calCur.getFullYear(),calCur.getMonth()-1,1);renderCal()};
- $('#calnext').onclick=()=>{calCur=new Date(calCur.getFullYear(),calCur.getMonth()+1,1);renderCal()};
- $('#callall').onchange=e=>{calAll=e.target.checked;localStorage.setItem('calAll',calAll?'1':'0');renderCal()};
  $('#repmenu').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   $('#repmenu .cur')?.classList.remove('cur');b.classList.add('cur');
   const m=b.dataset.m;$('#lrw').classList.toggle('showrep',m!=='chat');
@@ -751,8 +745,7 @@ async function tkNav(t){
  if(t.gantt_doc_id&&t.gantt_chapter_id){await openDoc(t.gantt_doc_id);jumpToBlock(t.gantt_chapter_id,t.gantt_chapter_id,null);return}
  if(t.project_id!==curProj)return projectDetailView(t.project_id,{tab:'laporan'});
  if(t.gantt_task_id){if(t.gantt_start)calCur=new Date(t.gantt_start);
-  document.querySelector('#repmenu [data-m=kalender]')?.click();
-  await renderCal();$('#lrw [data-rt=kalender]')?.scrollIntoView({behavior:'smooth',block:'start'});return}
+  return projectDetailView(curProj,{tab:'kalender'})}                 // jadwal -> tab Kalender (bulan jadwalnya)
  tkDetailDlg(t)}
 function tkDetailDlg(t){const m=document.createElement('div');m.className='mask';
  const SRC={chat:'💬 dari Diskusi',manual:'✍ input manual',gantt:'📊 dari Gantt/Kalender'};
@@ -812,6 +805,16 @@ async function taskAddDlg(){
     start_date:f.gsd.value||today,end_date:f.ged.value||f.gsd.value||today,
     parent_task_id:+f.gparent.value||null,to_gantt:true});note('Task tersimpan + masuk Gantt/Kalender')}
    m.remove();renderTasks();renderCal()}catch(x){note(x.message,1)}}}
+async function tabKalender(){calCur=calCur||new Date();
+ $('#ptab').innerHTML=`<div class=rc data-rt=kalender><div class=rh style="gap:6px"><b>📅 Kalender</b>
+   <button type=button id=calprev style="padding:2px 9px">‹</button><b id=calttl style="font-size:13px"></b><button type=button id=calnext style="padding:2px 9px">›</button>
+   <label style="font-size:11.5px;color:var(--mut);display:flex;gap:4px;align-items:center;margin-left:auto"><input type=checkbox id=callall ${calAll?'checked':''}> semua proyek saya</label></div>
+   <p style="color:var(--mut)!important;font-size:12px;margin:2px 0 8px">Klik tanggal utk menjadwalkan (survei, uji lab, rapat, dll). Jadwal = baris Gantt chart proyek — satu data, dua tampilan. Jadwal proyek lain bergaris oranye.</p>
+   <div id=calgrid></div></div>`;
+ $('#calprev').onclick=()=>{calCur=new Date(calCur.getFullYear(),calCur.getMonth()-1,1);renderCal()};
+ $('#calnext').onclick=()=>{calCur=new Date(calCur.getFullYear(),calCur.getMonth()+1,1);renderCal()};
+ $('#callall').onchange=e=>{calAll=e.target.checked;localStorage.setItem('calAll',calAll?'1':'0');renderCal()};
+ await renderCal()}
 async function renderCal(){const grid=$('#calgrid');if(!grid||!calCur)return;
  const y=calCur.getFullYear(),mo=calCur.getMonth();
  $('#calttl').textContent=calCur.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
@@ -937,6 +940,7 @@ async function tabPic(host){const H=host||$('#ptab');const {documents}=await api
  if($('#goadm'))$('#goadm').onclick=()=>projectDetailView(curProj,{tab:'tim'});
  $('#ad').onchange=()=>assignView(users);assignView(users)}
 
+let pendScroll=null;
 let ganttOpen=new Set();                               // grup laporan yang di-expand (default: collapsed)
 async function tabGantt(){const [{project:p},tr,dr,scurve]=await Promise.all([api('GET',`/projects/${curProj}`),
   api('GET',`/projects/${curProj}/tasks`),api('GET',`/projects/${curProj}/documents`).catch(()=>({documents:[]})),
