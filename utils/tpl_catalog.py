@@ -347,6 +347,8 @@ def _n(*items, s=100):
     return [{"l": l, "t": t, "s": s} for l, t in items]
 
 
+KA_LAMA_SUFFIX = " (struktur lama, Permen LH 16/2012)"     # ka-umum = format sebelum Formulir KA PP 22/2021; template terkini = ka-aturan (utils/tpl_aturan.py)
+
 # Kerangka Acuan: struktur lazim (Pendahuluan, Pelingkupan, Metode Studi) -- dokumen KA di arsip hanya formulir isian,
 # bukan naskah, jadi ini BUKAN hasil konsensus. Cocokkan dgn format dalam peraturan yang berlaku sebelum dipakai.
 BASELINE_KA = _n(

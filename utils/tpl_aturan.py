@@ -1,7 +1,7 @@
-"""Template "Outline sesuai aturan" untuk ANDAL dan RKL-RPL.
+"""Template "Outline sesuai aturan" untuk KA (Formulir KA), ANDAL, dan RKL-RPL.
 
 Beda dengan template konsensus (utils/tpl_catalog): struktur di sini diturunkan dari TEKS PERATURAN, bukan dari
-kebiasaan dokumen contoh. Dasar: PP 22/2021 Pasal 39 (ANDAL) dan Pasal 40 (RKL-RPL) + Lampiran II (pedoman
+kebiasaan dokumen contoh. Dasar: PP 22/2021 Pasal 37-38 (Formulir KA), Pasal 39 (ANDAL), dan Pasal 40 (RKL-RPL) + Lampiran II (pedoman
 penyusunan dokumen Andal dan RKL-RPL). Permen LH 16/2012 (Lampiran II/III) sudah digantikan; hanya dipakai
 sebagai pembanding.
 
@@ -16,9 +16,11 @@ from utils import tpl_catalog as tc
 
 DASAR_ANDAL = "PP 22/2021 Pasal 39 ayat (2) dan Lampiran II (Pedoman Penyusunan Dokumen Andal)"
 DASAR_RKL = "PP 22/2021 Pasal 40 ayat (2) dan Lampiran II (Pedoman Penyusunan Dokumen RKL-RPL)"
+DASAR_KA = "PP 22/2021 Pasal 37-38 dan Lampiran II (Pedoman Pengisian Formulir Kerangka Acuan)"
 N_ANDAL, N_RKL = 801, 796
 
 TITLE_ANDAL = "ANDAL — Outline sesuai aturan (PP 22/2021 Pasal 39 & Lampiran II)"
+TITLE_KA = "Formulir KA — Outline sesuai aturan (PP 22/2021 Pasal 37-38 & Lampiran II)"
 TITLE_RKL = "RKL-RPL — Outline sesuai aturan (PP 22/2021 Pasal 40 & Lampiran II)"
 
 
@@ -339,14 +341,139 @@ def rkl_nodes() -> list[dict]:
     ]
 
 
+# ============================================================================== KA (Formulir Kerangka Acuan)
+def ka_nodes() -> list[dict]:
+    D = DASAR_KA
+    pel_cols = ["No.", "Rencana Usaha dan/atau Kegiatan yang Berpotensi Menimbulkan Dampak Lingkungan",
+                "Pengelolaan Lingkungan yang Sudah Direncanakan", "Komponen Rona Lingkungan Terkena Dampak",
+                "Uraian Batas Wilayah Studi", "Batas Waktu Kajian", "Dampak Potensial", "Evaluasi Dampak Potensial",
+                "Dampak Penting Hipotetik (DPH)"]
+    met_cols = ["No.", "DPH", "Data dan Informasi yang Relevan dan Dibutuhkan", "Metode Pengumpulan Data",
+                "Metode Analisis Data", "Metode Prakiraan Dampak Penting", "Metode Evaluasi"]
+    return [
+        _n(1, "Umum", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 1 (Informasi Umum) dan Format Isian Formulir KA bagian A.",
+            "B. Isi wajib: nama usaha dan/atau kegiatan; nama dan jabatan penanggung jawab; penyusun Amdal; deskripsi rencana usaha dan/atau kegiatan; lokasi rencana usaha dan/atau kegiatan; hasil pelibatan masyarakat. Enam sub-bagian di bawah.",
+            "C. Tujuan Formulir KA: merumuskan lingkup dan kedalaman studi Andal; merumuskan DPH yang dikaji, batas wilayah studi, batas waktu kajian, dan metodologi studi; mengarahkan studi Andal agar efektif dan efisien sesuai biaya, tenaga, dan waktu. Formulir KA menjadi rujukan penanggung jawab, penyusun Amdal, instansi pembina, instansi lingkungan hidup, dan Tim Uji Kelayakan Lingkungan Hidup.",
+            "D. Cara mengisi: bila Formulir KA spesifik tersedia di sistem informasi dokumen lingkungan hidup, isi formulir itu (Pasal 37 ayat (1)); bila belum tersedia, ikuti format di Lampiran II (Pasal 37 ayat (2)). Template ini mengikuti format Lampiran II.",
+            "E. [dokumen contoh] Korpus KA berisi 4.951 berkas, sebagian besar formulir isian amdalnet; bagian berjudul 'Umum' ada di sekitar 614 berkas. Itu menunjukkan pola formulir, bukan mutu isi.")),
+        _n(2, "Nama Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 1.a.",
+            "B. Isi wajib: nama usaha dan/atau kegiatan.",
+            "C. Cara mengisi: tulis nama persis seperti pada dokumen perizinan/permohonan dan sama di semua dokumen (KA, Andal, RKL-RPL).")),
+        _n(2, "Penanggung Jawab Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 1.b.",
+            "B. Isi wajib: nama dan jabatan penanggung jawab usaha dan/atau kegiatan.",
+            "C. Cara mengisi: pakai pejabat yang berwenang mewakili pemrakarsa; sama dengan penandatangan pernyataan komitmen pada RKL-RPL.")),
+        _n(2, "Penyusun Amdal", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 1.c.",
+            "B. Isi wajib: identitas penyusun Amdal (tim penyusun atau LPJP Amdal).",
+            "C. Cara mengisi: bila disusun oleh LPJP Amdal, siapkan bukti registrasi LPJP dan sertifikat kompetensi penyusun; keduanya diperiksa pada uji administrasi Andal dan RKL-RPL (Lampiran II, pedoman penilaian).")),
+        _n(2, "Deskripsi Rencana Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 1.d.",
+            "B. Isi wajib: rencana usaha dan/atau kegiatan UTAMA dan PENDUKUNG, berikut alternatif rencana usaha dan/atau kegiatan, serta rencana pengelolaan dan pemantauan yang telah dipersiapkan.",
+            "C. Cara mengisi: tabel komponen (utama, pendukung) dengan kapasitas/luas; sebutkan alternatif (lokasi, teknologi, kapasitas, tata letak) atau tulis bahwa tidak ada beserta alasannya. Rencana pengelolaan awal ditulis di sini singkat dan dirinci di tabel Pelingkupan.",
+            "D. Periksa: komponen di sini sama dengan kolom 'Rencana Usaha dan/atau Kegiatan yang Berpotensi Menimbulkan Dampak' pada tabel Pelingkupan.")),
+        _n(2, "Lokasi Rencana Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 1.e.",
+            "B. Isi wajib: posisi lokasi rencana kegiatan; informasi kegiatan lain di sekitar rencana kegiatan; keterkaitannya dengan keberadaan lokasi atau kawasan sensitif yang ada.",
+            "C. Cara mengisi: alamat administratif, koordinat, peta lokasi; daftar kegiatan sekitar (jenis, jarak, arah); kawasan sensitif (mis. permukiman, kawasan lindung, sempadan sungai/pantai) dengan sumber datanya. Kesesuaian tata ruang dicek dengan dokumen tata ruang yang berlaku di lokasi ([ISI: dokumen tata ruang dan hasil kesesuaian]).",
+            "D. Bila ada beberapa alternatif lokasi, uraikan untuk masing-masing alternatif.")),
+        _n(2, "Hasil Pelibatan Masyarakat", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 1.f.",
+            "B. Isi wajib: saran, pendapat, dan tanggapan dari pengumuman dan konsultasi publik yang dilakukan penanggung jawab, beserta saran, pendapat, dan tanggapan pemerhati lingkungan hidup dan/atau masyarakat berkepentingan lain yang telah disaring oleh Tim Uji Kelayakan Lingkungan Hidup.",
+            "C. Cara mengisi: tabel tanggapan (penyampai, isi tanggapan, tanggapan pemrakarsa, ditindaklanjuti di bagian mana). Lampirkan bukti pengumuman dan berita acara konsultasi publik.",
+            "D. Hubungan antar bagian: tanggapan masyarakat menjadi salah satu landasan evaluasi dampak potensial (intensitas perhatian masyarakat) dan akan dilaporkan ulang di Andal pada bab Hasil dan Evaluasi Pelibatan Masyarakat.",
+            "E. [dokumen contoh] Frasa 'pelibatan masyarakat' muncul di 2.099 dari 4.951 berkas KA; 'hasil pelibatan' di 1.987.")),
+        _n(1, "Pelingkupan", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2 (Pelingkupan) dan Format Isian Formulir KA bagian B.",
+            "B. Isi wajib: delapan butir yang disusun dalam satu tabel menurut tahap kegiatan: (a) rencana kegiatan yang berpotensi menimbulkan dampak; (b) pengelolaan lingkungan yang sudah direncanakan; (c) komponen rona lingkungan terkena dampak; (d) dampak potensial; (e) evaluasi dampak potensial; (f) dampak penting hipotetik (DPH); (g) batas wilayah studi; (h) batas waktu kajian. Tabel di bawah mengikuti format isian di Lampiran II; baris diisi per tahap (prakonstruksi, konstruksi, operasi, pasca operasi).",
+            "C. Cara mengisi: isi dulu tabel ringkas, lalu uraikan tiap butir pada sub-bagian di bawah (uraian rinci, metode, dan peta).",
+            "D. [dokumen contoh] Judul 'Pelingkupan' ada di sekitar 3.776 dari 4.951 berkas KA; 'dampak potensial' muncul di 4.933 berkas.",
+        ), [_tbl("Pelingkupan (per tahap: prakonstruksi, konstruksi, operasi, pasca operasi)", pel_cols)]),
+        _n(2, "Rencana Usaha dan/atau Kegiatan yang Berpotensi Menimbulkan Dampak Lingkungan", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.a.",
+            "B. Isi wajib: rencana kegiatan yang berpotensi menimbulkan dampak lingkungan pada tahap prakonstruksi, konstruksi, operasi, dan pasca operasi.",
+            "C. Cara mengisi: daftar komponen kegiatan per tahap (mis. mobilisasi alat, pembukaan lahan, operasi pabrik); pilih komponen yang menghasilkan buangan atau mengubah bentuk/fungsi lingkungan. Tahap yang tidak ada ditulis 'tidak ada'.")),
+        _n(2, "Pengelolaan Lingkungan yang Sudah Direncanakan", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.b.",
+            "B. Isi wajib: informasi pengelolaan dan pemantauan lingkungan yang sudah direncanakan penanggung jawab sebagai bagian dari rencana kegiatan.",
+            "C. Cara mengisi: tulis per komponen kegiatan (mis. IPAL, TPS limbah B3, penyiraman jalan); bagian ini dipakai saat mengevaluasi dampak potensial (besaran dampak setelah pengelolaan awal).")),
+        _n(2, "Komponen Rona Lingkungan Terkena Dampak", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.c.",
+            "B. Isi wajib: data dan informasi komponen lingkungan yang akan terdampak. Data primer dan/atau sekunder yang aktual dan valid; data sekunder dari sumber resmi dan/atau kredibel, didukung observasi lapangan. Bila ada beberapa alternatif lokasi, disampaikan untuk tiap alternatif. Dapat disajikan sebagai data spasial.",
+            "C. Cara mengisi: tabel komponen (geo-fisik-kimia, biologi, sosial-ekonomi-budaya, kesehatan masyarakat) dengan sumber dan tahun data. Hanya komponen yang relevan dengan dampak potensial.")),
+        _n(2, "Dampak Potensial", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.d.",
+            "B. Isi wajib: hasil identifikasi dan inventarisasi SELURUH dampak lingkungan (primer, sekunder, dan seterusnya) yang secara potensial timbul dari rencana kegiatan, memakai metode ilmiah yang berlaku nasional dan/atau internasional. Keluaran: daftar dampak potensial.",
+            "C. Cara mengisi: matriks interaksi kegiatan dan komponen lingkungan atau diagram alir dampak; tulis metode identifikasi yang dipakai.")),
+        _n(2, "Evaluasi Dampak Potensial", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.e.",
+            "B. Isi wajib: proses memisahkan dampak yang perlu kajian mendalam (untuk membuktikan hipotesis dampak) dari dampak yang tidak perlu dikaji; wajib dijelaskan dasar penentuan suatu dampak potensial menjadi DPH atau bukan.",
+            "C. Cara mengisi: tabel evaluasi dengan kriteria yang konsisten. Pedoman Andal (Lampiran II bagian V) menegaskan penentuan DPH berlandaskan empat hal: besaran rencana kegiatan dan pengelolaan awal; kondisi rona lingkungan; pengaruh terhadap kegiatan lain di sekitar atau sebaliknya; intensitas perhatian masyarakat. Dampak yang tidak dikaji lanjut dijelaskan alasannya.")),
+        _n(2, "Dampak Penting Hipotetik", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.f.",
+            "B. Isi wajib: daftar dampak hasil evaluasi dampak potensial.",
+            "C. Cara mengisi: daftar DPH per tahap kegiatan. Daftar ini akan disepakati dalam berita acara kesepakatan Formulir KA (Pasal 38 ayat (4)) dan menjadi dasar seluruh kajian Andal.")),
+        _n(2, "Batas Wilayah Studi", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.g.",
+            "B. Isi wajib: batas terluar hasil tumpang susun (overlay) batas proyek, batas ekologis, batas sosial, dan batas administratif dengan mempertimbangkan kendala teknis. Tiap batas harus punya justifikasi ilmiah yang kuat. Lengkapi dengan peta batas wilayah studi yang menggambarkan keempat batas dan memenuhi kaidah kartografi.",
+            "C. Cara mengisi: satu peta per batas lalu peta gabungan; ruang lingkup disesuaikan dengan kemampuan pelaksana (waktu, dana, tenaga, sumber data, metode), dan keterbatasan itu dituliskan.",
+            "D. [dokumen contoh] Frasa 'batas wilayah studi' muncul di 4.939 dari 4.951 berkas KA.")),
+        _n(3, "Batas Proyek", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.g.1).",
+            "B. Isi wajib: ruang tempat seluruh komponen rencana kegiatan dilakukan, termasuk komponen tahap prakonstruksi, konstruksi, operasi, dan pasca operasi; dampak bersumber dari ruang ini.",
+            "C. Cara mengisi: plot dari peta perencanaan. Selain tapak utama, termasuk fasilitas pendukung (perumahan, dermaga, tempat penyimpanan bahan, bengkel, dan sebagainya).")),
+        _n(3, "Batas Ekologis", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.g.2).",
+            "B. Isi wajib: ruang sebaran dampak yang dikaji mengikuti media lingkungan (air tawar, air laut, udara), tempat proses alami diperkirakan berubah mendasar. Mempertimbangkan tiap komponen biogeofisik-kimia yang terkena dampak (untuk setiap DPH); batas tiap dampak dapat diplotkan terpisah sehingga ada beberapa garis batas ekologis.",
+            "C. Cara mengisi: tentukan sebaran tiap DPH dengan metode ilmiah; batas ini mengarahkan lokasi pengumpulan data rona dan analisis persebaran dampak.")),
+        _n(3, "Batas Sosial", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.g.3).",
+            "B. Isi wajib: ruang di sekitar rencana kegiatan tempat interaksi sosial dengan norma dan nilai yang mapan berlangsung (termasuk sistem dan struktur sosial), yang diperkirakan berubah mendasar; ruang tempat masyarakat terkena dampak (limbah, emisi, kerusakan lingkungan) tinggal atau beraktivitas.",
+            "C. Cara mengisi: daftar permukiman dan kelompok masyarakat terkena dampak; menjadi dasar menentukan masyarakat terkena dampak langsung.")),
+        _n(3, "Batas Administratif", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.g.4).",
+            "B. Isi wajib: wilayah administratif terkecil yang relevan (desa, kelurahan, kecamatan, kabupaten, provinsi) yang tercakup batas proyek, ekologis, dan sosial.",
+            "C. Cara mengisi: tumpang susun peta administrasi dengan tiga batas lain, lalu daftar wilayahnya; fungsinya mengarahkan koordinasi dengan perangkat daerah yang relevan (penilaian Amdal, konsultasi masyarakat, pengumpulan data).")),
+        _n(2, "Batas Waktu Kajian", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 2.h.",
+            "B. Isi wajib: batas waktu kajian untuk SETIAP DPH; dipakai sebagai dasar menentukan perubahan rona lingkungan tanpa dan dengan rencana kegiatan.",
+            "C. Cara mengisi: tabel DPH dan batas waktunya (tahap dan rentang) disertai alasan.",
+            "D. [dokumen contoh] Frasa 'batas waktu kajian' muncul di 4.929 dari 4.951 berkas KA.")),
+        _n(1, "Metode Studi", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 3 (Metode Studi) dan Format Isian Formulir KA bagian C.",
+            "B. Isi wajib: (a) metode pengumpulan dan analisis data; (b) metode prakiraan dampak penting; (c) metode evaluasi secara holistik. Tabel di bawah mengikuti format isian: satu baris per DPH.",
+            "C. Cara mengisi: metode untuk satu DPH harus saling relevan (data yang dikumpulkan harus bisa dipakai metode prakiraan DPH itu).",
+            "D. [dokumen contoh] Judul 'Metode Studi' ada di sekitar 1.090 dari 4.951 berkas KA.",
+        ), [_tbl("Metode Studi (satu baris per DPH)", met_cols)]),
+        _n(2, "Metode Pengumpulan dan Analisis Data", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 3.a.",
+            "B. Isi wajib: metode pengumpulan data primer dan sekunder yang sahih dan dapat dipercaya untuk rona lingkungan awal yang rinci dan dasar prakiraan besaran dan sifat penting dampak; relevan dengan metode prakiraan tiap DPH. Langkah: (1) metode pengumpulan data berikut jenis peralatan, instrumen, dan tingkat ketelitian alat, sesuai Standar Nasional Indonesia, peraturan yang berlaku, atau metode ilmiah nasional/internasional; (2) metode analisis data hasil pengukuran, lengkap dengan peralatan, instrumen, dan rumus. Pengujian laboratorium untuk data primer dilakukan di laboratorium yang terakreditasi dan/atau teregistrasi.",
+            "C. Cara mengisi: tabel per DPH (jenis data, metode, alat, ketelitian, lokasi/titik, laboratorium). Nomor SNI/metode = isian pengguna ([ISI: acuan SNI/metode]).",
+            "D. [dokumen contoh] Frasa 'metode pengumpulan' muncul di 1.947 dari 4.951 berkas KA.")),
+        _n(2, "Metode Prakiraan Dampak Penting", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 3.b.",
+            "B. Isi wajib: metode prakiraan besaran dan sifat penting dampak untuk MASING-MASING DPH, termasuk rumus dan asumsi, disertai argumentasi pemilihan metode. Boleh memakai metode ilmiah yang berlaku nasional dan/atau internasional.",
+            "C. Cara mengisi: untuk tiap DPH tulis metode, rumus, asumsi, dan alasan. Metode ini yang akan dipakai di bab Prakiraan Dampak Penting pada Andal; jangan menjanjikan metode yang tidak sanggup dijalankan.",
+            "D. [dokumen contoh] Frasa 'metode prakiraan' muncul di 1.792 dari 4.951 berkas KA.")),
+        _n(2, "Metode Evaluasi Secara Holistik terhadap Dampak Lingkungan", _g(
+            f"A. Dasar aturan: {D}, Muatan butir 3.c.",
+            "B. Isi wajib: metode yang lazim dipakai untuk mengevaluasi keterkaitan dan interaksi seluruh DPH dalam rangka menentukan karakteristik dampak kegiatan secara total terhadap lingkungan hidup (untuk menentukan kelayakan atau ketidaklayakan lingkungan). Memakai metode ilmiah nasional/internasional yang sesuai kaidah metode evaluasi dampak penting dalam Amdal.",
+            "C. Cara mengisi: sebut metode dan alasannya; metode ini yang akan dipakai di bab Evaluasi Secara Holistik pada Andal.",
+            "D. [dokumen contoh] Frasa 'metode evaluasi' muncul di 2.035 dari 4.951 berkas KA.")),
+    ]
+
+
 # ============================================================================== katalog
 def templates() -> list[dict]:
     """Dua template untuk bundel (sumber 'aturan'); n_docs = 0 karena bukan konsensus dokumen contoh."""
     out = []
-    for tid, kind, nodes, title in (("andal-aturan", "andal", andal_nodes(), TITLE_ANDAL),
+    for tid, kind, nodes, title in (("ka-aturan", "ka", ka_nodes(), TITLE_KA),
+                                    ("andal-aturan", "andal", andal_nodes(), TITLE_ANDAL),
                                     ("rkl_rpl-aturan", "rkl_rpl", rkl_nodes(), TITLE_RKL)):
         t = tc.finalize(tid, kind, "aturan", nodes, 0, "aturan")
         t["title"] = title
-        t["keywords"] = ["sesuai aturan", "pp 22 2021", "pedoman penyusunan", "pasal 39" if kind == "andal" else "pasal 40"]
+        t["keywords"] = ["sesuai aturan", "pp 22 2021", "pedoman penyusunan", {"ka": "pasal 37 38 formulir", "andal": "pasal 39"}.get(kind, "pasal 40")]
         out.append(t)
     return out
