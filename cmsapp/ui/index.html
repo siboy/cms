@@ -554,7 +554,7 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
- const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['lokasi','Lokasi & Survei','📍'],['simulasi','Simulasi','🧮'],['tindak','Aktivitas','🗂'],['aktivitas','Log','🕑']];
+ const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['lokasi','Lokasi & Survei','📍'],['simulasi','Simulasi','🧮'],['tindak','LogBook','📒']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
@@ -567,14 +567,14 @@ const ACT_LABELS={'block.edit':'✏️ edit blok','block.insert':'➕ tambah blo
  'project.create':'🆕 proyek dibuat','project.update':'⚙ proyek diubah','project.file_upload':'📁 unggah berkas',
  'user.file_upload':'📁 unggah berkas pribadi',
  'act.create':'🗂 catatan aktivitas ditambah','act.update':'🗂 catatan aktivitas diubah','act.delete':'🗂 catatan aktivitas dihapus'};
-async function tabAktivitas(){
+async function tabAktivitas(host){
  const item=it=>{const lbl=ACT_LABELS[it.action]||('⚙ '+it.action);const sp=lbl.indexOf(' ');
   const ic=lbl.slice(0,sp),verb=lbl.slice(sp+1);
   return `<div class=actitem><span class=aic>${ic}</span><div style="min-width:0;flex:1">
    <div><b>${esc(it.username)}</b> <small>${esc((it.created_at||'').slice(11,16))}</small></div>
    <div>${esc(verb)}${it.summary?` — <span style="color:var(--mut)">${esc(it.summary)}</span>`:''}</div>
    ${it.doc_name?`<small>📄 ${esc(it.doc_name)}</small>`:''}</div></div>`};
- $('#ptab').innerHTML=`<div class=rc><div class=rh style="gap:10px"><b>Aktivitas Proyek</b>
+ (host||$('#ptab')).innerHTML=`<div class=rc><div class=rh style="gap:10px"><b>Log</b>
   <input id=actq placeholder="🔍 Cari siapa / aksi / ringkasan / dokumen…" style="margin-left:auto;flex:1;min-width:170px;max-width:340px"></div>
   <p style="color:var(--mut);font-size:12px;margin:4px 0 10px">Terbaru di atas — gulir ke bawah untuk memuat yang lebih lama.</p>
   <div class=actfeed id=actfeed></div>

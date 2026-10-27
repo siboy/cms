@@ -5,7 +5,7 @@
   const STATUS_CLS = {open: '#d1242f', pantau: '#b45309', sebagian: '#b45309', dijawab: '#2da44e', selesai: '#2da44e', diterima: '#2da44e',
     batal: '#6e7781', tidak_perlu: '#6e7781', disusun: '#6e7781', diajukan: '#2563eb', revisi: '#b45309', disetujui: '#2da44e', final: '#2da44e'};
   const TABS = [['ringkasan', 'Ringkasan', '📊'], ['review', 'Isu Penilai', '🧐'], ['meeting', 'Sidang / BA', '🏛'], ['request', 'Request', '📨'],
-    ['issue', 'Masalah', '⚠️'], ['question', 'Pertanyaan Pemrakarsa', '❓'], ['report', 'Jurnal Laporan', '📚']];
+    ['issue', 'Masalah', '⚠️'], ['question', 'Pertanyaan Pemrakarsa', '❓'], ['report', 'Jurnal Laporan', '📚'], ['log', 'Log', '🕑']];
   const T = 'text', D = 'date', A = 'area', S = 'select';
   // fields: [key, label, type, (opsi select diambil dari server)] ; cols: kolom tabel
   const CFG = {
@@ -58,12 +58,12 @@
 
   function shell() {
     css();
-    el('ptab').innerHTML = `<div class="rc act"><div class=rh><b>Aktivitas Proyek</b></div>
+    el('ptab').innerHTML = `<div class="rc act"><div class=rh><b>LogBook Proyek</b></div>
       <div class=sub id=actsub>${TABS.map(([k, l, ic]) => `<button data-k=${k} class="${k === st.sub ? 'cur' : ''}">${ic} ${l}</button>`).join('')}</div><div id=actbody>memuat…</div></div>`;
     el('actsub').querySelectorAll('button').forEach(b => b.onclick = () => { st.sub = b.dataset.k; st.f = {}; st.q = ''; shell(); body(); });
   }
   async function body() {
-    try { st.sub === 'ringkasan' ? await summary() : await list(st.sub); }
+    try { st.sub === 'ringkasan' ? await summary() : st.sub === 'log' ? await window.tabAktivitas(el('actbody')) : await list(st.sub); }
     catch (e) { note(e.message, 1); const b = el('actbody'); if (b) b.textContent = 'Gagal memuat: ' + e.message; }
   }
 
