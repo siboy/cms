@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panduan Aplikasi sdrive (Android)</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+:root{--g:#0B9444;--b:#2563eb;--o:#DD8D3C;--r:#ff6555;--bg:#0f1420;--card:#171e2e;--card2:#1e2740;--tx:#e8ecf5;--mut:#93a0bb;--line:#2a3552}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;font:15px/1.6 system-ui,Segoe UI,Roboto,sans-serif;background:radial-gradient(1200px 500px at 85% -10%,#1b2a52 0,transparent 60%),var(--bg);color:var(--tx)}
+a{color:#6fb1ff}.wrap{max-width:1040px;margin:0 auto;padding:20px 16px 80px}
+header.hero{padding:30px 0 16px}
+.bars{display:inline-flex;gap:5px;align-items:flex-end;height:34px;vertical-align:middle;margin-right:12px}
+.bars i{width:9px;border-radius:3px;display:block}
+.bars i:nth-child(1){height:12px;background:var(--g)}.bars i:nth-child(2){height:19px;background:var(--b)}.bars i:nth-child(3){height:26px;background:var(--o)}.bars i:nth-child(4){height:34px;background:var(--r)}
+h1{margin:0;font-size:28px;letter-spacing:-.5px}.sub{color:var(--mut);margin:6px 0 0}
+.badge{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:12px;color:var(--mut);margin-left:6px}
+.bar{position:sticky;top:0;z-index:20;background:rgba(15,20,32,.92);backdrop-filter:blur(8px);padding:10px 0;border-bottom:1px solid var(--line);margin-bottom:20px}
+.prog{height:6px;border-radius:9px;background:var(--card2);overflow:hidden}
+.prog b{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--g),var(--b),var(--o),var(--r));transition:width .4s}
+.nav{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.pill{border:1px solid var(--line);background:var(--card);color:var(--tx);border-radius:99px;padding:6px 14px;cursor:pointer;font-size:13px}
+.pill.on{background:var(--b);border-color:var(--b)}.pill.done::after{content:" ✓";color:var(--g);font-weight:700}.pill.on.done::after{color:#fff}
+.step{display:none;animation:in .35s}.step.on{display:block}
+@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1}}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+h2{margin:0 0 6px;font-size:22px}
+.num{display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--b),var(--g));font-weight:700;margin-right:8px}
+ol.how{padding-left:20px;margin:12px 0}ol.how li{margin:8px 0}
+kbd,code{background:#0b1020;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font:13px ui-monospace,Consolas,monospace;color:#ffd9a0}
+.copy{cursor:pointer}.copy:hover{border-color:var(--o)}
+.tip{border-left:3px solid var(--o);background:rgba(221,141,60,.08);padding:8px 12px;border-radius:0 10px 10px 0;margin:12px 0;font-size:14px}
+.warn{border-left:3px solid var(--r);background:rgba(255,101,85,.08)}
+.btn{display:inline-block;border:0;border-radius:10px;padding:10px 18px;font-weight:600;cursor:pointer;color:#fff;background:linear-gradient(135deg,var(--b),#1a47b8);text-decoration:none;font-size:14px}
+.btn.g{background:linear-gradient(135deg,var(--g),#07692f)}.btn.ghost{background:var(--card2);border:1px solid var(--line)}
+.foot{display:flex;justify-content:space-between;margin-top:18px;gap:10px;flex-wrap:wrap}
+.hint{color:var(--mut);font-size:13px;text-align:center;margin:10px 0 0}
+/* ponsel */
+.phone{width:290px;margin:0 auto;border:9px solid #05070d;border-radius:34px;background:#fff;color:#222;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.5);position:relative}
+.phone .st{background:#111;color:#ddd;font-size:11px;padding:4px 14px;display:flex;justify-content:space-between}
+.phone .scr{min-height:420px;position:relative;font-size:13px}
+.phone .app{background:#2563eb;color:#fff;padding:9px 12px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.phone .bd{padding:12px}
+.click{cursor:pointer}.hl{outline:3px solid var(--r);outline-offset:2px;border-radius:8px;animation:pulse 1.2s infinite}@keyframes pulse{50%{outline-color:transparent}}
+.mockin{width:100%;padding:9px 10px;border:1px solid #bbc;border-radius:8px;margin:4px 0 10px;font:inherit}
+.mockbtn{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font:inherit;width:100%}
+.sw{width:46px;height:26px;border-radius:99px;background:#9aa;position:relative;cursor:pointer;transition:.2s;display:inline-block;vertical-align:middle;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s}
+.sw.on{background:#2563eb}.sw.on::after{left:23px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #eee}
+.blk{border:1px solid #dde;border-radius:8px;padding:8px 10px;margin:8px 0;background:#fafbff}
+.blk small{color:#777}
+.offb{position:absolute;left:8px;bottom:8px;border-radius:16px;padding:4px 11px;font-size:11px;color:#fff;display:none}
+.offb.off{background:#b45309}.offb.sync{background:#2563eb}.offb.err{background:#d1242f}
+.dlg{position:absolute;inset:0;background:#0008;display:grid;place-items:center;padding:12px}.dlg .box{background:#fff;border-radius:12px;padding:12px;width:100%}
+table.t{border-collapse:collapse;width:100%;font-size:14px}table.t th,table.t td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+.yes{color:#4ade80}.no{color:#ff8b7e}
+</style></head><body><div class="wrap">
+
+<header class="hero"><div style="display:flex;align-items:center"><span class="bars"><i></i><i></i><i></i><i></i></span>
+ <div><h1>Panduan Aplikasi sdrive<span class="badge">Android · v1.2</span></h1>
+ <p class="sub">Pasang aplikasi di HP, masuk ke perusahaan Anda, lalu kerjakan laporan <b>meski tanpa internet</b> — perubahan otomatis tersinkron saat online lagi.</p></div></div></header>
+
+<div class="bar"><div class="prog"><b id="pb"></b></div><div class="nav" id="nav"></div></div>
+
+<!-- 1 UNDUH -->
+<section class="step" data-t="Unduh">
+ <div class="grid"><div class="card"><h2><span class="num">1</span>Unduh aplikasi (APK)</h2>
+  <ol class="how"><li>Buka halaman ini <b>dari HP Android</b> (Chrome).</li><li>Ketuk tombol <b>Unduh APK</b> di bawah. Berkas <code>cms.apk</code> (± 2,5 MB) tersimpan di <b>Download</b>.</li><li>Bila Chrome bertanya <i>"Berkas jenis ini dapat membahayakan perangkat"</i>, ketuk <b>Tetap unduh</b> — ini wajar untuk aplikasi di luar Play Store.</li></ol>
+  <p><a class="btn g" href="/cms.apk" id="dl">⬇ Unduh APK sdrive</a></p>
+  <div class="tip">Alamat unduhan ini khusus untuk perusahaan Anda: <code id="selfurl" class="copy"></code> (ketuk untuk salin). Anda akan memerlukannya di langkah 3.</div>
+  <p class="hint">👉 Coba di simulasi: ketuk <b>Unduh</b> pada layar ponsel.</p></div>
+ <div><div class="phone"><div class="st"><span>09.41</span><span>📶 🔋</span></div><div class="scr" id="m1">
+  <div class="app">🌐 Chrome</div><div class="bd"><div style="color:#666;font-size:12px" id="m1u"></div><h3 style="margin:8px 0">Aplikasi sdrive</h3><p style="color:#555">Unduh aplikasi Android untuk perusahaan Anda.</p>
+  <button class="mockbtn hl" id="m1b">⬇ Unduh APK sdrive</button></div></div></div></div></div>
+</section>
+
+<!-- 2 IZIN -->
+<section class="step" data-t="Izinkan">
+ <div class="grid"><div class="card"><h2><span class="num">2</span>Izinkan pemasangan</h2>
+  <ol class="how"><li>Buka berkas <code>cms.apk</code> dari notifikasi unduhan atau aplikasi <b>File/Download</b>.</li><li>Android menampilkan <b>"Demi keamanan, ponsel tidak diizinkan memasang aplikasi dari sumber ini"</b>. Ketuk <b>Setelan</b>.</li><li>Aktifkan <b>Izinkan dari sumber ini</b> untuk Chrome (atau File).</li><li>Kembali, ketuk <b>Pasang</b> lalu <b>Buka</b>.</li></ol>
+  <div class="tip warn">Izin ini hanya perlu sekali. Setelah selesai, matikan lagi bila ingin (Setelan → Aplikasi → Chrome → Pasang aplikasi tidak dikenal).</div>
+  <div class="tip">Aplikasi ini <b>terpasang terpisah</b> dari APK lama (versi sebelum Oktober 2026). Setelah yakin berfungsi, aplikasi sdrive lama boleh dihapus.</div></div>
+ <div><div class="phone"><div class="st"><span>09.42</span><span>📶 🔋</span></div><div class="scr" id="m2">
+  <div class="app">Setelan</div><div class="bd"><b>Pasang aplikasi tidak dikenal</b><div class="row"><span>Chrome<br><small style="color:#888">Tidak diizinkan</small></span><span class="sw hl" id="m2t"></span></div>
+  <p id="m2h" style="color:#888;font-size:12px">Ketuk saklar yang berkedip</p><button class="mockbtn" id="m2i" style="opacity:.3" disabled>Pasang</button></div></div></div></div></div>
+</section>
+
+<!-- 3 PERUSAHAAN -->
+<section class="step" data-t="Perusahaan">
+ <div class="grid"><div class="card"><h2><span class="num">3</span>Pilih perusahaan</h2>
+  <ol class="how"><li>Buka aplikasi <b>sdrive</b>. Layar pertama meminta <b>kode perusahaan atau URL</b>.</li><li>Masukkan alamat perusahaan Anda: <code id="selfurl2" class="copy"></code></li><li>Ketuk <b>Masuk</b>. Pilihan tersimpan — Anda tidak perlu mengulang.</li></ol>
+  <div class="tip">Satu aplikasi dipakai semua perusahaan; tiap pengguna hanya masuk ke server perusahaannya sendiri.<br>Salah pilih? <b>Tekan-tahan ikon aplikasi → "Ganti Perusahaan"</b>.</div></div>
+ <div><div class="phone"><div class="st"><span>09.44</span><span>📶 🔋</span></div><div class="scr" id="m3">
+  <div class="app">sdrive</div><div class="bd"><h3 style="margin:6px 0">Pilih perusahaan</h3><label>Kode perusahaan atau URL</label><input class="mockin" id="m3i" placeholder="mis. kode atau alamat server">
+  <button class="mockbtn hl" id="m3b">Masuk</button><p id="m3e" style="color:#d1242f;font-size:12px"></p></div></div></div></div></div>
+</section>
+
+<!-- 4 LOGIN -->
+<section class="step" data-t="Login">
+ <div class="grid"><div class="card"><h2><span class="num">4</span>Login</h2>
+  <ol class="how"><li>Masukkan <b>username</b> dan <b>password</b> dari admin perusahaan Anda.</li><li>Sesudah masuk tampil daftar <b>Proyek</b> dan menu seperti di web.</li></ol>
+  <div class="tip warn">Login <b>wajib dilakukan saat online</b>. Sesi aktif ± 12 jam; bila habis saat Anda offline, data tetap bisa dibaca, tetapi untuk <b>mengirim</b> perubahan Anda perlu login ulang saat online.</div></div>
+ <div><div class="phone"><div class="st"><span>09.45</span><span>📶 🔋</span></div><div class="scr" id="m4">
+  <div class="app">sdrive</div><div class="bd"><h3 style="margin:6px 0">🔐 Masuk</h3><label>Username</label><input class="mockin" placeholder="username"><label>Password</label><input class="mockin" type="password" placeholder="••••••••">
+  <button class="mockbtn hl" id="m4b">Login</button></div></div></div></div></div>
+</section>
+
+<!-- 5 SIAPKAN -->
+<section class="step" data-t="Siapkan offline">
+ <div class="grid"><div class="card"><h2><span class="num">5</span>Siapkan data untuk offline</h2>
+  <p>Aplikasi hanya bisa menampilkan data yang <b>pernah dibuka saat online</b> — ia menyimpannya di HP setiap kali Anda membuka halaman.</p>
+  <ol class="how"><li>Sebelum berangkat/turun lapangan, buka aplikasi di tempat ada sinyal.</li><li>Buka <b>proyek</b> yang akan dikerjakan: Ringkasan, Gantt, Tim, <b>Aktivitas</b>.</li><li>Buka <b>laporan/dokumen</b> dan bab yang akan Anda edit (gulir sampai blok-bloknya tampil).</li><li>Setelah itu mode pesawat pun aman — halaman aplikasi tetap terbuka dari penyimpanan HP.</li></ol>
+  <div class="tip">Ketuk kartu di simulasi untuk "membuka" dan menyimpannya. Yang belum dibuka akan berlabel <b>belum tersimpan</b> saat offline.</div></div>
+ <div><div class="phone"><div class="st"><span>09.50</span><span>📶 🔋</span></div><div class="scr" id="m5">
+  <div class="app">Proyek</div><div class="bd">
+   <div class="blk click" data-s="Ringkasan"><b>GNM Addendum AMDAL</b><br><small>Ringkasan · <span class="stt">belum tersimpan</span></small></div>
+   <div class="blk click" data-s="Laporan"><b>Laporan ANDAL RKL-RPL</b><br><small>Dokumen · <span class="stt">belum tersimpan</span></small></div>
+   <div class="blk click" data-s="Aktivitas"><b>Tab Aktivitas</b><br><small>Isu penilai · <span class="stt">belum tersimpan</span></small></div>
+   <p id="m5h" style="color:#888;font-size:12px;margin-top:10px">Ketuk tiap kartu</p></div></div></div></div></div>
+</section>
+
+<!-- 6 OFFLINE -->
+<section class="step" data-t="Kerja offline">
+ <div class="grid"><div class="card"><h2><span class="num">6</span>Bekerja tanpa internet</h2>
+  <ol class="how"><li>Saat sinyal hilang, muncul lencana oranye di kiri bawah: <b>⚡ Offline</b>.</li><li>Buka blok → ketuk <b>Edit</b>, ubah teks, lalu <b>Simpan</b>. Blok langsung menampilkan teks baru.</li><li>Lencana berubah: <b>⚡ Offline · 1 perubahan menunggu sinkron</b>. Perubahan tersimpan di HP, <b>belum</b> terlihat oleh rekan tim.</li><li>Yang bisa offline: <b>edit teks blok</b>, <b>komentar</b>, <b>catatan Aktivitas</b>, dan <b>tugas pribadi</b>.</li></ol>
+  <div class="tip">Mengedit blok yang sama berkali-kali offline digabung menjadi satu — yang dikirim nanti adalah teks terakhir.</div>
+  <p class="hint">👉 Nyalakan <b>Mode pesawat</b> di simulasi, lalu edit blok.</p></div>
+ <div><div class="phone"><div class="st"><span>10.15</span><span id="m6net">📶 🔋</span></div><div class="scr" id="m6">
+  <div class="app">Laporan <span class="sw hl" id="m6a" title="Mode pesawat" style="transform:scale(.8)"></span></div><div class="bd">
+   <div class="blk" id="m6blk"><b>3.2 Rona Lingkungan</b><div id="m6txt" style="margin:4px 0">Curah hujan harian maksimum 124 mm.</div><button class="mockbtn" id="m6e" style="width:auto;padding:5px 12px">✏️ Edit</button></div>
+   <p id="m6h" style="color:#888;font-size:12px">Geser saklar ✈ di atas untuk memutus koneksi</p></div><div class="offb" id="m6badge"></div></div></div></div></div>
+</section>
+
+<!-- 7 SINKRON -->
+<section class="step" data-t="Sinkronisasi">
+ <div class="grid"><div class="card"><h2><span class="num">7</span>Sinkronisasi otomatis</h2>
+  <ol class="how"><li>Begitu HP terhubung internet lagi, lencana jadi biru: <b>⟳ Menyinkronkan…</b> dan perubahan dikirim berurutan.</li><li>Selesai → muncul pesan <b>"Semua perubahan offline sudah tersinkron"</b> dan lencana hilang. Rekan tim kini melihat perubahan Anda.</li><li>Bila sinyal lemah, aplikasi mencoba lagi sendiri (tiap ± 45 detik, atau saat Anda kembali membuka aplikasi). Ketuk lencana → <b>Sinkron sekarang</b> untuk memaksa.</li></ol>
+  <div class="tip">Jangan hapus data aplikasi atau <i>uninstall</i> selama masih ada perubahan menunggu — antrean tersimpan di HP.</div></div>
+ <div><div class="phone"><div class="st"><span>10.40</span><span>📶 🔋</span></div><div class="scr" id="m7">
+  <div class="app">Laporan</div><div class="bd"><div class="blk"><b>3.2 Rona Lingkungan</b><div style="margin:4px 0">Curah hujan harian maksimum 124 mm (hasil BMKG).</div><small id="m7s">Tersimpan di HP · belum dikirim</small></div>
+  <button class="mockbtn hl" id="m7b">📶 Hidupkan internet</button><p id="m7h" style="color:#888;font-size:12px">Ketuk tombol untuk mensimulasikan sinyal kembali</p></div><div class="offb off" id="m7badge" style="display:block">⚡ Offline · 1 perubahan menunggu sinkron</div></div></div></div></div>
+</section>
+
+<!-- 8 KONFLIK -->
+<section class="step" data-t="Konflik">
+ <div class="grid"><div class="card"><h2><span class="num">8</span>Bila ada konflik</h2>
+  <p>Jika rekan Anda sudah mengubah <b>blok yang sama</b> selagi Anda offline, perubahan Anda <b>tidak menimpa</b> otomatis. Lencana merah muncul; ketuk untuk melihat <b>Antrean sinkronisasi</b>.</p>
+  <ol class="how"><li><b>Timpa dengan versi saya</b> — teks Anda menggantikan versi terbaru di server (gunakan bila yakin).</li><li><b>Buang</b> — hapus perubahan offline Anda dan pakai versi server.</li><li><b>Coba lagi</b> — kirim ulang (mis. untuk blok yang sedang dikunci orang lain).</li></ol>
+  <div class="tip warn">Bila ragu, <b>salin dulu teks Anda</b> dari daftar antrean, pilih Buang, lalu gabungkan secara manual ke versi terbaru.</div></div>
+ <div><div class="phone"><div class="st"><span>11.02</span><span>📶 🔋</span></div><div class="scr" id="m8">
+  <div class="app">Laporan</div><div class="bd"><div class="blk"><b>3.2 Rona Lingkungan</b><div style="margin:4px 0">Versi server (diubah rekan).</div></div></div><div class="offb err hl" id="m8b" style="display:block;cursor:pointer">⟳ 1 perubahan belum tersinkron (ketuk)</div></div></div></div></div>
+</section>
+
+<!-- 9 BATASAN -->
+<section class="step" data-t="Batasan & tips">
+ <div class="grid"><div class="card"><h2><span class="num">9</span>Batasan dan tips</h2>
+  <table class="t"><tr><th>Fitur</th><th>Offline</th></tr>
+  <tr><td>Melihat proyek, dokumen, Gantt, Aktivitas yang pernah dibuka</td><td class="yes">✔ bisa</td></tr>
+  <tr><td>Edit teks blok, komentar, catatan Aktivitas, tugas pribadi</td><td class="yes">✔ diantrekan</td></tr>
+  <tr><td>Unggah gambar/berkas, ekspor DOCX, tambah/hapus bab, simulasi, admin</td><td class="no">✘ butuh internet</td></tr>
+  <tr><td>Notifikasi dan perubahan rekan secara real-time</td><td class="no">✘ muncul setelah online</td></tr></table>
+  <div class="tip">Tips: pull-to-refresh (tarik layar ke bawah) memuat ulang dari cache saat offline. Ganti perusahaan: tekan-tahan ikon aplikasi.</div>
+  <div class="tip">Butuh bantuan? Hubungi admin perusahaan Anda. Halaman ini selalu tersedia di <code id="selfurl3" class="copy"></code></div>
+  <p><a class="btn g" href="/cms.apk">⬇ Unduh APK sdrive</a> <a class="btn ghost" href="/">↩ Buka aplikasi web</a></p></div>
+ <div><div class="card" style="text-align:center"><div style="font-size:52px">📱⚡➜☁️</div><h3>Siap dipakai di lapangan</h3><p style="color:var(--mut)">Buka dulu saat online → kerjakan di mana saja → tersinkron otomatis begitu ada sinyal.</p></div></div></div>
+</section>
+
+<div class="foot"><button class="btn ghost" id="prev">← Sebelumnya</button><span><button class="btn ghost" id="reset">↺ Ulangi dari awal</button> <button class="btn" id="next">Lanjut →</button></span></div>
+</div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const steps=$$('.step');let cur=0,done=new Set();
+try{done=new Set(JSON.parse(localStorage.getItem('sh_done')||'[]'))}catch(e){}
+const nav=$('#nav');steps.forEach((s,i)=>{const b=document.createElement('button');b.className='pill';b.textContent=(i+1)+'. '+s.dataset.t;b.onclick=()=>go(i);nav.appendChild(b)});
+const save=()=>{try{localStorage.setItem('sh_done',JSON.stringify([...done]))}catch(e){}};
+const mark=i=>{done.add(i);save();render()};
+function go(i){cur=Math.max(0,Math.min(steps.length-1,i));render();scrollTo({top:0,behavior:'smooth'})}
+function render(){steps.forEach((s,i)=>s.classList.toggle('on',i===cur));$$('.pill').forEach((p,i)=>{p.classList.toggle('on',i===cur);p.classList.toggle('done',done.has(i))});
+ $('#pb').style.width=(done.size/steps.length*100)+'%';$('#prev').style.visibility=cur?'visible':'hidden';$('#next').style.visibility=cur<steps.length-1?'visible':'hidden'}
+$('#next').onclick=()=>{mark(cur);go(cur+1)};$('#prev').onclick=()=>go(cur-1);$('#reset').onclick=()=>{done.clear();save();location.reload()};
+const ORIGIN=location.origin;['#selfurl','#selfurl2','#selfurl3'].forEach(s=>{const e=$(s);e.textContent=ORIGIN;e.dataset.c=ORIGIN});$('#m1u').textContent='🔒 '+location.host+'/cms.apk';
+document.addEventListener('click',e=>{const c=e.target.closest('.copy');if(c){navigator.clipboard&&navigator.clipboard.writeText(c.dataset.c||c.textContent);const o=c.textContent;c.textContent='✓ tersalin';setTimeout(()=>c.textContent=o,900)}});
+
+// 1 unduh
+$('#m1b').onclick=()=>{$('#m1').innerHTML='<div class="app">🌐 Chrome</div><div class="bd" style="text-align:center;padding-top:60px"><div style="font-size:40px">✅</div><b>cms.apk</b><br><span style="color:#2a8">terunduh (2,5 MB)</span><br><button class="mockbtn" style="margin-top:14px">Buka</button></div>';mark(0)};
+// 2 izin
+$('#m2t').onclick=()=>{const t=$('#m2t');t.classList.toggle('on');t.classList.remove('hl');const on=t.classList.contains('on');
+ $('#m2h').innerHTML=on?'✅ Chrome boleh memasang aplikasi':'Ketuk saklar yang berkedip';$('#m2i').disabled=!on;$('#m2i').style.opacity=on?1:.3;if(on)$('#m2i').classList.add('hl')};
+$('#m2i').onclick=()=>{$('#m2').innerHTML='<div class="app">Pasang</div><div class="bd" style="text-align:center;padding-top:60px"><div style="font-size:40px">📦</div><b>sdrive terpasang</b><br><button class="mockbtn hl" style="margin-top:14px" id="m2o">Buka</button></div>';mark(1)};
+// 3 perusahaan
+$('#m3i').placeholder=ORIGIN.replace(/^https?:\/\//,'');
+$('#m3b').onclick=()=>{const v=$('#m3i').value.trim();if(!v){$('#m3e').textContent='Isi kode perusahaan atau URL dulu';$('#m3i').classList.add('hl');return}
+ $('#m3').innerHTML='<div class="app">sdrive</div><div class="bd" style="text-align:center;padding-top:50px"><div style="font-size:40px">🏢</div><b>Perusahaan tersimpan</b><br><small style="color:#666">'+v.replace(/[<>&]/g,'')+'</small><br><span style="color:#2a8">Memuat halaman login…</span></div>';mark(2)};
+// 4 login
+$('#m4b').onclick=()=>{$('#m4').innerHTML='<div class="app">sdrive</div><div class="bd"><b>Proyek</b><div class="blk" style="margin-top:10px"><b>GNM Addendum AMDAL</b><br><small>ongoing</small></div><div class="blk"><b>RS Goenawan</b><br><small>ongoing</small></div><p style="color:#2a8;text-align:center">✅ Login berhasil</p></div>';mark(3)};
+// 5 siapkan
+const opened=new Set();
+$$('#m5 .blk').forEach(b=>b.onclick=()=>{b.querySelector('.stt').innerHTML='<b style="color:#2a8">tersimpan di HP ✓</b>';opened.add(b.dataset.s);
+ $('#m5h').textContent=opened.size<3?'Lanjut ketuk kartu lainnya ('+opened.size+'/3)':'✅ Semua tersimpan — siap dipakai offline';if(opened.size===3)mark(4)});
+// 6 offline
+const badge=(el,cls,t)=>{el.className='offb '+cls;el.textContent=t;el.style.display='block'};
+let air=false,pend=0;
+$('#m6a').onclick=()=>{air=!air;$('#m6a').classList.toggle('on',air);$('#m6a').classList.remove('hl');$('#m6net').textContent=air?'✈ 🔋':'📶 🔋';
+ if(air){badge($('#m6badge'),'off','⚡ Offline'+(pend?' · '+pend+' perubahan menunggu sinkron':' · data dari penyimpanan HP'));$('#m6h').textContent='Offline — ketuk ✏️ Edit pada blok'}
+ else{$('#m6badge').style.display='none';$('#m6h').textContent='Online'};if(air)$('#m6e').classList.add('hl')};
+$('#m6e').onclick=()=>{if(!air){$('#m6h').textContent='Nyalakan mode pesawat dulu agar simulasi offline';return}
+ $('#m6e').classList.remove('hl');const t=$('#m6txt');t.innerHTML='<textarea class="mockin" id="m6ta" rows="3">'+t.textContent+'</textarea><button class="mockbtn hl" id="m6s">Simpan</button>';
+ $('#m6s').onclick=()=>{const v=$('#m6ta').value;$('#m6txt').textContent=v;pend=1;badge($('#m6badge'),'off','⚡ Offline · 1 perubahan menunggu sinkron');$('#m6h').innerHTML='✅ Tersimpan di HP — menunggu sinkron saat online';mark(5)}};
+// 7 sinkron
+$('#m7b').onclick=()=>{$('#m7b').classList.remove('hl');const b=$('#m7badge');badge(b,'sync','⟳ Menyinkronkan 1 perubahan…');
+ setTimeout(()=>{b.style.display='none';$('#m7s').innerHTML='<b style="color:#2a8">✓ Terkirim ke server</b>';$('#m7h').innerHTML='✅ Semua perubahan offline sudah tersinkron';$('#m7b').style.display='none';mark(6)},1300)};
+// 8 konflik
+$('#m8b').onclick=()=>{$('#m8b').classList.remove('hl');const d=document.createElement('div');d.className='dlg';
+ d.innerHTML='<div class="box"><b>Antrean sinkronisasi</b><div class="blk"><b>Edit blok #212</b> <small>· konflik</small><div style="color:#d1242f;font-size:12px">Blok diubah orang lain</div><div style="margin-top:6px"><button class="mockbtn" id="m8o" style="width:auto;padding:4px 10px">Timpa dengan versi saya</button> <button class="mockbtn" id="m8d" style="width:auto;padding:4px 10px;background:#6b7280">Buang</button></div></div><button class="mockbtn" id="m8c" style="background:#6b7280">Tutup</button></div>';
+ $('#m8').appendChild(d);const fin=t=>{d.remove();$('#m8b').style.display='none';$('#m8').querySelector('.bd').innerHTML+='<p style="color:#2a8;text-align:center">✅ '+t+'</p>';mark(7)};
+ $('#m8o').onclick=()=>fin('Versi Anda menggantikan versi server');$('#m8d').onclick=()=>fin('Perubahan offline dibuang, versi server dipakai');$('#m8c').onclick=()=>d.remove()};
+render();
+</script></body></html>

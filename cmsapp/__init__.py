@@ -83,6 +83,13 @@ def create_app(cfg=Config) -> Flask:
     def pwa_manifest():
         return send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "manifest.webmanifest")
 
+    @app.get("/howto")
+    def howto_page():
+        """Panduan interaktif pasang & pakai aplikasi Android (termasuk mode offline). Publik, tanpa login."""
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "howto.html")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     @app.get("/install-apk")
     def install_apk_guide():
         """Halaman instruksi instal APK Android (izinkan sumber tak dikenal) - ditautkan dari tombol 📱 APK."""
