@@ -112,6 +112,33 @@ def pertek_tapis():
     return jsonify(r)
 
 
+@bp.get("/andalalin/jenis")
+@auth.require(PERM)
+def andalalin_jenis():
+    """Daftar jenis rencana pembangunan Lampiran I PM 17/2021 (untuk penapisan Andalalin)."""
+    if _locked():
+        return jsonify(error="Fitur Template belum diaktifkan.", code="locked"), 403
+    from utils import andalalin as al
+    return jsonify(jenis=al.daftar_jenis())
+
+
+@bp.post("/andalalin/tapis")
+@auth.require(PERM)
+def andalalin_tapis():
+    """Body: {jenis, besaran?, jam?, hari?, pengembangan_pct?, ubah_fungsi?, status_jalan?[], akses_jalan_eksisting?, infrastruktur_lain_jalan_baru?}"""
+    if _locked():
+        return jsonify(error="Fitur Template belum diaktifkan.", code="locked"), 403
+    from utils import andalalin as al
+    d = body()
+    try:
+        r = al.tapis(str(d.get("jenis") or ""), d.get("besaran"), d.get("jam"), d.get("hari"), d.get("pengembangan_pct"), bool(d.get("ubah_fungsi")),
+                     d.get("status_jalan") or None, bool(d.get("akses_jalan_eksisting")), bool(d.get("infrastruktur_lain_jalan_baru")))
+    except (al.AndalalinError, ValueError) as e:
+        raise ValueError(str(e))
+    r["template"] = _pertek_judul(r["template"])
+    return jsonify(r)
+
+
 @bp.get("/<tid>")
 @auth.require(PERM)
 def get_template(tid):

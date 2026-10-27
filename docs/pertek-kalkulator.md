@@ -84,7 +84,7 @@ Catatan data: kode KBLI tabel = awalan (golongan), dengan "kecuali" (mis. golong
 
 - **Penapisan mandiri laut dan emisi (jalur akhir)**: bagan alir Lampiran I butir 5 (laut) dan Lampiran X bagian A (emisi) berupa gambar; percabangannya tidak terbaca penuh. Yang tersedia: keanggotaan KBLI, faktor yang ditanyakan bagan alir, dan aturan yang tertulis di pasal. Langkah berikut: verifikasi dari PDF asli lalu tulis aturan keputusannya.
 - **Model numerik/hidrodinamika** (QUAL2K, WASP, CORMIX, Delft3D, MODFLOW, simulasi reservoir, Nodal Analysis): bukan kalkulator; template mengarahkan ke ahli dan meminta keluaran model.
-- **Andalalin** (analisis dampak lalu lintas): menunggu pengindeksan Permenhub 17/2021; kalkulator lalu lintas yang ada (`lhr_proyeksi`, `kapasitas_jalan`, `derajat_jenuh`, `bangkitan_perjalanan`, dst.) sudah siap dipakai.
+- **Andalalin** (analisis dampak lalu lintas): sudah dikerjakan, lihat `docs/andalalin.md` (PM 17/2021 terindeks; penapisan, 3 template, peta rumus).
 - **Persyaratan fasilitas B3** (Lampiran VI-VII rancang bangun penyimpanan, XIII-XVII persyaratan teknis pemanfaatan, baku mutu emisi insinerasi): belum dirangkum.
 
 ## Catatan batas pakai

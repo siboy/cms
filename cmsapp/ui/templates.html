@@ -47,7 +47,7 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
  <select id="cat"><option value="">Semua jenis kegiatan</option></select>
 </div>
 <div class="chips" id="kinds"></div>
-<div class="bar"><button id="btTapis">🧪 Penapisan mandiri Pertek</button><span class="mut small">tentukan jalur Persetujuan Teknis (kajian teknis atau standar teknis) dari pertanyaan Permen LHK 5/2021 Lampiran I dan X</span></div>
+<div class="bar"><button id="btTapis">🧪 Penapisan Pertek dan Andalalin</button><span class="mut small">tentukan jalur Persetujuan Teknis (kajian teknis atau standar teknis) dari pertanyaan Permen LHK 5/2021 Lampiran I dan X</span></div>
 <div id="tapis" class="hide"></div>
 <div id="lic"></div>
 <div id="msg"></div>
@@ -110,8 +110,9 @@ async function load(){
   if(!st.cur&&r.items.length&&r.items.length<=1)open(r.items[0].id);
 }
 const TP={jalur:'badan_air',kbli:'',jawab:{},res:null,kb:null,err:''};
-const TPJ=[['badan_air','Air limbah → badan air permukaan'],['formasi_pembuangan','Air limbah → formasi tertentu (injeksi)'],['aplikasi_tanah','Pemanfaatan → aplikasi ke tanah'],['formasi_pemanfaatan','Pemanfaatan → formasi tertentu (imbuhan/resapan)'],['laut','Air limbah → laut'],['emisi','Emisi sumber tidak bergerak']];
+const TPJ=[['badan_air','Air limbah → badan air permukaan'],['formasi_pembuangan','Air limbah → formasi tertentu (injeksi)'],['aplikasi_tanah','Pemanfaatan → aplikasi ke tanah'],['formasi_pemanfaatan','Pemanfaatan → formasi tertentu (imbuhan/resapan)'],['laut','Air limbah → laut'],['emisi','Emisi sumber tidak bergerak'],['andalalin','Andalalin (analisis dampak lalu lintas, PM 17/2021)']];
 async function tpRun(){
+  if(TP.jalur==='andalalin')return tpAlRun();
   TP.err='';
   try{TP.res=await api('POST','/templates/pertek/tapis',{jalur:TP.jalur,jawaban:TP.jawab,kbli:TP.kbli})}catch(e){TP.res=null;TP.err=e.message}
   tpDraw();
@@ -122,6 +123,7 @@ async function tpKbli(){
   tpDraw();
 }
 function tpDraw(){
+  if(TP.jalur==='andalalin')return tpAlDraw();
   const r=TP.res,box=$('#tapis');
   const ans=(k,v)=>`<button data-k="${esc(k)}" data-v="${v}" class="${TP.jawab[k]===v?'p':''}">${v==='ya'?'Ya':'Tidak'}</button>`;
   let h=`<div class="detail" style="position:static;margin-bottom:12px"><h2>Penapisan mandiri Persetujuan Teknis</h2>
@@ -158,6 +160,47 @@ function tpDraw(){
   box.querySelectorAll('button[data-k]').forEach(b=>b.onclick=()=>{TP.jawab[b.dataset.k]=b.dataset.v;tpRun()});
   box.querySelectorAll('a[data-t]').forEach(a=>a.onclick=e=>{e.preventDefault();open(a.dataset.t);$('#detail').scrollIntoView({behavior:'smooth'})});
   const u=$('#tpUlang');if(u)u.onclick=()=>{TP.jawab={};TP.res=null;TP.kb=null;tpRun()};
+}
+const AL={jenis:'',besaran:'',jam:'',hari:'',peng:'',ubah:false,akses:false,baru:false,status:[],list:null,res:null,err:''};
+const ALST=[['nasional','nasional'],['provinsi','provinsi'],['kabupaten','kabupaten'],['desa','desa'],['kota','kota']];
+async function tpAlRun(){
+  AL.err='';
+  try{
+    if(!AL.list)AL.list=(await api('GET','/templates/andalalin/jenis')).jenis;
+    if(AL.jenis||AL.jam||AL.hari||AL.ubah||AL.peng){
+      AL.res=await api('POST','/templates/andalalin/tapis',{jenis:AL.jenis,besaran:AL.besaran,jam:AL.jam,hari:AL.hari,pengembangan_pct:AL.peng,ubah_fungsi:AL.ubah,
+        akses_jalan_eksisting:AL.akses,infrastruktur_lain_jalan_baru:AL.baru,status_jalan:AL.status});
+    }else AL.res=null;
+  }catch(e){AL.res=null;AL.err=e.message}
+  tpAlDraw();
+}
+function tpAlDraw(){
+  const box=$('#tapis'),L=AL.list||[],j=L.find(x=>x.id===AL.jenis),r=AL.res;
+  const grp={};L.forEach(x=>{(grp[x.kelompok]=grp[x.kelompok]||[]).push(x)});
+  let h=`<div class="detail" style="position:static;margin-bottom:12px"><h2>Penapisan Andalalin (PM 17/2021)</h2>
+   <div class="small mut">Kriteria ukuran Lampiran I dan pemicu Pasal 7-9. Bantuan penapisan awal; keputusan akhir pada instansi perhubungan. Status berlaku peraturan belum diverifikasi.</div>
+   <div class="row" style="margin-top:8px"><select id="tpJ">${TPJ.map(x=>`<option value="${x[0]}" ${TP.jalur===x[0]?'selected':''}>${esc(x[1])}</option>`).join('')}</select></div>
+   <div class="row" style="margin-top:8px"><select id="alJ" class="fill"><option value="">— pilih jenis rencana pembangunan —</option>${Object.keys(grp).map(k=>`<optgroup label="${esc(k)}">${grp[k].map(x=>`<option value="${esc(x.id)}" ${AL.jenis===x.id?'selected':''}>${esc(x.no+' '+x.nama)}</option>`).join('')}</optgroup>`).join('')}</select>
+   ${j&&j.bentuk==='ukuran'?`<input id="alB" type="number" min="0" step="any" placeholder="${esc(j.satuan)}" value="${esc(AL.besaran)}">`:''}</div>
+   <div class="row" style="margin-top:6px"><input id="alJam" type="number" min="0" step="any" placeholder="Perjalanan terhitung per jam (opsional)" value="${esc(AL.jam)}" class="fill"><input id="alHr" type="number" min="0" step="any" placeholder="per hari (opsional)" value="${esc(AL.hari)}" class="fill"></div>
+   <div class="row" style="margin-top:6px"><input id="alPg" type="number" min="0" step="any" placeholder="Pengembangan (% dari kondisi awal/fasilitas utama)" value="${esc(AL.peng)}" class="fill"></div>
+   <div class="opts"><label><input type="checkbox" id="alUb" ${AL.ubah?'checked':''}> perubahan fungsi peruntukan bangunan</label><label><input type="checkbox" id="alAk" ${AL.akses?'checked':''}> infrastruktur lain: akses dari/ke jalan eksisting</label><label><input type="checkbox" id="alBr" ${AL.baru?'checked':''}> infrastruktur lain: menghubungkan jalan yang belum pernah ada</label></div>
+   <div class="opts"><span class="mut">Status jalan terpengaruh:</span>${ALST.map(s=>`<label><input type="checkbox" data-st="${s[0]}" ${AL.status.includes(s[0])?'checked':''}> ${s[1]}</label>`).join('')}</div>`;
+  if(AL.err)h+=`<div class="err">${esc(AL.err)}</div>`;
+  if(r){
+    h+=`<div class="note" style="background:var(--acc-soft);color:var(--fg)"><b>${r.wajib?'Wajib Andalalin':'Belum wajib menurut ukuran Lampiran I'}${r.dokumen?' — '+esc(r.dokumen)+' ('+esc(r.kategori_nama)+')':''}</b>`
+      +(r.langkah||[]).map(x=>`<div class="small">• ${esc(x)}</div>`).join('')+(r.pemicu||[]).map(x=>`<div class="small">⚑ ${esc(x)}</div>`).join('')+(r.pengecualian||[]).map(x=>`<div class="small">⚐ ${esc(x)}</div>`).join('')
+      +(r.kewajiban||[]).map(x=>`<div class="small mut">${esc(x)}</div>`).join('')
+      +(r.kewenangan?`<div class="small" style="margin-top:4px">Persetujuan oleh: <b>${esc(r.kewenangan.pemberi)}</b> (${esc(r.kewenangan.dasar)}) ${(r.kewenangan.catatan||[]).map(esc).join(' ')}</div>`:'')
+      +((r.template||[]).length?`<div style="margin-top:6px">Template: `+r.template.map(t=>t.ada?`<a href="#" data-t="${esc(t.id)}">${esc(t.title)}</a>`:esc(t.title)).join(' · ')+`</div>`:'')+`</div>`;
+  }
+  box.innerHTML=h+'</div>';
+  $('#tpJ').onchange=e=>{TP.jalur=e.target.value;TP.jawab={};TP.res=null;tpRun()};
+  const g=(id,k,num)=>{const el=$(id);if(el)el.onchange=e=>{AL[k]=e.target.value;tpAlRun()}};
+  g('#alJ','jenis');g('#alB','besaran');g('#alJam','jam');g('#alHr','hari');g('#alPg','peng');
+  $('#alUb').onchange=e=>{AL.ubah=e.target.checked;tpAlRun()};$('#alAk').onchange=e=>{AL.akses=e.target.checked;tpAlRun()};$('#alBr').onchange=e=>{AL.baru=e.target.checked;tpAlRun()};
+  box.querySelectorAll('input[data-st]').forEach(c=>c.onchange=()=>{AL.status=[...box.querySelectorAll('input[data-st]:checked')].map(x=>x.dataset.st);tpAlRun()});
+  box.querySelectorAll('a[data-t]').forEach(a=>a.onclick=e=>{e.preventDefault();open(a.dataset.t);$('#detail').scrollIntoView({behavior:'smooth'})});
 }
 $('#btTapis').onclick=()=>{const b=$('#tapis');b.classList.toggle('hide');if(!b.classList.contains('hide'))tpRun()};
 $('#kinds').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;st.kind=b.dataset.k;load()};

@@ -45,6 +45,7 @@ KINDS = {
     "andal": "ANDAL",
     "rkl_rpl": "RKL-RPL",
     "pertek": "Persetujuan Teknis (Pertek)",
+    "andalalin": "Analisis Dampak Lalu Lintas (Andalalin)",
 }
 
 # (key, label, kata kunci) -- urutan = prioritas; kata pendek dicocokkan sbg kata utuh
@@ -127,6 +128,12 @@ CAT_LABEL.update({
     "b3_pengolahan": "Pertek limbah B3 — pengolahan",
     "b3_penimbunan": "Pertek limbah B3 — penimbunan",
     "b3_dumping": "Pertek limbah — dumping (pembuangan) ke laut",
+})
+# jalur Andalalin (utils/tpl_andalalin.py; uji scripts/andalalin_test.py memastikan sama dengan SPEC)
+CAT_LABEL.update({
+    "dokumen_tinggi": "Andalalin — bangkitan tinggi (dokumen hasil Andalalin)",
+    "rekomendasi_sedang": "Andalalin — bangkitan sedang (rekomendasi teknis)",
+    "standar_rendah": "Andalalin — bangkitan rendah (standar teknis)",
 })
 CAT_LABEL["lainnya"] = "Kegiatan Lainnya"
 _CAT_RE = [(k, re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in sorted(kw, key=len, reverse=True)) + r")(?![a-z0-9])"))
