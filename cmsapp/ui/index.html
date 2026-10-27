@@ -52,6 +52,15 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 .otable td:first-child{min-width:150px}.otable .acell{white-space:nowrap}.otable .acell button{padding:3px 7px;font-size:13px;margin:1px 2px 1px 0}
 #navbtns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #bmenu{display:none}
+#kwrap{position:relative;margin-left:auto;order:2}
+#bkeb{font-size:20px;line-height:1;padding:4px 10px}
+#kmenu{position:absolute;right:0;top:calc(100% + 6px);min-width:190px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:30;display:flex;flex-direction:column;gap:2px}
+#kmenu[hidden]{display:none}
+#kmenu button,#kmenu a{display:block;width:100%;text-align:left;border:none;background:none;color:inherit;font:inherit;font-size:14px;padding:8px 10px;border-radius:7px;cursor:pointer;text-decoration:none;box-sizing:border-box}
+#kmenu button[hidden]{display:none}
+#kmenu button:hover,#kmenu a:hover{background:var(--line)}
+#kmenu #bout{border-top:1px solid var(--line);border-radius:0 0 7px 7px;margin-top:4px;color:#e5484d}
+
 @media(max-width:640px){
  .otable td,.otable th{padding:4px}.otable .acell button{padding:5px 7px;font-size:14px}
  .rg{grid-template-columns:1fr!important}
@@ -62,6 +71,8 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
  header b{flex:initial}
  #who{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}
  #bmenu:not([hidden]){display:inline-block;margin-left:auto}
+ #kwrap{margin-left:0}
+ #navbtns{order:5}
  #navbtns{display:none;flex-direction:column;align-items:stretch;gap:6px;flex-basis:100%;
   margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
  #navbtns.open{display:flex}
@@ -213,9 +224,11 @@ header b{letter-spacing:.2px}
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
 <button id="bmenu" title="Menu" hidden>☰</button>
 <nav id="navbtns">
-<button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bproj" hidden>Proyek</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button>
-<button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
-</nav></header>
+<button id="bproj" hidden>Proyek</button>
+<button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button>
+</nav>
+<div id="kwrap"><button id="bkeb" title="Menu" hidden>⋮</button><div id="kmenu" hidden><button id="badm" hidden>Admin</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="bdocs" hidden>Dokumen</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button><button id="bpriv" hidden>🔐 Privilege</button><button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><a id="bhow" href="/howto">📘 Howto</a><button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bout" hidden>Keluar</button></div></div>
+</header>
 <div id="app"></div><div id="bar" hidden></div>
 <script src="/offline.js?v=1"></script>
 <script src="/proj-site.js?v=1"></script>
@@ -310,7 +323,7 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  const stok=qp.get('share');if(stok)return shareView(stok);
  try{me=(await api('GET','/me')).user;if(window.OFF)OFF.setUser(me.username)}catch(e){return loginView()}
  pruneDrafts();
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;$('#bapk').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;$('#bapk').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));
  const dq=qp.get('doc');
  if(dq){await openDoc(+dq);const bq=qp.get('block');
@@ -381,6 +394,9 @@ $('#bapk').onclick=async()=>{try{const r=await fetch('/cms.apk',{method:'HEAD'})
  catch(e){note('APK belum tersedia',1)}};
 $('#bout').onclick=async()=>{try{await api('POST','/logout')}catch(e){}if(window.OFF)await OFF.logout();location.reload()};
 $('#bmenu').onclick=()=>$('#navbtns').classList.toggle('open');
+$('#bkeb').onclick=e=>{e.stopPropagation();const k=$('#kmenu');k.hidden=!k.hidden};
+$('#kmenu').addEventListener('click',()=>{$('#kmenu').hidden=true});
+document.addEventListener('click',e=>{if(!e.target.closest('#kwrap'))$('#kmenu').hidden=true});
 $('#navbtns').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>$('#navbtns').classList.remove('open')));
 async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
  $('#app').innerHTML='<div id=docs><h3>Dokumen</h3>'+(hasPerm('doc_upload')?'<p><button id=up>+ Unggah DOCX</button></p>':'')+(docs.map(d=>`<p><a href="#" data-id="${d.id}">${esc(d.filename)}</a> <small>${esc(d.status)}</small></p>`).join('')||'<p>Belum ada dokumen.</p>')+'</div>';
