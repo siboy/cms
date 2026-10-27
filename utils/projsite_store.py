@@ -275,3 +275,24 @@ def my_sims(store, user_id: int) -> list[dict]:
                 res.append({**s, "project_id": pid, "project_name": names.get(pid)})
     res.sort(key=lambda s: (s["status"] == "selesai", s["project_id"], s["id"]))
     return res
+
+
+# ------------------------------------------------------------------------------------------ alamat lokasi proyek
+SITE_COLS = ("address", "prov_code", "prov_name", "kab_code", "kab_name", "kec_code", "kec_name", "desa_code", "desa_name", "lat", "lon")
+
+
+def get_site(store, pid: int) -> dict:
+    with store._tx() as c:
+        _exists(store, c, pid)
+        r = store._one(c, "SELECT * FROM cms_project_site WHERE project_id=?", (pid,))
+    return {k: (r or {}).get(k) for k in SITE_COLS} | {"updated_by": (r or {}).get("updated_by"), "updated_at": (r or {}).get("updated_at")}
+
+
+def set_site(store, pid: int, f: dict, user: str = "") -> None:
+    """Ganti seluruh isian alamat (f sudah divalidasi API: nama wilayah diisi dari Data Desa)."""
+    vals = [f.get(k) for k in SITE_COLS]
+    with store._tx() as c:
+        _exists(store, c, pid)
+        store._x(c, "DELETE FROM cms_project_site WHERE project_id=?", (pid,))
+        store._x(c, "INSERT INTO cms_project_site(project_id," + ",".join(SITE_COLS) + ",updated_by,updated_at) VALUES (?," + ",".join("?" * len(SITE_COLS)) + ",?,?)",
+                 (pid, *vals, user, _now()))

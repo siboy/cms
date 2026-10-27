@@ -673,6 +673,24 @@ CREATE TABLE IF NOT EXISTS cms_project_regions (
     CONSTRAINT fk_pr_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS cms_project_site (
+    project_id  INT NOT NULL PRIMARY KEY,
+    address     VARCHAR(500) DEFAULT NULL,              -- alamat lokasi (teks bebas)
+    prov_code   VARCHAR(2) DEFAULT NULL,                -- kode & nama diambil dari Data Desa (kemendagri), nama diisi SERVER
+    prov_name   VARCHAR(255) DEFAULT NULL,
+    kab_code    VARCHAR(5) DEFAULT NULL,
+    kab_name    VARCHAR(255) DEFAULT NULL,
+    kec_code    VARCHAR(8) DEFAULT NULL,
+    kec_name    VARCHAR(255) DEFAULT NULL,
+    desa_code   VARCHAR(13) DEFAULT NULL,
+    desa_name   VARCHAR(255) DEFAULT NULL,
+    lat         DOUBLE DEFAULT NULL,                    -- titik pusat yang dipakai mencari alamat
+    lon         DOUBLE DEFAULT NULL,
+    updated_by  VARCHAR(100) DEFAULT NULL,
+    updated_at  VARCHAR(19) DEFAULT NULL,
+    CONSTRAINT fk_psite_project FOREIGN KEY (project_id) REFERENCES cms_projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS cms_project_sims (
     id          INT AUTO_INCREMENT PRIMARY KEY,
     project_id  INT NOT NULL,

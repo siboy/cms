@@ -184,6 +184,149 @@ def regions_set(pid):
     return jsonify(selected=sel)
 
 
+# ------------------------------------------------------------------------------------------ alamat lokasi + rona wilayah
+import re as _re
+import threading as _th
+import time as _time
+
+# Indikator Data Desa yang ditampilkan sebagai rona lingkungan sosial wilayah terpilih. Tambah kunci di sini
+# (kunci = utils/kd_catalog.INDICATORS) untuk menambah baris rona; urutan = urutan tampil.
+RONA_KEYS = ["jumlah_penduduk", "jumlah_kk", "pria", "wanita", "rasio_ketergantungan", "usia_anak", "usia_produktif", "lansia",
+             "islam", "kristen", "katholik", "hindu", "budha", "tamat_sd", "sltp", "slta", "pendidikan_tinggi", "persen_belum_bekerja"]
+_SITE_CODE = {"prov_code": r"^\d{2}$", "kab_code": r"^\d{2}\.\d{2}$", "kec_code": r"^\d{2}\.\d{2}\.\d{2}$", "desa_code": r"^\d{2}\.\d{2}\.\d{2}\.\d{4}$"}
+_geo_lock, _geo_last = _th.Lock(), [0.0]
+
+
+def _norm(s: str) -> str:
+    s = _re.sub(r"[^a-z0-9 ]", " ", (s or "").lower())
+    s = _re.sub(r"\bdaerah khusus ibukota\b", "dki", s)
+    s = _re.sub(r"\bdaerah istimewa\b", "di", s)
+    s = _re.sub(r"\bp a p u a\b", "papua", s)
+    s = _re.sub(r"\b(provinsi|kabupaten|kab|kota|kotamadya|kecamatan|kec|desa|kelurahan|kel|administrasi|adm)\b", " ", s)
+    return _re.sub(r"\s+", " ", s).strip()
+
+
+def _rona(code: str) -> dict | None:
+    """Indikator Data Desa untuk wilayah `code` (level terdalam yang dipilih). None bila modul/sumber tak tersedia."""
+    from utils import kd_catalog as cat
+    if not code or not mods.is_on("data_desa"):
+        return None
+    kd = _kd()
+    if kd is None:
+        return None
+    parent = code.rsplit(".", 1)[0] if "." in code else ""
+    items, period, name = [], None, None
+    for key in RONA_KEYS:
+        ind = cat.INDICATORS.get(key)
+        if not ind:
+            continue
+        try:
+            r = kd.children_values(parent, key)
+        except Exception:                                   # noqa: BLE001
+            continue
+        period = period or r.get("period")
+        row = next((x for x in r["rows"] if x["code"] == code), None)
+        if row:
+            name = row.get("name")
+            items.append({"key": key, "label": ind["label"], "group": ind["group"], "unit": ind.get("unit"), "kind": ind["kind"],
+                          "value": row["value"], "pct": row.get("pct")})
+    return {"code": code, "name": name, "level": ps.level_of(code) if "." in code else "provinsi", "period": period, "items": items}
+
+
+@bp.get("/projects/<int:pid>/site")
+@auth.require()
+@guard("proyek_lokasi")
+def site_get(pid):
+    _project_visible(pid)
+    s = pst.get_site(S(), pid)
+    code = s["desa_code"] or s["kec_code"] or s["kab_code"] or s["prov_code"]
+    return jsonify(site=s, rona=_rona(code) if code else None)
+
+
+@bp.put("/projects/<int:pid>/site")
+@auth.require()
+@guard("proyek_lokasi")
+def site_set(pid):
+    """Body: {address, prov_code, kab_code, kec_code, desa_code, lat?, lon?}. Nama wilayah DIISI SERVER dari Data Desa (bukan dari klien)."""
+    _manage(pid)
+    d = body()
+    f = {"address": (d.get("address") or "").strip()[:500] or None, "lat": None, "lon": None}
+    if d.get("lat") not in (None, "") and d.get("lon") not in (None, ""):
+        f["lat"], f["lon"] = float(d["lat"]), float(d["lon"])
+        ps.check_latlon(f["lat"], f["lon"])
+    prev = ""
+    kd = None
+    for key in ("prov_code", "kab_code", "kec_code", "desa_code"):
+        code = (d.get(key) or "").strip()
+        if not code:
+            f[key], f[key.replace("_code", "_name")] = None, None
+            continue
+        if not _re.match(_SITE_CODE[key], code):
+            raise ValueError(f"kode {key} tidak valid")
+        if prev and not code.startswith(prev + "."):
+            raise ValueError("kode wilayah tidak berurutan (kab/kota harus di dalam provinsi, dst)")
+        if not prev and key != "prov_code":
+            raise ValueError("pilih wilayah dari tingkat atas dulu (provinsi → kab/kota → kecamatan → desa)")
+        kd = kd or _kd()
+        if kd is None:
+            raise ValueError("sumber data wilayah (Data Desa) belum terhubung")
+        f[key], f[key.replace("_code", "_name")] = code, kd.region_info(code)["name"]
+        prev = code
+    pst.set_site(S(), pid, f, user=g.user["username"])
+    S().log_activity(g.user["username"], "project.update", target_type="project", target_id=pid, project_id=pid,
+                     summary="alamat lokasi: " + ", ".join(x for x in (f.get("desa_name"), f.get("kec_name"), f.get("kab_name"), f.get("prov_name")) if x))
+    return jsonify(ok=True)
+
+
+@bp.post("/projects/<int:pid>/site/geocode")
+@auth.require()
+@guard("proyek_lokasi")
+def site_geocode(pid):
+    """Cari alamat dari SATU titik koordinat lewat Nominatim (OpenStreetMap), dipicu tombol oleh pengguna. Hanya lat/lon yang dikirim keluar.
+    Hasil dicocokkan ke nama wilayah Data Desa; tidak disimpan sampai pengguna menekan Simpan. Body: {lat, lon}."""
+    _manage(pid)
+    d = body()
+    lat, lon = float(d.get("lat")), float(d.get("lon"))
+    ps.check_latlon(lat, lon)
+    import requests
+    with _geo_lock:                                          # kebijakan Nominatim: maks 1 permintaan/detik
+        wait = 1.1 - (_time.time() - _geo_last[0])
+        if wait > 0:
+            _time.sleep(wait)
+        _geo_last[0] = _time.time()
+        try:
+            r = requests.get("https://nominatim.openstreetmap.org/reverse", timeout=10, headers={"User-Agent": "sdrive-cms/1.0", "Accept-Language": "id"},
+                             params={"format": "jsonv2", "lat": f"{lat:.6f}", "lon": f"{lon:.6f}", "zoom": 18, "addressdetails": 1})
+            r.raise_for_status()
+            j = r.json()
+        except Exception as e:                               # noqa: BLE001
+            return jsonify(error=f"layanan pencarian alamat tidak dapat dihubungi ({type(e).__name__})"), 502
+    a = j.get("address") or {}
+    if (a.get("country_code") or "id") != "id":
+        return jsonify(error="titik berada di luar Indonesia — periksa urutan lintang/bujur"), 400
+    out = {"display_name": j.get("display_name"), "road": a.get("road"), "postcode": a.get("postcode"), "match": {}, "parts": a}
+    kd = _kd()
+    if kd is not None and mods.is_on("data_desa"):
+        def pick(parent, names):
+            want = [_norm(n) for n in names if n]
+            cand = kd.children(parent)
+            for w in want:
+                for c in cand:
+                    if w and _norm(c["name"]) == w:
+                        return {"code": c["code"], "name": c["name"]}
+            return None
+        try:
+            prov = pick("", [a.get("state"), a.get("region"), a.get("city")])
+            kab = pick(prov["code"], [a.get("city"), a.get("county"), a.get("regency"), a.get("state_district"), a.get("municipality"), a.get("city_district")]) if prov else None
+            kec = pick(kab["code"], [a.get("city_district"), a.get("district"), a.get("suburb"), a.get("municipality"), a.get("town"), a.get("subdistrict")]) if kab else None
+            desa = pick(kec["code"], [a.get("village"), a.get("suburb"), a.get("neighbourhood"), a.get("quarter"), a.get("hamlet"), a.get("city_block")]) if kec else None
+            out["match"] = {"prov": prov, "kab": kab, "kec": kec, "desa": desa}
+        except Exception as e:                               # noqa: BLE001
+            out["match_error"] = str(e)
+    S().log_activity(g.user["username"], "project.update", target_type="project", target_id=pid, project_id=pid, summary="cari alamat dari koordinat lokasi")
+    return jsonify(out)
+
+
 # ------------------------------------------------------------------------------------------ survei responden
 @bp.get("/projects/<int:pid>/survey")
 @auth.require()

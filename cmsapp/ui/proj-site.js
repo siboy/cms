@@ -42,10 +42,116 @@
     if (M.proyek_lokasi && !M.proyek_lokasi.on) { $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>📍 Lokasi, Wilayah Studi & Survei</b></div>${lockCard(M.proyek_lokasi)}${M.calc_survei && !M.calc_survei.on ? lockCard(M.calc_survei) : ''}</div>`; return; }
     $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>📍 Lokasi, Wilayah Studi & Survei</b></div>
      <p style="color:var(--mut);font-size:12px">Alur: (1) masukkan koordinat lokasi sebagai layer → peta; (2) centang wilayah studi (kab/kota → kecamatan → desa); (3) jumlah penduduk dan responden survei dihitung otomatis dari data Kemendagri.</p>
-     <div class=card id=lyCard>memuat…</div><div class=card id=rgCard>memuat…</div><div class=card id=svCard>memuat…</div></div>`;
+     <div class=card id=lyCard>memuat…</div><div class=card id=siCard>memuat…</div><div class=card id=rgCard>memuat…</div><div class=card id=svCard>memuat…</div></div>`;
     await Promise.all([paintLayers(pid, manage), paintRegions(pid, manage)]);
+    await paintSite(pid, manage);
     if (M.calc_survei && !M.calc_survei.on) $('#svCard').innerHTML = lockCard(M.calc_survei, 'Kalkulator survei responden belum diaktifkan, sehingga jumlah responden per unit tidak dihitung.'); else await paintSurvey(pid, manage);
   };
+
+
+  // ---- alamat lokasi (provinsi → kab/kota → kecamatan → desa dari Data Desa) + rona wilayah
+  const LV = [['prov', 'Provinsi'], ['kab', 'Kab/Kota'], ['kec', 'Kecamatan'], ['desa', 'Desa/Kelurahan']];
+  async function paintSite(pid, manage) {
+    const box = $('#siCard'); if (!box) return;
+    let S, layers;
+    try { [S, layers] = await Promise.all([api('GET', `/projects/${pid}/site`), api('GET', `/projects/${pid}/layers`)]); }
+    catch (e) { box.innerHTML = `<b>📌 Alamat lokasi</b><p class=sum>${esc(e.message)}</p>`; return; }
+    const s = S.site, ly = layers.layers.filter(l => l.info && l.info.center);
+    const dis = manage ? '' : 'disabled';
+    box.innerHTML = `<div class=row2><b>📌 Alamat lokasi proyek</b><span class=sum id=siInfo style="margin-left:auto">${s.updated_at ? 'diperbarui ' + esc(s.updated_at.slice(0, 16)) + (s.updated_by ? ' oleh ' + esc(s.updated_by) : '') : 'belum diisi'}</span></div>
+     ${manage ? `<div class=row2 style="margin:8px 0"><select id=siLy style="min-width:220px">${ly.length ? ly.map(l => `<option value="${l.info.center[0]},${l.info.center[1]}">Titik pusat layer: ${esc(l.name)} (${l.info.center[0].toFixed(5)}, ${l.info.center[1].toFixed(5)})</option>`).join('') : '<option value="">— belum ada layer koordinat —</option>'}</select>
+       <button type=button id=siGeo ${ly.length ? '' : 'disabled'} title="Mengirim satu titik koordinat itu ke OpenStreetMap (Nominatim) untuk dicari alamatnya">🔎 Cari alamat dari koordinat</button><span class=sum id=siMsg></span></div>` : ''}
+     <div class=grid2 style="margin:6px 0">${LV.map(([k, lb]) => `<label>${lb}<select id=si_${k} ${dis}><option value="">— pilih —</option></select></label>`).join('')}</div>
+     <label style="display:flex;flex-direction:column;font-size:12px;gap:2px">Alamat lokasi (jalan, RT/RW, patokan)<textarea id=siAddr rows=2 ${dis} maxlength=500 placeholder="mis. Jl. Raya Anyer KM 12, Kramatwatu">${esc(s.address || '')}</textarea></label>
+     ${manage ? '<div class=row2 style="justify-content:flex-end;margin-top:8px"><span id=siErr class=err></span><button type=button class=p id=siSave>Simpan alamat</button></div>' : ''}
+     <div id=siRona style="margin-top:10px"></div>`;
+    const sel = k => $('#si_' + k), parentOf = {prov: '', kab: 'prov', kec: 'kab', desa: 'kec'};
+    let lat = s.lat, lon = s.lon, dataErr = null;
+    const fill = async (k, parent, want) => {                 // isi pilihan satu tingkat dari Data Desa
+      const el = sel(k); el.innerHTML = '<option value="">— pilih —</option>';
+      if (k !== 'prov' && !parent) return;
+      try {
+        const r = await api('GET', `/kd/regions?parent=${encodeURIComponent(parent || '')}`);
+        el.innerHTML = '<option value="">— pilih —</option>' + r.items.map(x => `<option value="${esc(x.code)}" data-n="${esc(x.name)}">${esc(x.name)}</option>`).join('');
+        if (want) el.value = want;
+      } catch (e) { dataErr = e.message; }
+    };
+    const rona = r => {
+      if (!r) { $('#siRona').innerHTML = ''; return; }
+      const nm = {prov: 'Provinsi', kab: 'Kab/Kota', kecamatan: 'Kecamatan', desa: 'Desa/Kelurahan', kabkota: 'Kab/Kota', provinsi: 'Provinsi'};
+      let g = '', rows = '';
+      for (const it of r.items) {
+        if (it.group !== g) { g = it.group; rows += `<tr><th colspan=3 style="background:var(--line)">${esc(g)}</th></tr>`; }
+        rows += `<tr><td>${esc(it.label)}</td><td class=n>${it.kind === 'ratio' ? nf(it.value, 2) : nf(it.value)}${it.unit && it.kind !== 'ratio' ? ' ' + esc(it.unit) : ''}</td><td class="n sum">${it.pct != null ? nf(it.pct, 1) + '%' : ''}</td></tr>`;
+      }
+      $('#siRona').innerHTML = `<b>Rona sosial wilayah — ${esc(r.name || r.code)}</b> <span class=sum>(${esc(nm[r.level] || r.level)} · Data Desa Kemendagri${r.period ? ' · ' + esc(r.period) : ''})</span>
+        <table style="margin-top:6px"><tr><th>Indikator</th><th class=n>Nilai</th><th class=n>% penduduk</th></tr>${rows || '<tr><td colspan=3 class=sum>Tidak ada data indikator untuk wilayah ini.</td></tr>'}</table>`;
+    };
+    rona(S.rona);
+    await fill('prov', '', s.prov_code); await fill('kab', s.prov_code, s.kab_code); await fill('kec', s.kab_code, s.kec_code); await fill('desa', s.kec_code, s.desa_code);
+    if (dataErr) $('#siInfo').textContent = 'Data Desa tidak tersedia: ' + dataErr;
+    if (!manage) return;
+    for (const k of ['prov', 'kab', 'kec']) {                 // pilihan bertingkat
+      const nxt = LV[LV.findIndex(x => x[0] === k) + 1][0];
+      sel(k).onchange = async () => { for (let i = LV.findIndex(x => x[0] === nxt); i < 4; i++) sel(LV[i][0]).innerHTML = '<option value="">— pilih —</option>'; await fill(nxt, sel(k).value); };
+    }
+    $('#siGeo').onclick = async () => {
+      const [a, b] = $('#siLy').value.split(',').map(Number), msg = $('#siMsg'); msg.textContent = 'mencari…';
+      try {
+        const r = await api('POST', `/projects/${pid}/site/geocode`, {lat: a, lon: b}); lat = a; lon = b;
+        $('#siAddr').value = r.display_name || '';
+        const m = r.match || {};
+        await fill('prov', '', m.prov && m.prov.code); await fill('kab', m.prov && m.prov.code, m.kab && m.kab.code);
+        await fill('kec', m.kab && m.kab.code, m.kec && m.kec.code); await fill('desa', m.kec && m.kec.code, m.desa && m.desa.code);
+        const got = ['prov', 'kab', 'kec', 'desa'].filter(k => m[k]).length;
+        msg.innerHTML = `<span class=${got === 4 ? 'ok' : 'warnb'}>${got === 4 ? '✓ cocok sampai desa' : got + ' dari 4 tingkat cocok dengan Data Desa — lengkapi manual'}</span> · periksa lalu <b>Simpan alamat</b>`;
+      } catch (e) { msg.innerHTML = `<span class=err>${esc(e.message)}</span>`; }
+    };
+    $('#siSave').onclick = async () => {
+      $('#siErr').textContent = '';
+      try {
+        await api('PUT', `/projects/${pid}/site`, {address: $('#siAddr').value, prov_code: sel('prov').value, kab_code: sel('kab').value, kec_code: sel('kec').value, desa_code: sel('desa').value, lat, lon});
+        note('Alamat lokasi disimpan'); paintSite(pid, manage);
+      } catch (e) { $('#siErr').textContent = e.message; }
+    };
+  }
+
+  // ---- berkas koordinat -> CSV (lat,lon) : CSV/TXT apa adanya; GeoJSON, KML, GPX dikonversi
+  function fileToCsv(name, text) {
+    const ext = (name.split('.').pop() || '').toLowerCase(), rows = []; let geom = null;
+    const pt = (n, lon, lat) => rows.push([n || '', lat, lon]);
+    const ring = (cs, n, g) => { geom = geom || g; (g === 'polygon' && cs.length > 1 && cs[0][0] === cs[cs.length - 1][0] && cs[0][1] === cs[cs.length - 1][1] ? cs.slice(0, -1) : cs).forEach(c => pt(n, c[0], c[1])); };
+    if (ext === 'geojson' || ext === 'json') {
+      const j = JSON.parse(text), fs = j.type === 'FeatureCollection' ? j.features : j.type === 'Feature' ? [j] : [{type: 'Feature', geometry: j, properties: {}}];
+      for (const f of fs) {
+        const g = f.geometry || {}, p = f.properties || {}, n = p.name || p.Name || p.nama || p.label || '';
+        if (g.type === 'Point') { geom = geom || 'point'; pt(n, g.coordinates[0], g.coordinates[1]); }
+        else if (g.type === 'MultiPoint') { geom = geom || 'point'; g.coordinates.forEach(c => pt(n, c[0], c[1])); }
+        else if (g.type === 'LineString') ring(g.coordinates, n, 'line');
+        else if (g.type === 'MultiLineString') ring(g.coordinates[0], n, 'line');
+        else if (g.type === 'Polygon') ring(g.coordinates[0], n, 'polygon');
+        else if (g.type === 'MultiPolygon') ring(g.coordinates[0][0], n, 'polygon');
+        if (geom === 'polygon' || geom === 'line') break;     // satu layer = satu bentuk (bentuk pertama)
+      }
+    } else if (ext === 'kml') {
+      const d = new DOMParser().parseFromString(text, 'text/xml');
+      const cs = el => (el.textContent || '').trim().split(/\s+/).map(s => s.split(',').map(Number)).filter(c => c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1]));
+      for (const pm of d.getElementsByTagName('Placemark')) {
+        const n = (pm.getElementsByTagName('name')[0] || {}).textContent || '';
+        const poly = pm.getElementsByTagName('Polygon')[0], line = pm.getElementsByTagName('LineString')[0], p = pm.getElementsByTagName('Point')[0];
+        if (poly) { ring(cs(poly.getElementsByTagName('coordinates')[0]), n, 'polygon'); break; }
+        if (line) { ring(cs(line.getElementsByTagName('coordinates')[0]), n, 'line'); break; }
+        if (p) { geom = geom || 'point'; cs(p.getElementsByTagName('coordinates')[0]).forEach(c => pt(n, c[0], c[1])); }
+      }
+    } else if (ext === 'gpx') {
+      const d = new DOMParser().parseFromString(text, 'text/xml'), at = (e, k) => parseFloat(e.getAttribute(k));
+      const trk = [...d.getElementsByTagName('trkpt')];
+      if (trk.length) { geom = 'line'; trk.forEach(e => pt('', at(e, 'lon'), at(e, 'lat'))); }
+      else { geom = 'point'; [...d.getElementsByTagName('wpt')].forEach(e => pt((e.getElementsByTagName('name')[0] || {}).textContent || '', at(e, 'lon'), at(e, 'lat'))); }
+    } else return {csv: text, geom: null};
+    if (!rows.length) throw new Error('tidak ada koordinat yang terbaca dari berkas ini');
+    return {csv: 'nama,lat,lon\n' + rows.map(r => r.map(csvCell).join(',')).join('\n'), geom};
+  }
 
   // ---- layer koordinat
   async function paintLayers(pid, manage) {
@@ -56,7 +162,7 @@
        <td class=n>${l.info.n}</td><td class=sum>${l.info.area_ha != null ? 'luas ±' + nf(l.info.area_ha, 1) + ' ha' : ''}${l.info.length_km != null ? 'panjang ±' + nf(l.info.length_km, 2) + ' km' : ''}${l.info.center ? ' · pusat ' + l.info.center.map(v => v.toFixed(5)).join(', ') : ''}</td>
        ${manage ? `<td><button type=button data-ed="${l.id}">Ubah</button> <button type=button data-rm="${l.id}">Hapus</button></td>` : ''}</tr>`).join('')}</table>` : '<p class=sum>Belum ada layer. Tambahkan titik lokasi, garis (mis. jalan/sungai), atau poligon (batas tapak) — lewat formulir atau impor CSV.</p>'}`;
     if (!manage) return;
-    $('#lyAdd').onclick = () => layerDlg(pid, null, () => paintLayers(pid, manage));
+    $('#lyAdd').onclick = () => layerDlg(pid, null, () => { paintLayers(pid, manage); paintSite(pid, manage); });
     $('#lyCard').querySelectorAll('[data-ed]').forEach(b => b.onclick = () => layerDlg(pid, layers.find(l => l.id == b.dataset.ed), () => paintLayers(pid, manage)));
     $('#lyCard').querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
       if (!confirm('Hapus layer ini?')) return;
@@ -72,8 +178,8 @@
       <label>Warna<input type=color name=color value="${esc(layer && layer.color || '#2563eb')}"></label>
       <label>Cara input<select name=mode><option value=tabel>Formulir (isi per baris)</option><option value=csv>Impor / tempel CSV</option></select></label></div>
      <div id=lyTabel></div>
-     <div id=lyCsv hidden><div class=sum>Kolom: <code>lat,lon,label</code> (header boleh <i>lat/latitude/lintang</i> dan <i>lon/longitude/bujur</i>; pemisah koma, titik-koma, atau tab; desimal titik atau koma; derajat-menit-detik didukung). Urutan lon,lat yang tertukar dikoreksi otomatis.</div>
-      <div class=row2 style="margin:6px 0"><input type=file id=lyFile accept=".csv,.txt,text/csv,text/plain"><button type=button id=lyTpl>⬇ Contoh CSV</button><button type=button id=lyPrev>Pratinjau</button></div>
+     <div id=lyCsv hidden><div class=sum>Kolom: <code>lat,lon,label</code> (header boleh <i>lat/latitude/lintang</i> dan <i>lon/longitude/bujur</i>; pemisah koma, titik-koma, atau tab; desimal titik atau koma; derajat-menit-detik didukung). Urutan lon,lat yang tertukar dikoreksi otomatis. Berkas <b>GeoJSON, KML, GPX</b> juga bisa diunggah (dikonversi otomatis).</div>
+      <div class=row2 style="margin:6px 0"><input type=file id=lyFile accept=".csv,.txt,.geojson,.json,.kml,.gpx,text/csv,text/plain"><button type=button id=lyTpl>⬇ Contoh CSV</button><button type=button id=lyPrev>Pratinjau</button></div>
       <textarea name=csv rows=8 style="width:100%;font-family:monospace;font-size:12px" placeholder="nama,lat,lon&#10;Titik 1,-6.2000,106.8000&#10;Titik 2,-6.2100,106.8100"></textarea><div id=lyPv></div></div>
      <div class=row2 style="justify-content:flex-end;margin-top:10px"><span id=lyErr class=err></span><button type=button id=lyX>Batal</button><button class=p>Simpan</button></div></form>`, 780);
     const f = m.querySelector('#lyForm');
@@ -88,7 +194,15 @@
     const setMode = () => { const csv = f.mode.value === 'csv'; tab.hidden = csv; m.querySelector('#lyCsv').hidden = !csv; };
     f.mode.onchange = setMode;
     m.querySelector('#lyX').onclick = () => m.remove();
-    m.querySelector('#lyFile').onchange = async e => { const t = await e.target.files[0].text(); f.csv.value = t; };
+    m.querySelector('#lyFile').onchange = async e => {
+      const fl = e.target.files[0]; if (!fl) return;
+      try {
+        const r = fileToCsv(fl.name, await fl.text()); f.csv.value = r.csv;
+        if (r.geom) f.geom.value = r.geom;
+        if (!f.name.value) f.name.value = fl.name.replace(/\.[^.]+$/, '');
+        f.mode.value = 'csv'; setMode(); m.querySelector('#lyPrev').click();    // langsung tampilkan visual hasil unggah
+      } catch (x) { m.querySelector('#lyPv').innerHTML = `<span class=err>${esc(x.message)}</span>`; }
+    };
     m.querySelector('#lyTpl').onclick = () => dl('contoh-koordinat.csv', 'nama,lat,lon\nTitik 1,-6.2000,106.8000\nTitik 2,-6.2100,106.8100\nTitik 3,-6.2050,106.8150\n');
     m.querySelector('#lyPrev').onclick = async () => {
       const box = m.querySelector('#lyPv'); box.textContent = 'memproses…';
