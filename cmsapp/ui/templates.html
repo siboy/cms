@@ -47,6 +47,8 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
  <select id="cat"><option value="">Semua jenis kegiatan</option></select>
 </div>
 <div class="chips" id="kinds"></div>
+<div class="bar"><button id="btTapis">🧪 Penapisan mandiri Pertek</button><span class="mut small">tentukan jalur Persetujuan Teknis (kajian teknis atau standar teknis) dari pertanyaan Permen LHK 5/2021 Lampiran I dan X</span></div>
+<div id="tapis" class="hide"></div>
 <div id="lic"></div>
 <div id="msg"></div>
 <div class="layout">
@@ -107,6 +109,57 @@ async function load(){
    ||'<p class="mut">Tidak ada template yang cocok. Coba kata kunci lain (mis. “tambang”, “jalan”, “pabrik”).</p>';
   if(!st.cur&&r.items.length&&r.items.length<=1)open(r.items[0].id);
 }
+const TP={jalur:'badan_air',kbli:'',jawab:{},res:null,kb:null,err:''};
+const TPJ=[['badan_air','Air limbah → badan air permukaan'],['formasi_pembuangan','Air limbah → formasi tertentu (injeksi)'],['aplikasi_tanah','Pemanfaatan → aplikasi ke tanah'],['formasi_pemanfaatan','Pemanfaatan → formasi tertentu (imbuhan/resapan)'],['laut','Air limbah → laut'],['emisi','Emisi sumber tidak bergerak']];
+async function tpRun(){
+  TP.err='';
+  try{TP.res=await api('POST','/templates/pertek/tapis',{jalur:TP.jalur,jawaban:TP.jawab,kbli:TP.kbli})}catch(e){TP.res=null;TP.err=e.message}
+  tpDraw();
+}
+async function tpKbli(){
+  TP.err='';TP.kb=null;
+  try{TP.kb=await api('GET','/templates/pertek/kbli?q='+encodeURIComponent(TP.kbli))}catch(e){TP.err=e.message}
+  tpDraw();
+}
+function tpDraw(){
+  const r=TP.res,box=$('#tapis');
+  const ans=(k,v)=>`<button data-k="${esc(k)}" data-v="${v}" class="${TP.jawab[k]===v?'p':''}">${v==='ya'?'Ya':'Tidak'}</button>`;
+  let h=`<div class="detail" style="position:static;margin-bottom:12px"><h2>Penapisan mandiri Persetujuan Teknis</h2>
+   <div class="small mut">Bantuan penapisan awal; keputusan akhir tetap pada penanggung jawab dan instansi. Status berlaku peraturan belum diverifikasi.</div>
+   <div class="row" style="margin-top:8px"><select id="tpJ">${TPJ.map(j=>`<option value="${j[0]}" ${TP.jalur===j[0]?'selected':''}>${esc(j[1])}</option>`).join('')}</select>
+   <input id="tpK" class="fill" placeholder="Kode KBLI (mis. 10130) — opsional" value="${esc(TP.kbli)}"><button id="tpCari">Cari KBLI</button></div>`;
+  if(TP.err)h+=`<div class="err" style="margin-top:6px">${esc(TP.err)}</div>`;
+  if(TP.kb){
+    h+=`<div class="note" style="margin-top:8px"><b>KBLI ${esc(TP.kb.kode)}</b><br>`+Object.values(TP.kb.daftar).map(d=>`${d.cocok.length?'✅':'▫️'} ${esc(d.judul)}: ${d.cocok.length?d.cocok.map(x=>esc(x.kbli+' '+x.nama)).join('; '):'tidak ada'}${!d.cocok.length&&d.n_mungkin?` <span class="mut">(kode lebih rinci: ${d.n_mungkin} baris)</span>`:''}`).join('<br>')+`</div>`;
+  }
+  if(r){
+    const qs=(r.langkah||[]).map(s=>`<div class="small">• ${esc(s.pertanyaan)} <b>${esc(s.jawab)}</b></div>`).join('');
+    h+=`<div style="margin-top:8px">${qs}</div>`;
+    (r.peringatan||[]).forEach(p=>h+=`<div class="small mut">ℹ️ ${esc(p)}</div>`);
+    if(TP.jalur==='emisi'){
+      h+=`<div class="row" style="margin-top:8px"><span>Baku Mutu Emisi sudah ditetapkan Pemerintah?</span>${ans('bme_ditetapkan','ya')}${ans('bme_ditetapkan','tidak')}</div>
+      <div class="row" style="margin-top:6px"><span>Lokasi pada WPPMU kelas I? (informasi)</span>${ans('wppmu_kelas_i','ya')}${ans('wppmu_kelas_i','tidak')}</div>`;
+    }else if(!r.selesai&&r.berikut){
+      h+=`<div style="margin-top:10px"><b>${esc(r.berikut.pertanyaan)}</b><div class="row" style="margin-top:6px">${ans(r.berikut.kunci,'ya')}${ans(r.berikut.kunci,'tidak')}</div></div>`;
+    }
+    if(r.selesai&&r.hasil){
+      const x=r.hasil;
+      h+=`<div class="note" style="margin-top:10px;background:var(--acc-soft);color:var(--fg)"><b>${esc(x.judul)}</b><div class="small mut">${esc(r.dasar||'')}</div>`
+        +(x.ketentuan||[]).map(k=>`<div class="small">• ${esc(k)}</div>`).join('')
+        +((x.template||[]).length?`<div style="margin-top:6px">Template: `+x.template.map(t=>t.ada?`<a href="#" data-t="${esc(t.id)}">${esc(t.title)}</a>`:esc(t.title)).join(' · ')+`</div>`:'')+`</div>`;
+    }
+    if(Object.keys(TP.jawab).length)h+=`<div style="margin-top:8px"><button id="tpUlang">Ulangi dari awal</button></div>`;
+  }
+  box.innerHTML=h+'</div>';
+  $('#tpJ').onchange=e=>{TP.jalur=e.target.value;TP.jawab={};TP.res=null;tpRun()};
+  $('#tpK').oninput=e=>{TP.kbli=e.target.value.trim()};
+  $('#tpK').onchange=()=>tpRun();
+  $('#tpCari').onclick=()=>{tpKbli();tpRun()};
+  box.querySelectorAll('button[data-k]').forEach(b=>b.onclick=()=>{TP.jawab[b.dataset.k]=b.dataset.v;tpRun()});
+  box.querySelectorAll('a[data-t]').forEach(a=>a.onclick=e=>{e.preventDefault();open(a.dataset.t);$('#detail').scrollIntoView({behavior:'smooth'})});
+  const u=$('#tpUlang');if(u)u.onclick=()=>{TP.jawab={};TP.res=null;TP.kb=null;tpRun()};
+}
+$('#btTapis').onclick=()=>{const b=$('#tapis');b.classList.toggle('hide');if(!b.classList.contains('hide'))tpRun()};
 $('#kinds').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;st.kind=b.dataset.k;load()};
 $('#cat').onchange=e=>{st.cat=e.target.value;load()};
 $('#q').oninput=e=>{clearTimeout(timer);timer=setTimeout(()=>{st.q=e.target.value.trim();load()},200)};

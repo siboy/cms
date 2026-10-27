@@ -72,6 +72,46 @@ def list_templates():
                     if any(t["category"] == k for t in data["templates"])])
 
 
+def _pertek_judul(ids: list[str]) -> list[dict]:
+    out = []
+    for i in ids:
+        t = tc.get(i)
+        out.append({"id": i, "title": t["title"] if t else i, "ada": bool(t)})
+    return out
+
+
+@bp.get("/pertek/kbli")
+@auth.require(PERM)
+def pertek_kbli():
+    """?q=kode KBLI -> keanggotaan pada daftar penapisan Pertek (Permen LHK 5/2021 Lampiran I dan X)."""
+    if _locked():
+        return jsonify(error="Fitur Template belum diaktifkan.", code="locked"), 403
+    from utils import pertek_penapisan as pp
+    try:
+        return jsonify(pp.cari_kbli(request.args.get("q", "")))
+    except pp.TapisError as e:
+        raise ValueError(str(e))
+
+
+@bp.post("/pertek/tapis")
+@auth.require(PERM)
+def pertek_tapis():
+    """Body: {jalur, jawaban?: {kunci: ya|tidak}, kbli?} -> pertanyaan berikutnya atau hasil penapisan mandiri Pertek."""
+    if _locked():
+        return jsonify(error="Fitur Template belum diaktifkan.", code="locked"), 403
+    from utils import pertek_penapisan as pp
+    d = body()
+    try:
+        r = pp.tapis(str(d.get("jalur") or ""), d.get("jawaban") or {}, d.get("kbli") or "")
+    except pp.TapisError as e:
+        raise ValueError(str(e))
+    if r.get("hasil"):
+        r["hasil"]["template"] = _pertek_judul(r["hasil"]["template"])
+    r["jalur_daftar"] = [{"key": k, "label": v} for k, v in pp.JALUR.items()]
+    r["pertanyaan"] = pp.semua_pertanyaan(r.get("jalur") or d.get("jalur"))
+    return jsonify(r)
+
+
 @bp.get("/<tid>")
 @auth.require(PERM)
 def get_template(tid):

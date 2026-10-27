@@ -65,9 +65,24 @@ lunak/ahli, tidak dibuat; **isian** = angka/syarat dari peraturan atau kajian, b
 | Penimbunan: permeabilitas, kelas fasilitas | uji laboratorium | **isian** | panduan template |
 | Dumping: pemodelan sebaran (termoklin, angin musim) | model hidrodinamika | **model luar** | ahli oseanografi |
 
+## Penapisan mandiri (sudah dibuat)
+
+`utils/pertek_penapisan.py` + data `utils/pertek_kbli.json` (97 baris air limbah berpotensi pencemar tinggi, 59 + 57 baris air limbah ke laut dengan kajian/standar teknis, 76 baris dampak emisi tinggi; di-parse dari Lampiran I dan X). Panel "Penapisan mandiri Pertek" di halaman /templates (API `/api/templates/pertek/kbli` dan `/pertek/tapis`).
+
+| Jalur | Status |
+|---|---|
+| Air limbah ke badan air permukaan (Pertanyaan 1-8) | **lengkap** (aturan keputusan dari teks Lampiran I butir 1) |
+| Pembuangan ke formasi tertentu | **lengkap** (selalu kajian teknis, Lampiran I butir 2) |
+| Pemanfaatan untuk aplikasi ke tanah (Pertanyaan 1-6) | **lengkap** |
+| Pemanfaatan ke formasi tertentu (Pertanyaan 1-4) | **lengkap** |
+| Air limbah ke laut | **sebagian**: keanggotaan KBLI pada dua daftar + faktor bagan alir; jalur akhir dicek ke gambar |
+| Emisi | **sebagian**: BME belum ditetapkan -> kajian teknis (Pasal 30 ayat 4); selebihnya keanggotaan KBLI emisi tinggi + WPPMU, jalur akhir dicek ke gambar |
+
+Catatan data: kode KBLI tabel = awalan (golongan), dengan "kecuali" (mis. golongan 20 kecuali 20292 dan 20295). Tabel laut kajian no. 47 dan 48 sama-sama bertulis 20123 (kemungkinan salah ketik di sumber, tidak diubah). KBLI kurang dari 5 digit tidak dipakai menjawab Pertanyaan 1 otomatis.
+
 ## Belum dibuat
 
-- **Penapisan mandiri** (Permen LHK 5/2021 Lampiran I dan X): teks memuat daftar KBLI berpotensi pencemar tinggi (air) dan bagan alir pertanyaan; hanya Pertanyaan 1 terbaca sebagai teks, pertanyaan lain ada di gambar bagan alir. Langkah berikut: unduh PDF asli, parse daftar KBLI, dan tulis ulang bagan alir setelah diverifikasi.
+- **Penapisan mandiri laut dan emisi (jalur akhir)**: bagan alir Lampiran I butir 5 (laut) dan Lampiran X bagian A (emisi) berupa gambar; percabangannya tidak terbaca penuh. Yang tersedia: keanggotaan KBLI, faktor yang ditanyakan bagan alir, dan aturan yang tertulis di pasal. Langkah berikut: verifikasi dari PDF asli lalu tulis aturan keputusannya.
 - **Model numerik/hidrodinamika** (QUAL2K, WASP, CORMIX, Delft3D, MODFLOW, simulasi reservoir, Nodal Analysis): bukan kalkulator; template mengarahkan ke ahli dan meminta keluaran model.
 - **Andalalin** (analisis dampak lalu lintas): menunggu pengindeksan Permenhub 17/2021; kalkulator lalu lintas yang ada (`lhr_proyeksi`, `kapasitas_jalan`, `derajat_jenuh`, `bangkitan_perjalanan`, dst.) sudah siap dipakai.
 - **Persyaratan fasilitas B3** (Lampiran VI-VII rancang bangun penyimpanan, XIII-XVII persyaratan teknis pemanfaatan, baku mutu emisi insinerasi): belum dirangkum.
