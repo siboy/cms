@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -21,6 +24,19 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
+    private var netCb: ConnectivityManager.NetworkCallback? = null
+
+    /** True bila ada jaringan berinternet (Wi-Fi/seluler/VPN). Dipakai memilih mode cache WebView. */
+    private fun online(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    /** Offline: halaman/skrip aplikasi diambil dari cache walau sudah kedaluwarsa (data & antrean ada di IndexedDB web). */
+    private fun applyCacheMode() {
+        web.settings.cacheMode = if (online()) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_CACHE_ELSE_NETWORK
+    }
     private var fileCb: ValueCallback<Array<Uri>>? = null
     private val picker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
         fileCb?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(res.resultCode, res.data))
@@ -45,8 +61,15 @@ class MainActivity : AppCompatActivity() {
             loadsImagesAutomatically = true
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             mediaPlaybackRequiresUserGesture = false
-            userAgentString = "$userAgentString CMSApp/1.0"
+            userAgentString = "$userAgentString CMSApp/1.1"
         }
+        applyCacheMode()
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        netCb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { runOnUiThread { applyCacheMode() } }
+            override fun onLost(network: Network) { runOnUiThread { applyCacheMode() } }
+        }
+        cm.registerDefaultNetworkCallback(netCb!!)
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false)
 
@@ -59,7 +82,8 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView, url: String?) { swipe.isRefreshing = false }
             override fun onReceivedError(v: WebView, r: WebResourceRequest, e: WebResourceError) {
                 if (r.isForMainFrame) Toast.makeText(this@MainActivity,
-                    "Server tidak terjangkau — cek jaringan/VPN. Tekan-tahan ikon app utk ganti perusahaan.",
+                    if (online()) "Server tidak terjangkau — cek jaringan/VPN. Tekan-tahan ikon app utk ganti perusahaan."
+                    else "Mode offline — halaman belum tersimpan. Buka sekali saat online agar bisa dipakai offline.",
                     Toast.LENGTH_LONG).show()
             }
         }
@@ -87,6 +111,11 @@ class MainActivity : AppCompatActivity() {
             }
         })
         if (savedInstanceState == null) web.loadUrl(base) else web.restoreState(savedInstanceState)
+    }
+
+    override fun onDestroy() {
+        netCb?.let { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(it) }
+        super.onDestroy()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
