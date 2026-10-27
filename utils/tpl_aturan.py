@@ -1,7 +1,7 @@
-"""Template "Outline sesuai aturan" untuk KA (Formulir KA), ANDAL, dan RKL-RPL.
+"""Template "Outline sesuai aturan" untuk UKL-UPL, KA (Formulir KA), ANDAL, dan RKL-RPL.
 
 Beda dengan template konsensus (utils/tpl_catalog): struktur di sini diturunkan dari TEKS PERATURAN, bukan dari
-kebiasaan dokumen contoh. Dasar: PP 22/2021 Pasal 37-38 (Formulir KA), Pasal 39 (ANDAL), dan Pasal 40 (RKL-RPL) + Lampiran II (pedoman
+kebiasaan dokumen contoh. Dasar: PP 22/2021 Pasal 37-38 (Formulir KA), Pasal 52-58 (UKL-UPL), Pasal 39 (ANDAL), dan Pasal 40 (RKL-RPL) + Lampiran II (pedoman
 penyusunan dokumen Andal dan RKL-RPL). Permen LH 16/2012 (Lampiran II/III) sudah digantikan; hanya dipakai
 sebagai pembanding.
 
@@ -17,10 +17,12 @@ from utils import tpl_catalog as tc
 DASAR_ANDAL = "PP 22/2021 Pasal 39 ayat (2) dan Lampiran II (Pedoman Penyusunan Dokumen Andal)"
 DASAR_RKL = "PP 22/2021 Pasal 40 ayat (2) dan Lampiran II (Pedoman Penyusunan Dokumen RKL-RPL)"
 DASAR_KA = "PP 22/2021 Pasal 37-38 dan Lampiran II (Pedoman Pengisian Formulir Kerangka Acuan)"
+DASAR_UKL = "PP 22/2021 Pasal 52-58 dan Lampiran III (Pedoman Pengisian Formulir UKL-UPL)"
 N_ANDAL, N_RKL = 801, 796
 
 TITLE_ANDAL = "ANDAL — Outline sesuai aturan (PP 22/2021 Pasal 39 & Lampiran II)"
 TITLE_KA = "Formulir KA — Outline sesuai aturan (PP 22/2021 Pasal 37-38 & Lampiran II)"
+TITLE_UKL = "UKL-UPL — Outline sesuai aturan (PP 22/2021 Pasal 52-58 & Lampiran III)"
 TITLE_RKL = "RKL-RPL — Outline sesuai aturan (PP 22/2021 Pasal 40 & Lampiran II)"
 
 
@@ -465,15 +467,127 @@ def ka_nodes() -> list[dict]:
     ]
 
 
+# ============================================================================== UKL-UPL (Formulir UKL-UPL)
+def ukl_nodes() -> list[dict]:
+    D = DASAR_UKL
+    mtx_cols = ["No.", "Sumber Dampak", "Jenis Dampak", "Besaran Dampak",
+                "Standar Pengelolaan LH: Bentuk", "Standar Pengelolaan LH: Lokasi", "Standar Pengelolaan LH: Periode",
+                "Standar Pemantauan LH: Bentuk", "Standar Pemantauan LH: Lokasi", "Standar Pemantauan LH: Periode",
+                "Institusi Pengelola dan Pemantau LH (Pelaksana; Pengawas; Penerima Laporan)", "Keterangan"]
+    return [
+        _n(1, "Identitas Penanggung Jawab Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, bagian Identitas Penanggung Jawab. Formulir diisi pada tahap PERENCANAAN usaha dan/atau kegiatan (Pasal 52 ayat (1)).",
+            "B. Isi wajib: (1) nama penanggung jawab usaha dan/atau kegiatan; (2) alamat kantor, kode pos, telepon, faks, dan email.",
+            "C. Cara mengisi: tulis jelas identitas institusi dan orang yang bertanggung jawab atas rencana kegiatan. Bila tidak ada badan usaha/instansi pemerintah (perseorangan), tulis hanya nama penanggung jawab.",
+            "D. Jalur pengajuan (Pasal 57): ke Menteri, gubernur, atau bupati/wali kota menurut kewenangan penerbit perizinan berusaha dan lokasi; lewat sistem perizinan berusaha terintegrasi elektronik untuk pelaku usaha, atau sistem informasi dokumen lingkungan hidup untuk instansi pemerintah.",
+            "E. [dokumen contoh] Korpus UKL-UPL berisi 12.091 berkas (banyak formulir dan matriks terpisah dari satu proyek); judul 'Identitas Penanggung Jawab' ada di sekitar 2.499 berkas.")),
+        _n(1, "Deskripsi Rencana Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, bagian Deskripsi Rencana Usaha dan/atau Kegiatan. Penyusunan formulir dimulai dari data dan informasi deskripsi rencana kegiatan dan/atau Persetujuan Teknis (Pasal 53 ayat (1)).",
+            "B. Isi wajib: nama rencana kegiatan; lokasi (dengan peta); skala/besaran; kesesuaian lokasi dengan tata ruang; persetujuan teknis; komponen kegiatan yang dapat menimbulkan dampak. Sub-bagian di bawah.",
+            "C. Catatan: bila beberapa usaha/kegiatan saling terkait dan berada dalam satu kesatuan hamparan ekosistem, dapat dimuat dalam satu formulir (Pasal 53 ayat (2)).")),
+        _n(2, "Nama Rencana Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir 1.",
+            "B. Isi wajib: nama rencana usaha dan/atau kegiatan.",
+            "C. Cara mengisi: sama persis dengan nama pada permohonan perizinan berusaha/persetujuan pemerintah.")),
+        _n(2, "Lokasi Rencana Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir 2.",
+            "B. Isi wajib: lokasi rencana kegiatan, dilampiri peta yang sesuai kaidah kartografi dan/atau ilustrasi lokasi dengan skala memadai.",
+            "C. Cara mengisi: alamat administratif, koordinat tapak, dan peta tapak. Lokasi dan koordinat harus sama dengan yang dipakai untuk analisis tata ruang dan peta pengelolaan/pemantauan.",
+            "D. [dokumen contoh] Sub-bagian 'Lokasi Rencana Usaha dan/atau Kegiatan' ada di sekitar 1.953 berkas.")),
+        _n(2, "Skala atau Besaran Rencana Usaha dan/atau Kegiatan", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir 3.",
+            "B. Isi wajib: ukuran luasan, panjang, volume, kapasitas, dan/atau besaran lain yang menggambarkan skala kegiatan. Contoh dari pedoman: industri = jenis dan kapasitas produksi, bahan baku dan penolong, energi, air; pertambangan = luas lahan, cadangan dan kualitas bahan tambang, bahan peledak; perhubungan = luas/panjang/volume fasilitas, kedalaman tambatan, bobot kapal; pertanian = luas, kapasitas unit pengolahan, bahan, energi, air; pariwisata = luas lahan, luas fasilitas, jumlah kamar, mesin laundry, kapasitas restoran.",
+            "C. Cara mengisi: tabel besaran dengan satuan dan sumber angka (isian pengguna). Angka harus konsisten dengan kolom 'Besaran Dampak' di matriks.",
+            "D. [dokumen contoh] Sub-bagian 'Skala/Besaran' ada di sekitar 2.219 berkas.")),
+        _n(2, "Kesesuaian Lokasi dengan Rencana Tata Ruang", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir a; PP 22/2021 Pasal 52 ayat (2)-(4).",
+            "B. Isi wajib: kesesuaian lokasi dengan rencana tata ruang (RTRW/RDTR/RZWP3K yang berlaku dan sudah ditetapkan). Dibuktikan dengan konfirmasi atau rekomendasi kesesuaian kegiatan pemanfaatan ruang. Bila lokasi TIDAK sesuai, formulir tidak dapat diperiksa dan dikembalikan.",
+            "C. Cara mengisi: peta tumpang susun (overlay) tapak dengan peta tata ruang; simpulkan tegas: seluruh tapak sesuai, sebagian tidak sesuai, atau seluruhnya tidak sesuai. Bila ragu, minta bukti formal/fatwa instansi penataan ruang. Lampirkan buktinya.",
+            "D. [dokumen contoh] 'Kesesuaian Rencana Usaha dengan Tata Ruang' ada di sekitar 2.169 berkas.")),
+        _n(3, "Kesesuaian dengan Peta Indikatif Penghentian Pemberian Izin Baru (PIPPIB)", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir a (alinea PIPPIB).",
+            "B. Isi: untuk jenis kegiatan tertentu, analisis spasial kesesuaian lokasi dengan PIPPIB (atau peraturan perubahannya/ketentuan baru). Simpulkan lokasi berada di dalam atau di luar kawasan hutan alam primer dan lahan gambut dalam PIPPIB. Bila berada di dalam PIPPIB (kecuali kegiatan yang dikecualikan dalam instruksi presiden yang dirujuk pedoman), formulir tidak dapat diproses lebih lanjut.",
+            "C. Cara mengisi: peta overlay, hasil, dan versi peta PIPPIB yang dipakai (isian pengguna: [ISI: versi PIPPIB dan tanggal]). Bagian ini hanya wajib untuk jenis kegiatan yang terkena; bila tidak relevan, tulis alasannya.",
+            "D. [dokumen contoh] Kata PIPPIB muncul di 4.419 dari 12.091 berkas.")),
+        _n(2, "Persetujuan Teknis", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir b; PP 22/2021 Pasal 57 ayat (3)-(4).",
+            "B. Isi wajib: penjelasan persetujuan teknis terkait rencana kegiatan, yaitu pemenuhan baku mutu lingkungan hidup, pengelolaan limbah B3, dan analisis dampak lalu lintas, yang diterbitkan instansi berwenang. Pengajuan formulir dilengkapi Persetujuan Teknis (Pasal 57 ayat (3)); Persetujuan Teknis terdiri atas: pemenuhan baku mutu air limbah; pemenuhan baku mutu emisi; pengelolaan limbah B3; dan/atau analisis dampak lalu lintas (Pasal 57 ayat (4)).",
+            "C. Cara mengisi: tulis jenis persetujuan, nomor, tanggal, dan instansi penerbit (isian pengguna). Persetujuan Teknis dapat berupa standar yang sudah termuat di sistem informasi dokumen lingkungan hidup atau hasil kajian; bila standar belum termuat, minta ke instansi berwenang. Lampirkan salinannya.",
+            "D. [dokumen contoh] 'Persetujuan teknis' muncul di 5.843 dari 12.091 berkas (3.639 di bagian Surat Pernyataan).")),
+        _n(2, "Komponen Rencana Usaha dan/atau Kegiatan yang Dapat Menimbulkan Dampak Lingkungan", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir c.",
+            "B. Isi wajib: komponen kegiatan yang diyakini dapat menimbulkan dampak lingkungan, diuraikan per tahap pelaksanaan (prakonstruksi, konstruksi, operasi, penutupan/pascaoperasi) sesuai jenis kegiatan. Uraian didasarkan pada persetujuan awal (mis. rencana induk pelabuhan, rencana induk bandara, atau persetujuan awal sejenis).",
+            "C. Cara mengisi: daftar komponen per tahap dengan keterangan singkat (luas, teknik, jumlah). Contoh dari pedoman (peternakan): pra-konstruksi = pembebasan lahan (luas dan status tanah); konstruksi = pembukaan lahan (teknik), pembangunan kantor dan mess (luas bangunan); operasi = pemasukan ternak (jumlah), pemeliharaan ternak (tahap yang menimbulkan limbah); penutupan = pembongkaran kandang.",
+            "D. Khusus kegiatan berskala besar (mis. industri kertas, tekstil): lampirkan diagram alir proses dengan neraca bahan dan neraca air (mass balance, water balance).",
+            "E. [dokumen contoh] Sub-bagian ini ada di sekitar 3.455 berkas; 'neraca air' muncul di 2.027 berkas dan 'diagram alir' di 1.039 berkas.")),
+        _n(3, "Tahap Pra Konstruksi", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir c.",
+            "B. Isi: komponen kegiatan tahap prakonstruksi yang menimbulkan dampak (mis. pembebasan lahan). Bila tidak ada, tulis 'tidak ada'.")),
+        _n(3, "Tahap Konstruksi", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir c.",
+            "B. Isi: komponen kegiatan tahap konstruksi (mis. pembukaan lahan, pembangunan fisik, mobilisasi) beserta ukuran/teknik singkatnya.")),
+        _n(3, "Tahap Operasi", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir c.",
+            "B. Isi: komponen kegiatan tahap operasi (proses produksi/pemeliharaan/pelayanan) yang menghasilkan limbah atau dampak; cantumkan jumlah atau kapasitas bila relevan.")),
+        _n(3, "Tahap Penutupan atau Pasca Operasi", _g(
+            f"A. Dasar aturan: {D}, Deskripsi butir c.",
+            "B. Isi: komponen kegiatan penutupan/pascaoperasi (mis. pembongkaran bangunan, rehabilitasi lahan), bila ada. Tahapan disesuaikan dengan jenis kegiatan.")),
+        _n(1, "Dampak Lingkungan yang Ditimbulkan dan Upaya Pengelolaan Lingkungan Hidup serta Standar Pengelolaan dan Pemantauan Lingkungan Hidup", _g(
+            f"A. Dasar aturan: {D}, bagian Dampak Lingkungan, Upaya Pengelolaan, serta Standar Pengelolaan dan Pemantauan; PP 22/2021 Pasal 55 ayat (1) (Formulir UKL-UPL disusun dalam bentuk standar pengelolaan dan pemantauan lingkungan hidup).",
+            "B. Isi wajib: satu matriks/tabel yang merangkum (1) dampak lingkungan yang ditimbulkan (sumber dampak, jenis dampak, besaran dampak); (2) standar pengelolaan lingkungan hidup (bentuk, lokasi, periode); (3) standar pemantauan lingkungan hidup (bentuk, lokasi, periode); (4) institusi pengelola dan pemantau (pelaksana, pengawas, penerima laporan); (5) keterangan. Kerangka tabel di bawah mengikuti contoh matriks UKL-UPL di pedoman.",
+            "C. Cara mengisi: isi satu baris per kombinasi sumber dampak dan jenis dampak pada tiap tahap kegiatan. Standar yang sudah tersedia di sistem informasi dokumen lingkungan hidup HARUS dipilih bila dapat mengelola/memantau dampak itu; bila belum tersedia, penanggung jawab menyusun sendiri standarnya. Lampirkan peta pengelolaan dan peta pemantauan.",
+            "D. Hubungan antar bagian: tiap komponen kegiatan di bagian Deskripsi harus muncul sebagai sumber dampak di matriks; angka di 'Besaran Dampak' sama dengan skala di bagian Deskripsi.",
+            "E. [dokumen contoh] 'Standar pengelolaan' muncul di 6.767 dari 12.091 berkas; 'peta pengelolaan' di 5.552.",
+        ), [_tbl("Matriks UKL-UPL: dampak lingkungan, standar pengelolaan dan pemantauan, institusi", mtx_cols)]),
+        _n(2, "Dampak Lingkungan yang Ditimbulkan", _g(
+            f"A. Dasar aturan: {D}, Dampak Lingkungan butir 1.",
+            "B. Isi wajib: tiga subkolom: (a) sumber dampak = jenis sub-kegiatan penghasil dampak untuk setiap tahap (prakonstruksi, konstruksi, operasi, penutupan/pascaoperasi); (b) jenis dampak = seluruh dampak lingkungan yang mungkin timbul dari kegiatan pada tiap tahap; (c) besaran dampak = perkiraan besaran, HARUS dinyatakan secara kuantitatif.",
+            "C. Cara mengisi: tulis besaran dengan satuan (mis. debit air limbah liter/hari, timbulan sampah kg/hari, luas lahan terbuka m2). Dasar hitungan dicatat sebagai asumsi (isian pengguna) dan konsisten dengan bagian Skala/Besaran.",
+            "D. [dokumen contoh] 'Besaran dampak' muncul di 10.329 dari 12.091 berkas.")),
+        _n(2, "Standar Pengelolaan Lingkungan Hidup", _g(
+            f"A. Dasar aturan: {D}, Dampak Lingkungan butir 2; PP 22/2021 Pasal 55.",
+            "B. Isi wajib: tiga subkolom: (a) bentuk/jenis standar pengelolaan yang direncanakan untuk tiap dampak; (b) lokasi pengelolaan (dapat merujuk peta pengelolaan lingkungan di lampiran); (c) periode/waktu pengelolaan.",
+            "C. Isi satu standar (bila menyusun sendiri): langkah-langkah pelaksanaan prosedur yang distandarkan beserta keterkaitannya dengan prosedur pengelolaan lain; peringatan tentang kemungkinan di luar kendali bila prosedur dilaksanakan atau tidak dilaksanakan; kualifikasi personel pelaksana; peralatan dan perlengkapan; standar mutu tiap langkah; formulir yang diisi pelaksana.",
+            "D. Contoh dari pedoman (peternakan, limbah cair): pasang drainase permanen pengumpul limbah cair di sekeliling kandang; olah dalam biodigester sebelum dibuang ke sungai; lokasi di sekeliling kandang dan area biodigester; dilakukan terus-menerus sepanjang operasi. Contoh ini bukan untuk disalin.")),
+        _n(2, "Standar Pemantauan Lingkungan Hidup", _g(
+            f"A. Dasar aturan: {D}, Dampak Lingkungan butir 3.",
+            "B. Isi wajib: tiga subkolom: (a) bentuk standar pemantauan = cara, metode, dan/atau teknik memantau kualitas lingkungan yang menjadi indikator keberhasilan pengelolaan (termasuk metode pengumpulan dan analisis data); (b) lokasi pemantauan (dapat merujuk peta pemantauan di lampiran); (c) periode pemantauan.",
+            "C. Cara mengisi: pilih standar pemantauan yang tersedia di sistem informasi dokumen lingkungan hidup; bila belum ada, susun sendiri. Parameter dan baku mutu yang dipakai = isian pengguna ([ISI: peraturan baku mutu yang dirujuk]). Contoh dari pedoman: pemantauan kualitas efluen di saluran outlet instalasi biogas sesuai baku mutu air limbah peternakan, sebulan sekali; kualitas air sungai di tiga titik (sebelum outlet, di bawah outlet, setelah outlet), enam bulan sekali.",
+            "D. [dokumen contoh] 'Standar pemantauan' muncul di 5.456 dari 12.091 berkas.")),
+        _n(2, "Institusi Pengelola dan Pemantau Lingkungan Hidup", _g(
+            f"A. Dasar aturan: {D}, Institusi Pengelola dan Pemantau Lingkungan Hidup.",
+            "B. Isi wajib: institusi yang (a) melaksanakan pengelolaan dan pemantauan; (b) mengawasi pelaksanaan pengelolaan dan pemantauan; (c) menerima laporan berkala hasil pelaksanaan komitmen pengelolaan dan pemantauan, sesuai lingkup tugas instansi dan peraturan yang berlaku.",
+            "C. Cara mengisi: tulis nama pemrakarsa sebagai pelaksana, dan instansi pengawas dan penerima laporan sesuai kewenangan lokasi (dinas lingkungan hidup kabupaten/kota/provinsi dan dinas teknis terkait). Boleh dilengkapi peta, sketsa, atau gambar berskala memadai.")),
+        _n(1, "Surat Pernyataan", _g(
+            f"A. Dasar aturan: {D}, bagian D (Surat Pernyataan); PP 22/2021 Pasal 56 ayat (3) (formulir disertai Pernyataan Kesanggupan Pengelolaan dan Pemantauan Lingkungan Hidup).",
+            "B. Isi wajib: pernyataan/komitmen penanggung jawab untuk melaksanakan UKL-UPL, ditandatangani di atas kertas bermeterai.",
+            "C. Cara mengisi: nama, jabatan, dan nama badan usaha sama dengan bagian Identitas; sebut nama rencana kegiatan dan lokasi; tempat, tanggal, tanda tangan, dan meterai.",
+            "D. Dasar persetujuan: persetujuan Pernyataan Kesanggupan Pengelolaan Lingkungan Hidup paling sedikit mempertimbangkan delapan kriteria (Lampiran III, tahapan pemeriksaan), antara lain kesesuaian tata ruang, kesesuaian kebijakan perlindungan lingkungan dan sumber daya alam, kepentingan pertahanan keamanan, kemampuan penanggung jawab menanggulangi dampak negatif, tidak mengganggu nilai sosial, tidak mengganggu entitas ekologis penting, tidak mengganggu kegiatan sekitar, dan tidak dilampauinya daya dukung dan daya tampung. Siapkan bukti untuk tiap kriteria.",
+            "E. [dokumen contoh] Judul 'Surat Pernyataan' ada di sekitar 4.236 berkas; kata 'bermeterai' hanya muncul di 9 berkas.")),
+        _n(1, "Daftar Pustaka", _g(
+            f"A. Dasar aturan: {D}, bagian E (Daftar Pustaka).",
+            "B. Isi wajib: sumber data dan informasi yang dipakai menyusun UKL-UPL (buku, majalah, makalah, tulisan, laporan penelitian), ditulis dengan tata cara penulisan pustaka.",
+            "C. Cara mengisi: format konsisten; cantumkan peraturan yang dirujuk lengkap dengan nomor dan tahun.",
+            "D. [dokumen contoh] Judul 'Daftar Pustaka' ada di sekitar 2.213 berkas.")),
+        _n(1, "Lampiran", _g(
+            f"A. Dasar aturan: {D}, bagian F (Lampiran).",
+            "B. Isi yang dapat dilampirkan: (1) Persetujuan Teknis terkait rencana kegiatan dan pemenuhan baku mutu lingkungan hidup, pengelolaan limbah B3, serta analisis dampak lalu lintas yang diterbitkan instansi berwenang; (2) bukti formal kesesuaian lokasi dengan rencana tata ruang (konfirmasi atau rekomendasi); (3) informasi detail lain mengenai rencana kegiatan bila dianggap perlu; (4) peta berkaidah kartografi dan/atau ilustrasi lokasi berskala memadai yang menggambarkan lokasi pengelolaan dan lokasi pemantauan; (5) data dan informasi lain yang dianggap perlu.",
+            "C. Cara mengisi: beri nomor tiap lampiran dan rujuk dari matriks (mis. 'lihat peta pengelolaan pada Lampiran 4').",
+            "D. Persetujuan awal terkait rencana kegiatan juga diperiksa pada pemeriksaan administrasi (bersama kesesuaian tata ruang, Persetujuan Teknis, dan kesesuaian isi formulir dengan pedoman); siapkan salinannya bila ada.",
+            "E. [dokumen contoh] 'Foto kegiatan' ada sebagai bagian terpisah di sekitar 3.583 berkas; pedoman tidak mewajibkannya, tetapi boleh dilampirkan sebagai data pendukung.")),
+    ]
+
+
 # ============================================================================== katalog
 def templates() -> list[dict]:
     """Dua template untuk bundel (sumber 'aturan'); n_docs = 0 karena bukan konsensus dokumen contoh."""
     out = []
-    for tid, kind, nodes, title in (("ka-aturan", "ka", ka_nodes(), TITLE_KA),
+    for tid, kind, nodes, title in (("ukl_upl-aturan", "ukl_upl", ukl_nodes(), TITLE_UKL),
+                                    ("ka-aturan", "ka", ka_nodes(), TITLE_KA),
                                     ("andal-aturan", "andal", andal_nodes(), TITLE_ANDAL),
                                     ("rkl_rpl-aturan", "rkl_rpl", rkl_nodes(), TITLE_RKL)):
         t = tc.finalize(tid, kind, "aturan", nodes, 0, "aturan")
         t["title"] = title
-        t["keywords"] = ["sesuai aturan", "pp 22 2021", "pedoman penyusunan", {"ka": "pasal 37 38 formulir", "andal": "pasal 39"}.get(kind, "pasal 40")]
+        t["keywords"] = ["sesuai aturan", "pp 22 2021", "pedoman penyusunan", {"ka": "pasal 37 38 formulir", "andal": "pasal 39", "ukl_upl": "pasal 52 formulir"}.get(kind, "pasal 40")]
         out.append(t)
     return out

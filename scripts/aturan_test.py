@@ -21,7 +21,7 @@ def check(cond, msg):
 
 def t_struktur():
     ts = {t["id"]: t for t in ta.templates()}
-    check(set(ts) == {"ka-aturan", "andal-aturan", "rkl_rpl-aturan"}, "tiga template")
+    check(set(ts) == {"ukl_upl-aturan", "ka-aturan", "andal-aturan", "rkl_rpl-aturan"}, "empat template")
     for tid, t in ts.items():
         check(t["source"] == "aturan" and t["category"] == "aturan" and t["n_docs"] == 0, f"{tid}: sumber aturan, bukan konsensus")
         check(t["title"].split("—")[1].strip().startswith("Outline sesuai aturan"), f"{tid}: judul 'Outline sesuai aturan': {t['title']}")
@@ -63,6 +63,12 @@ def t_struktur():
     check(len(kn["Pelingkupan"]["b"][0]["h"][0]) == 9 and kn["Pelingkupan"]["b"][0]["h"][0][-1].startswith("Dampak Penting Hipotetik"), "kolom tabel Pelingkupan = format isian Lampiran II")
     check(len(kn["Metode Studi"]["b"][0]["h"][0]) == 7 and "Metode Evaluasi" in kn["Metode Studi"]["b"][0]["h"][0], "kolom tabel Metode Studi = format isian Lampiran II")
     check(sum(1 for n in ts["ka-aturan"]["nodes"] if n["l"] == 2 and n["t"].startswith(("Rencana Usaha", "Pengelolaan", "Komponen", "Dampak", "Evaluasi Dampak", "Batas", "Batas Waktu"))) >= 7, "butir pelingkupan a-h ada")
+    u = [n["t"] for n in ts["ukl_upl-aturan"]["nodes"] if n["l"] == 1]
+    check(u[0] == "Identitas Penanggung Jawab Usaha dan/atau Kegiatan" and u[1] == "Deskripsi Rencana Usaha dan/atau Kegiatan"
+          and u[2].startswith("Dampak Lingkungan yang Ditimbulkan dan Upaya") and u[3:] == ["Surat Pernyataan", "Daftar Pustaka", "Lampiran"], f"bab UKL-UPL = Lampiran III: {u}")
+    um = next(n for n in ts["ukl_upl-aturan"]["nodes"] if n["t"].startswith("Dampak Lingkungan yang Ditimbulkan dan Upaya"))
+    check(len(um["b"][0]["h"][0]) == 12 and "Besaran Dampak" in um["b"][0]["h"][0], "kolom matriks UKL-UPL = contoh matriks pedoman")
+    check("Tahap Konstruksi" in [n["t"] for n in ts["ukl_upl-aturan"]["nodes"]], "tahap kegiatan ada")
     alltext = " ".join(n["g"] for t in ts.values() for n in t["nodes"])
     check("Permen LH 16/2012" not in alltext, "tidak merujuk aturan yang sudah digantikan sebagai dasar")
 
@@ -74,7 +80,7 @@ def t_katalog():
         p = os.path.join(td, "templates.json")
         open(p, "w", encoding="utf-8").write(json.dumps({"version": 1, "templates": ta.templates()}))
         tc.BUNDLE, tc._cache["mtime"] = __import__("pathlib").Path(p), None
-        check([x["id"] for x in tc.search("sesuai aturan")] == ["andal-aturan", "ka-aturan", "rkl_rpl-aturan"], f"dicari lewat 'sesuai aturan': {[x['id'] for x in tc.search('sesuai aturan')]}")
+        check([x["id"] for x in tc.search("sesuai aturan")] == ["andal-aturan", "ka-aturan", "rkl_rpl-aturan", "ukl_upl-aturan"], f"dicari lewat 'sesuai aturan': {[x['id'] for x in tc.search('sesuai aturan')]}")
         check([x["id"] for x in tc.search("", "rkl_rpl")] == ["rkl_rpl-aturan"], "filter jenis")
         check(tc.CAT_LABEL["aturan"] == "Outline sesuai aturan", "label kategori")
         t = tc.get("andal-aturan")
