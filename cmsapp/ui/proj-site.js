@@ -194,10 +194,10 @@
   function layerDlg(pid, layer, done) {
     const rowsInit = layer ? layer.points : [['', '', '']];
     const m = modal(`<form id=lyForm><b>${layer ? 'Ubah' : 'Tambah'} layer koordinat</b>
-     <div class=grid2 style="margin:8px 0"><label>Nama layer<input name=name required value="${esc(layer ? layer.name : '')}" placeholder="mis. Batas tapak"></label>
+     <div class=grid2 style="margin:8px 0 0"><label>1 · Cara input<select name=mode><option value=tabel>Formulir (isi per baris)</option><option value=csv>Impor / unggah berkas (CSV, GeoJSON, KML, GPX)</option></select></label></div>
+     <div class=grid2 style="margin:8px 0"><label>2 · Nama layer<input name=name required value="${esc(layer ? layer.name : '')}" placeholder="mis. Batas tapak"></label>
       <label>Jenis<select name=geom>${Object.entries(GEOM).map(([k, v]) => `<option value=${k} ${layer && layer.geom === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <label>Warna<input type=color name=color value="${esc(layer && layer.color || '#2563eb')}"></label>
-      <label>Cara input<select name=mode><option value=tabel>Formulir (isi per baris)</option><option value=csv>Impor / tempel CSV</option></select></label></div>
+      <label>Warna<input type=color name=color value="${esc(layer && layer.color || '#2563eb')}"></label></div>
      <div id=lyTabel></div>
      <div id=lyCsv hidden><div class=sum>Kolom: <code>lat,lon,label</code> (header boleh <i>lat/latitude/lintang</i> dan <i>lon/longitude/bujur</i>; pemisah koma, titik-koma, atau tab; desimal titik atau koma; derajat-menit-detik didukung). Urutan lon,lat yang tertukar dikoreksi otomatis. Berkas <b>GeoJSON, KML, GPX</b> juga bisa diunggah (dikonversi otomatis).</div>
       <div class=row2 style="margin:6px 0"><input type=file id=lyFile accept=".csv,.txt,.geojson,.json,.kml,.gpx,text/csv,text/plain"><button type=button id=lyTpl>⬇ Contoh CSV</button><button type=button id=lyPrev>Pratinjau</button></div>
