@@ -42,7 +42,7 @@ CATEGORY_MODULE = {
     "Kualitas air": "calc_kualitas_air", "Kualitas udara": "calc_udara", "Kebisingan": "calc_bising", "Lalu lintas": "calc_lalin",
     "Hidrologi & erosi": "calc_hidrologi", "Pertambangan & konstruksi": "calc_tambang", "Tata ruang & lahan": "calc_ekonomi",
     "Gas rumah kaca & karbon": "calc_grk", "Analisis biaya-manfaat": "calc_ekonomi",
-    "Material & konstruksi": "calc_tambang", "Limbah B3": "calc_limbah", "Energi & bahan bakar": "calc_grk",
+    "Material & konstruksi": "calc_tambang", "Limbah B3": "calc_limbah", "Energi & bahan bakar": "calc_grk", "Air tanah & injeksi": "calc_limbah",
 }
 SIM_MODULE = {"water": "calc_kualitas_air", "air": "calc_udara", "noise": "calc_bising"}       # simulator 2-D -> modul
 # alat 🧮 (utils/tpl_tools) -> modul
@@ -50,7 +50,7 @@ TOOL_MODULE = {
     "penduduk": "calc_sosial", "tenaga_kerja": "calc_sosial", "air_bersih": "calc_limbah", "air_limbah": "calc_limbah", "sampah": "calc_limbah",
     "air_sungai": "calc_kualitas_air", "udara": "calc_udara", "bising": "calc_bising", "lalu_lintas": "calc_lalin", "limpasan_erosi": "calc_hidrologi",
     "grk": "calc_grk", "biaya_manfaat": "calc_ekonomi", "tata_ruang": "calc_ekonomi", "tambang": "calc_tambang", "keanekaragaman": "calc_hayati",
-    "survei": "calc_survei", "material": "calc_tambang", "energi_bbm": "calc_grk",
+    "survei": "calc_survei", "material": "calc_tambang", "energi_bbm": "calc_grk", "air_tanah_injeksi": "calc_limbah",
 }
 
 

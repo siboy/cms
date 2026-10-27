@@ -65,6 +65,9 @@ lihat grafik historis per semester, peta choropleth anak-wilayah, lalu **proyeks
   tidak menyimpan baku mutu. Model dispersi/hidrologi = penapisan awal, bukan pengganti AERMOD/HEC-HMS. Metode proyeksi
   penduduk baku (aritmatika/geometrik/eksponensial/logistik) juga tersedia di Model multi-faktor, lengkap dgn simpangan
   baku & koefisien korelasi.
+- **Persetujuan Teknis (Pertek)**: 15 rumus tambahan (neraca air, kadar limbah maksimum, BOD sungai, fosfat danau, dosis aplikasi tanah,
+  pemeriksaan lahan dan pond resapan, sizing IPAL, injeksi Darcy/batas tekanan/volumetrik, beban emisi dan lubang sampling cerobong) dan 17 template
+  Pertek "Outline sesuai aturan" (`utils/tpl_pertek.py`: air limbah, emisi, limbah B3). Peta jalur → rumus/simulasi + yang belum dibuat: `docs/pertek-kalkulator.md`.
 - **Simulasi lingkungan** (tab 7, `utils/kd_sim.py` + `kd_sim_schema.py` + `cmsapp/ui/sim-ui.js`): tiga simulator 2-D berwaktu dengan
   heatmap beranimasi (putar/jeda/geser waktu, skala linear/log, garis batas baku mutu, PNG/CSV/rekam WebM):
   (1) **air sungai** — adveksi-dispersi 2-D (MUSCL+RK2) dari titik buangan pabrik, peluruhan orde-1, hujan (hidrograf limpasan:

@@ -44,6 +44,7 @@ KINDS = {
     "ka": "Kerangka Acuan (KA)",
     "andal": "ANDAL",
     "rkl_rpl": "RKL-RPL",
+    "pertek": "Persetujuan Teknis (Pertek)",
 }
 
 # (key, label, kata kunci) -- urutan = prioritas; kata pendek dicocokkan sbg kata utuh
@@ -107,6 +108,26 @@ CATEGORIES_FALLBACK = [
 CAT_LABEL = {k: lbl for k, lbl, _ in CATEGORIES}
 CAT_LABEL["umum"] = "Umum (semua jenis kegiatan)"
 CAT_LABEL["aturan"] = "Outline sesuai aturan"
+# jalur Persetujuan Teknis (utils/tpl_pertek.py; uji scripts/pertek_test.py memastikan sama dengan SPEC)
+CAT_LABEL.update({
+    "air_limbah_badan_air_kajian": "Pertek air limbah ke badan air — kajian teknis",
+    "air_limbah_badan_air_standar": "Pertek air limbah ke badan air — standar teknis",
+    "air_limbah_injeksi": "Pertek air limbah — injeksi ke formasi tertentu",
+    "air_limbah_intrusi_laut": "Pertek air limbah — menahan intrusi air laut",
+    "air_limbah_imbuhan_resapan": "Pertek air limbah — imbuhan dan resapan",
+    "air_limbah_resapan_standar": "Pertek air limbah — resapan (standar teknis)",
+    "air_limbah_tanah_kajian": "Pertek air limbah — aplikasi ke tanah (kajian)",
+    "air_limbah_tanah_standar": "Pertek air limbah — penyiraman/pencucian (standar)",
+    "air_limbah_laut_kajian": "Pertek air limbah ke laut — kajian teknis",
+    "air_limbah_laut_standar": "Pertek air limbah ke laut — standar teknis",
+    "emisi_kajian": "Pertek emisi — kajian teknis",
+    "emisi_standar": "Pertek emisi — standar teknis",
+    "b3_pengumpulan": "Pertek limbah B3 — pengumpulan",
+    "b3_pemanfaatan": "Pertek limbah B3 — pemanfaatan",
+    "b3_pengolahan": "Pertek limbah B3 — pengolahan",
+    "b3_penimbunan": "Pertek limbah B3 — penimbunan",
+    "b3_dumping": "Pertek limbah — dumping (pembuangan) ke laut",
+})
 CAT_LABEL["lainnya"] = "Kegiatan Lainnya"
 _CAT_RE = [(k, re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in sorted(kw, key=len, reverse=True)) + r")(?![a-z0-9])"))
            for k, _lbl, kw in CATEGORIES]

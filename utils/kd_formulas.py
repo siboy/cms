@@ -1998,9 +1998,316 @@ def public_catalog() -> list[dict]:
     return out
 
 
+# =============================================================================== Persetujuan Teknis (Pertek) KLHK
+# Rumus dari teks Permen LHK 5/2021 (Lampiran II & III: air limbah; Lampiran XI: emisi) dan fisika baku yang disebut di sana
+# (Darcy radial untuk injeksi). Batas/baku mutu yang bergantung peraturan TETAP isian pengguna; syarat yang tertulis tegas di
+# Lampiran II (kriteria lahan aplikasi tanah, pond resapan) dicek sebagai pemeriksaan. Penapisan awal, bukan pengganti kajian teknis.
+PTK = ("Pertek", "AMDAL", "UKL-UPL")
+PERTEKREF5 = "Permen LHK 5/2021 (Tata Cara Penerbitan Persetujuan Teknis dan SLO Bidang Pengendalian Pencemaran Lingkungan)"
+
+
+def neraca_air_proses(masuk, dalam_produk, penguapan, lain_habis, limbah_dicatat, toleransi_pct):
+    """Σ air masuk = air habis (dalam produk + penguapan + lain-lain) + air limbah ; selisih dibanding air limbah yang dicatat"""
+    m = sum(masuk)
+    _nn(dalam_produk=dalam_produk, penguapan=penguapan, lain_habis=lain_habis, limbah_dicatat=limbah_dicatat, toleransi_pct=toleransi_pct)
+    if any(x < 0 for x in masuk) or m <= 0:
+        raise CalcError("air masuk harus berisi nilai ≥ 0 dengan jumlah > 0")
+    habis = dalam_produk + penguapan + lain_habis
+    if habis > m:
+        raise CalcError("air yang habis (produk + penguapan + lain-lain) melebihi air masuk: periksa angka")
+    limbah = m - habis
+    selisih = limbah - limbah_dicatat
+    return {"masuk": m, "habis": habis, "limbah": limbah, "selisih": selisih, "selisih_pct": abs(selisih) / m * 100.0,
+            "ok": 1.0 if abs(selisih) / m * 100.0 <= toleransi_pct else 0.0}
+
+
+def kadar_limbah_maks(Cbaku, Qs, Cs, Qw):
+    """Neraca massa: Cbaku·(Qs+Qw) = Cs·Qs + Cw·Qw  →  Cw maks = (Cbaku·(Qs+Qw) − Cs·Qs)/Qw  (Qs,Qw m³/detik; beban = Qw·Cw·86,4 kg/hari)"""
+    _nn(Cbaku=Cbaku, Qs=Qs, Cs=Cs)
+    _pos(Qw=Qw)
+    cw = (Cbaku * (Qs + Qw) - Cs * Qs) / Qw
+    return {"Cw": max(cw, 0.0), "beban": max(cw, 0.0) * Qw * 86.4, "ada_kapasitas": 1.0 if cw > 0 else 0.0,
+            "hulu_melampaui": 1.0 if Cs >= Cbaku else 0.0}
+
+
+def bod_adveksi(L0, B, K1, K3, jarak_m, v_m_det):
+    """L(t) = [L0 − B/(K1+K3)]·e^(−(K1+K3)·t) + B/(K1+K3) ; t = jarak / kecepatan (hari)"""
+    _nn(L0=L0, B=B)
+    _pos(K1=K1, jarak_m=jarak_m, v_m_det=v_m_det)
+    _nn(K3=K3)
+    K = K1 + K3
+    t = jarak_m / v_m_det / 86400.0
+    L = (L0 - B / K) * math.exp(-K * t) + B / K
+    return {"t": t, "L": L, "turun_pct": (1 - L / L0) * 100.0 if L0 > 0 else 0.0}
+
+
+def danau_fosfat(P, V_juta_m3, A_ha, Qo_juta_m3_th):
+    """Ž = 100·V/A ; ρ = Qo/V ; R = 1/(1 + 0,747·ρ^0,507) ; L = P·Ž·ρ/(1−R) ; La = L·A/100"""
+    _pos(P=P, V_juta_m3=V_juta_m3, A_ha=A_ha, Qo_juta_m3_th=Qo_juta_m3_th)
+    z = 100.0 * V_juta_m3 / A_ha
+    rho = Qo_juta_m3_th / V_juta_m3
+    R = 1.0 / (1.0 + 0.747 * rho ** 0.507)
+    L = P * z * rho / (1.0 - R)
+    return {"z": z, "rho": rho, "R": R, "L": L, "La": L * A_ha / 100.0}
+
+
+def dosis_aplikasi_tanah(kapasitas, rasio, dosis_cm, per_aplikasi_cm, flatbed_pct):
+    """Debit = kapasitas × rasio ; Luas = Debit / (dosis cm × 100 m³/ha) ; frekuensi = (dosis/flatbed%)/per aplikasi"""
+    _pos(kapasitas=kapasitas, rasio=rasio, dosis_cm=dosis_cm, per_aplikasi_cm=per_aplikasi_cm)
+    if not (0 < flatbed_pct <= 100):
+        raise CalcError("luas flatbed (% dari lokasi) harus di antara 0 dan 100")
+    debit = kapasitas * rasio
+    dosis_m3_ha = dosis_cm * 100.0
+    tebal_flatbed = dosis_cm / (flatbed_pct / 100.0)
+    n = tebal_flatbed / per_aplikasi_cm
+    return {"debit": debit, "dosis_m3_ha": dosis_m3_ha, "luas": debit / dosis_m3_ha, "tebal_flatbed": tebal_flatbed,
+            "frek": n, "interval_bulan": 12.0 / n}
+
+
+def cek_lahan_aplikasi(gambut, perm_cm_jam, mat_m, lereng_pct):
+    """Syarat lahan aplikasi ke tanah: bukan gambut; permeabilitas 1,5-15 cm/jam; muka air tanah > 2 m; lereng < 30%"""
+    _nn(perm_cm_jam=perm_cm_jam, mat_m=mat_m, lereng_pct=lereng_pct)
+    a = 0.0 if gambut else 1.0
+    b = 1.0 if 1.5 <= perm_cm_jam <= 15 else 0.0
+    c = 1.0 if mat_m > 2 else 0.0
+    d = 1.0 if lereng_pct < 30 else 0.0
+    return {"bukan_gambut": a, "perm_ok": b, "mat_ok": c, "lereng_ok": d, "semua": a * b * c * d}
+
+
+def cek_pond_resapan(jarak_mat_m, karst):
+    """Syarat pond resapan: jarak dasar pond ke muka air tanah > 5 m; lokasi bukan daerah karst"""
+    _nn(jarak_mat_m=jarak_mat_m)
+    a = 1.0 if jarak_mat_m > 5 else 0.0
+    b = 0.0 if karst else 1.0
+    return {"jarak_ok": a, "bukan_karst": b, "semua": a * b}
+
+
+def ipal_luas_hsl(Q_m3_hari, HSL):
+    """A = Q / HSL (beban hidrolik permukaan, m³/m²·hari) ; HLR per jam × 24 untuk dikonversi"""
+    _pos(Q_m3_hari=Q_m3_hari, HSL=HSL)
+    return {"A": Q_m3_hari / HSL, "HLR_jam": HSL / 24.0}
+
+
+def ipal_volume_olr(Q_m3_hari, C_mg_l, OLR):
+    """Beban = Q·C/1000 (kg/hari) ; V = Beban / OLR ; HRT = V/Q × 24"""
+    _pos(Q_m3_hari=Q_m3_hari, C_mg_l=C_mg_l, OLR=OLR)
+    b = Q_m3_hari * C_mg_l / 1000.0
+    v = b / OLR
+    return {"beban": b, "V": v, "HRT": v / Q_m3_hari * 24.0}
+
+
+def ipal_lumpur_aktif(Q_m3_hari, S0, FM, MLSS):
+    """V = Q·S0 / (F/M · X) ; HRT = V/Q × 24 ; beban volumetrik = Q·S0/1000/V"""
+    _pos(Q_m3_hari=Q_m3_hari, S0=S0, FM=FM, MLSS=MLSS)
+    v = Q_m3_hari * S0 / (FM * MLSS)
+    return {"V": v, "HRT": v / Q_m3_hari * 24.0, "beban_vol": Q_m3_hari * S0 / 1000.0 / v}
+
+
+def injeksi_darcy(k_mD, h_m, mu_cP, re_m, rw_m, skin, Pres_kPa, Pwf_kPa):
+    """q = 2π·k·h·(Pwf − Pres) / [μ·(ln(re/rw) + s)]  (aliran radial tunak, fluida tak termampatkan; SI lalu dikonversi)"""
+    _pos(k_mD=k_mD, h_m=h_m, mu_cP=mu_cP, rw_m=rw_m, Pres_kPa=Pres_kPa)
+    if re_m <= rw_m:
+        raise CalcError("jari-jari pengaruh re harus > jari-jari sumur rw")
+    if Pwf_kPa <= Pres_kPa:
+        raise CalcError("tekanan lubang sumur injeksi harus > tekanan reservoir")
+    denom = (mu_cP * 1e-3) * (math.log(re_m / rw_m) + skin)
+    if denom <= 0:
+        raise CalcError("ln(re/rw) + skin harus > 0")
+    q = 2 * math.pi * (k_mD * 9.869233e-16) * h_m * ((Pwf_kPa - Pres_kPa) * 1000.0) / denom      # m³/detik
+    return {"q_hari": q * 86400.0, "q_jam": q * 3600.0, "q_bpd": q * 86400.0 * 6.289811}
+
+
+def injeksi_batas_tekanan(P_rekah_kPa, faktor_aman_pct, rho, D_m, dP_friksi_kPa):
+    """Pwf maks = P_rekah·(1 − fs) ; WHP maks = Pwf maks − ρ·g·D/1000 + ΔP_friksi"""
+    _pos(P_rekah_kPa=P_rekah_kPa, rho=rho, D_m=D_m)
+    _nn(dP_friksi_kPa=dP_friksi_kPa)
+    if not (0 <= faktor_aman_pct < 100):
+        raise CalcError("faktor keamanan harus di antara 0 dan <100%")
+    pwf = P_rekah_kPa * (1 - faktor_aman_pct / 100.0)
+    hid = rho * G_ACC * D_m / 1000.0
+    return {"Pwf": pwf, "hidrostatik": hid, "WHP": pwf - hid + dP_friksi_kPa, "gradien": hid / D_m}
+
+
+def injeksi_volumetrik(A_ha, h_m, phi_pct, fraksi_pct, Q_hari):
+    """Vpori = A·h·φ ; Vinjeksi = Vpori × fraksi pemanfaatan ; umur = V / (Q·365)"""
+    _pos(A_ha=A_ha, h_m=h_m, phi_pct=phi_pct, fraksi_pct=fraksi_pct, Q_hari=Q_hari)
+    if phi_pct > 100 or fraksi_pct > 100:
+        raise CalcError("porositas dan fraksi pemanfaatan tidak boleh > 100%")
+    pori = A_ha * 1e4 * h_m * phi_pct / 100.0
+    v = pori * fraksi_pct / 100.0
+    return {"pori": pori, "V": v, "umur": v / (Q_hari * 365.0)}
+
+
+def beban_emisi_cerobong(v, D, C, T_c, P_kPa, Tn_c, Pn_kPa):
+    """A = π·D²/4 ; Qaktual = v·A ; Qnormal = Qaktual·(P/Pn)·(Tn/T) ; beban = C·Qnormal (mg/Nm³ → g/detik)"""
+    _pos(v=v, D=D, P_kPa=P_kPa, Pn_kPa=Pn_kPa)
+    _nn(C=C)
+    if T_c <= -273.15 or Tn_c <= -273.15:
+        raise CalcError("suhu di bawah nol mutlak")
+    A = math.pi * D * D / 4.0
+    qa = v * A
+    qn = qa * (P_kPa / Pn_kPa) * ((Tn_c + 273.15) / (T_c + 273.15))
+    g_s = C * qn / 1000.0
+    return {"A": A, "Qa": qa, "Qn": qn, "Qn_jam": qn * 3600.0, "g_s": g_s, "kg_jam": g_s * 3.6, "ton_th": g_s * 31536.0 / 1000.0}
+
+
+def titik_sampling_cerobong(bentuk, D, L, W):
+    """Posisi lubang sampling: ≥ 8D setelah gangguan aliran (belokan, pembesaran, penyempitan) dan ≥ 2D sebelum ujung/gangguan berikut;
+    cerobong persegi memakai diameter ekuivalen De = 2·L·W/(L+W)"""
+    if int(bentuk) == 0:
+        _pos(D=D)
+        De = D
+    else:
+        _pos(L=L, W=W)
+        De = 2.0 * L * W / (L + W)
+    return {"De": De, "hilir": 8.0 * De, "hulu": 2.0 * De, "total": 10.0 * De}
+
+
+reg("neraca_air_proses", "Neraca air proses dan air limbah (Pertek)", "Air bersih & air limbah",
+    "Σ masuk = habis (produk + penguapan + lain-lain) + air limbah ; selisih = air limbah hitung − air limbah tercatat",
+    [V("masuk", "Air masuk tiap sumber (pisah koma)", "m³/hari", "120, 30", "air baku, air daur ulang, air hujan yang masuk proses", typ="list"),
+     V("dalam_produk", "Air terikat dalam produk", "m³/hari", 40), V("penguapan", "Penguapan/air habis", "m³/hari", 20),
+     V("lain_habis", "Penggunaan lain yang habis (penyiraman, dll.)", "m³/hari", 10),
+     V("limbah_dicatat", "Air limbah tercatat di diagram neraca", "m³/hari", 78, "0 bila belum ada; dibandingkan dengan hasil hitung"),
+     V("toleransi_pct", "Toleransi selisih", "% dari air masuk", 1, "isian Anda; Lampiran II hanya menyatakan neraca harus balance")],
+    [("masuk", "Jumlah air masuk", "m³/hari"), ("habis", "Air habis", "m³/hari"), ("limbah", "Air limbah (hitung)", "m³/hari"),
+     ("selisih", "Selisih terhadap air limbah tercatat", "m³/hari"), ("selisih_pct", "Selisih", "% air masuk"), ("ok", "Neraca balance? (1=ya)", "")],
+    PERTEKREF5 + ", Lampiran II A.1.a.3.b dan E.b.1: neraca air harus balance antara air diambil dan air digunakan/habis/dibuang.",
+    "Debit air limbah ini dipakai pada hitungan beban pencemar, kapasitas IPAL, dan baku mutu air limbah. Satuan m³/hari atau m³/jam (Lampiran II E).",
+    docs=PTK, run=lambda i: neraca_air_proses(_list(i["masuk"]), i["dalam_produk"], i["penguapan"], i["lain_habis"], i["limbah_dicatat"], i["toleransi_pct"]))
+reg("kadar_limbah_maks", "Kadar air limbah maksimum dari neraca massa badan air (Pertek)", "Kualitas air",
+    "Cw maks = [Cbaku·(Qs+Qw) − Cs·Qs] / Qw ; beban maks = Qw·Cw·86,4",
+    [V("Cbaku", "Baku mutu air (kelas air penerima)", "mg/L", 10, "ISI dari Baku Mutu Air Nasional; bila belum ditetapkan, kelas 2 (Lampiran II)"),
+     V("Qs", "Debit badan air di hulu", "m³/detik", 2.0, "mewakili musim hujan dan kemarau"), V("Cs", "Konsentrasi hulu", "mg/L", 4),
+     V("Qw", "Debit air limbah", "m³/detik", 0.05)],
+    [("Cw", "Kadar maksimum air limbah", "mg/L"), ("beban", "Beban pencemar maksimum", "kg/hari"),
+     ("ada_kapasitas", "Masih ada kapasitas? (1=ya)", ""), ("hulu_melampaui", "Hulu sudah melampaui baku? (1=ya)", "")],
+    PERTEKREF5 + ", Lampiran II A.1.c.1 (metode neraca massa: CR = ΣCiQi/ΣQi).",
+    "Hanya untuk polutan konservatif/inert, atau polutan non-konservatif bila jarak outfall–titik pantau < 1 km (Lampiran II). Untuk BOD/COD/N/P pada jarak lebih jauh gunakan model analitik/numerik.",
+    docs=PTK, run=lambda i: kadar_limbah_maks(i["Cbaku"], i["Qs"], i["Cs"], i["Qw"]))
+reg("bod_adveksi", "Peluruhan BOD di sungai (adveksi + reaksi) (Pertek)", "Kualitas air",
+    "L = [L0 − B/(K1+K3)]·e^(−(K1+K3)·t) + B/(K1+K3) ; t = jarak/kecepatan",
+    [V("L0", "BOD awal setelah pencampuran", "mg/L", 20), V("B", "Kebutuhan oksigen dasar", "g O₂/m³/hari", 0, "0 bila diabaikan"),
+     V("K1", "Koefisien peluruhan BOD K1", "1/hari", 0.3, "rentang parameter kinetik: tabel Lampiran II hal. 107"),
+     V("K3", "Koefisien pengendapan BOD K3", "1/hari", 0.1), V("jarak_m", "Jarak outfall ke titik tinjau", "m", 8640),
+     V("v_m_det", "Kecepatan aliran", "m/detik", 0.5)],
+    [("t", "Waktu tempuh", "hari"), ("L", "BOD di titik tinjau", "mg/L"), ("turun_pct", "Penurunan", "%")],
+    PERTEKREF5 + ", Lampiran II A.1.c.1, model analitik sungai persamaan [1].",
+    "Penapisan awal 1-D untuk parameter BOD. Nilai K1, K3 diambil dari rentang tabel Lampiran II atau kalibrasi; COD memakai bentuk yang sama dengan K5.",
+    docs=PTK, run=lambda i: bod_adveksi(i["L0"], i["B"], i["K1"], i["K3"], i["jarak_m"], i["v_m_det"]))
+reg("danau_fosfat", "Alokasi beban fosfat danau/waduk (Pertek)", "Kualitas air",
+    "Ž = 100·V/A ; ρ = Qo/V ; R = 1/(1+0,747·ρ^0,507) ; L = P·Ž·ρ/(1−R) ; La = L·A/100",
+    [V("P", "Kadar fosfat yang dijaga (acuan baku mutu)", "µg/L", 30, "ISI dari baku mutu/status trofik yang dirujuk"),
+     V("V_juta_m3", "Volume danau", "juta m³", 10), V("A_ha", "Luas perairan", "ha", 500), V("Qo_juta_m3_th", "Debit keluar danau", "juta m³/tahun", 20)],
+    [("z", "Kedalaman rata-rata", "m"), ("rho", "Laju pembilasan ρ", "1/tahun"), ("R", "Bagian P tertahan di sedimen R", ""),
+     ("L", "Alokasi beban per luas", "mg P/m²·tahun"), ("La", "Alokasi beban total", "kg P/tahun")],
+    PERTEKREF5 + ", Lampiran II A.1.c.1, model analitik danau (persamaan 1-5; tipe Vollenweider).",
+    "Untuk danau, waduk, situ. Hasil La dibandingkan dengan beban fosfat yang masuk dari air limbah dan sumber lain.",
+    docs=PTK, run=lambda i: danau_fosfat(i["P"], i["V_juta_m3"], i["A_ha"], i["Qo_juta_m3_th"]))
+reg("dosis_aplikasi_tanah", "Luas lahan dan rotasi aplikasi air limbah ke tanah (Pertek)", "Air bersih & air limbah",
+    "Debit = kapasitas × rasio ; Luas = Debit/(dosis cm × 100 m³/ha) ; frekuensi = (dosis/%flatbed)/per aplikasi",
+    [V("kapasitas", "Kapasitas olah", "ton/tahun", 250000, "mis. ton TBS/tahun"),
+     V("rasio", "Rasio air limbah terhadap produk", "m³/ton", 0.6, "contoh Lampiran II (kelapa sawit): 0,6-0,8"),
+     V("dosis_cm", "Dosis tahunan", "cm rey/tahun", 10, "contoh Lampiran II ≈ 10 cm rey = 1000 m³/ha/tahun; sesuaikan hujan & tanah"),
+     V("per_aplikasi_cm", "Dosis tiap aplikasi", "cm", 10), V("flatbed_pct", "Luas flatbed terhadap luas lokasi", "%", 16.6667, "contoh Lampiran II: 1/6")],
+    [("debit", "Debit air limbah", "m³/tahun"), ("dosis_m3_ha", "Dosis", "m³/ha/tahun"), ("luas", "Luas lokasi pemanfaatan", "ha"),
+     ("tebal_flatbed", "Tebal pada flatbed", "cm/tahun"), ("frek", "Kekerapan aplikasi", "kali/tahun"), ("interval_bulan", "Selang antar aplikasi", "bulan")],
+    PERTEKREF5 + ", Lampiran II D.1.c.2 (contoh perhitungan dosis, debit, dan rotasi).",
+    "Contoh di Lampiran II untuk industri kelapa sawit; rumusnya umum. Dosis disesuaikan curah hujan dan karakteristik tanah setempat dan wajib dilengkapi prosedur agar tidak terjadi run off.",
+    docs=PTK, run=lambda i: dosis_aplikasi_tanah(i["kapasitas"], i["rasio"], i["dosis_cm"], i["per_aplikasi_cm"], i["flatbed_pct"]))
+reg("cek_lahan_aplikasi", "Pemeriksaan syarat lahan aplikasi air limbah ke tanah (Pertek)", "Air bersih & air limbah",
+    "bukan gambut ; permeabilitas 1,5–15 cm/jam ; muka air tanah > 2 m ; lereng < 30%",
+    [V("gambut", "Lahan gambut? (1=ya, 0=bukan)", "", 0), V("perm_cm_jam", "Permeabilitas tanah", "cm/jam", 5), V("mat_m", "Kedalaman muka air tanah", "m", 3.5),
+     V("lereng_pct", "Kelerengan", "%", 12)],
+    [("bukan_gambut", "Bukan gambut (1=ya)", ""), ("perm_ok", "Permeabilitas 1,5–15 cm/jam (1=ya)", ""), ("mat_ok", "Muka air tanah > 2 m (1=ya)", ""),
+     ("lereng_ok", "Lereng < 30% (1=ya)", ""), ("semua", "Semua syarat terpenuhi (1=ya)", "")],
+    PERTEKREF5 + ", Lampiran II D.1.a (syarat areal pemanfaatan air limbah untuk menambah nutrisi tanah).",
+    "Syarat tertulis tegas di Lampiran II. Lokasi pemanfaatan juga harus berpersetujuan lingkungan dan, menurut Lampiran II, disetujui masyarakat dalam radius 500 m (dicek terpisah).",
+    docs=PTK, run=lambda i: cek_lahan_aplikasi(i["gambut"], i["perm_cm_jam"], i["mat_m"], i["lereng_pct"]))
+reg("cek_pond_resapan", "Pemeriksaan syarat pond resapan air limbah (Pertek)", "Air bersih & air limbah",
+    "jarak dasar pond ke muka air tanah > 5 m ; lokasi bukan daerah karst",
+    [V("jarak_mat_m", "Jarak dasar pond ke muka air tanah", "m", 7), V("karst", "Daerah karst? (1=ya, 0=bukan)", "", 0)],
+    [("jarak_ok", "Jarak > 5 m (1=ya)", ""), ("bukan_karst", "Bukan karst (1=ya)", ""), ("semua", "Semua syarat terpenuhi (1=ya)", "")],
+    PERTEKREF5 + ", Lampiran II C dan Lampiran III B (pembangunan pond untuk akuifer bebas dan berpasir).",
+    "Syarat tertulis tegas di Lampiran. Air limbah untuk imbuhan/resapan wajib memenuhi Baku Mutu Air kelas 2 (kajian) atau kelas 3 (standar teknis resapan).",
+    docs=PTK, run=lambda i: cek_pond_resapan(i["jarak_mat_m"], i["karst"]))
+reg("ipal_luas_hsl", "Luas unit pengendap/flotasi dari beban hidrolik permukaan (Pertek)", "Air bersih & air limbah", "A = Q / HSL ; HLR per jam = HSL / 24",
+    [V("Q_m3_hari", "Debit desain", "m³/hari", 480), V("HSL", "Beban hidrolik permukaan", "m³/m²·hari", 32, "contoh kriteria Lampiran II hal. 118-120: clarifier dan DAF; verifikasi dengan kriteria desain yang dipilih")],
+    [("A", "Luas permukaan unit", "m²"), ("HLR_jam", "Beban hidrolik per jam", "m³/m²·jam")],
+    PERTEKREF5 + ", Lampiran II A.1.d.1.c-d (parameter desain sedimentasi/flotasi/clarifier: hydraulic surface loading).",
+    "Perkiraan awal luas; kedalaman dan konfigurasi unit mengikuti kriteria desain rinci oleh ahli desain.",
+    docs=PTK, run=lambda i: ipal_luas_hsl(i["Q_m3_hari"], i["HSL"]))
+reg("ipal_volume_olr", "Volume reaktor biologi dari beban organik (Pertek)", "Air bersih & air limbah", "Beban = Q·C/1000 ; V = Beban/OLR ; HRT = V/Q × 24",
+    [V("Q_m3_hari", "Debit desain", "m³/hari", 480), V("C_mg_l", "COD/BOD masuk", "mg/L", 2000),
+     V("OLR", "Laju pembebanan organik", "kg/m³·hari", 5, "contoh kriteria Lampiran II hal. 119: CSTR 1-5, filter 4-10, UASB 5-15, EGSB/IC 10-30 kg COD/m³·hari")],
+    [("beban", "Beban organik masuk", "kg/hari"), ("V", "Volume reaktor", "m³"), ("HRT", "Waktu tinggal", "jam")],
+    PERTEKREF5 + ", Lampiran II A.1.d.1.c-d (parameter desain biologi anaerob/aerob: organic loading rate, volumetric loading rate).",
+    "Perkiraan awal volume reaktor; pilih OLR sesuai teknologi dan karakter air limbah, dan cek dengan kriteria desain rinci.",
+    docs=PTK, run=lambda i: ipal_volume_olr(i["Q_m3_hari"], i["C_mg_l"], i["OLR"]))
+reg("ipal_lumpur_aktif", "Volume bak lumpur aktif dari F/M (Pertek)", "Air bersih & air limbah", "V = Q·S0/(F/M·X) ; HRT = V/Q × 24 ; beban volumetrik = Q·S0/1000/V",
+    [V("Q_m3_hari", "Debit desain", "m³/hari", 1000), V("S0", "BOD masuk", "mg/L", 300),
+     V("FM", "Rasio F/M", "kg BOD/kg MLSS·hari", 0.2, "contoh kriteria Lampiran II hal. 119-120: 0,05-1,0; low rate 0,05-0,2; conventional 0,2-0,4; high rate 0,4-1,5"),
+     V("MLSS", "Konsentrasi MLSS", "mg/L", 3000, "contoh kriteria: 1500-10.000")],
+    [("V", "Volume bak aerasi", "m³"), ("HRT", "Waktu tinggal", "jam"), ("beban_vol", "Beban BOD volumetrik", "kg/m³·hari")],
+    PERTEKREF5 + ", Lampiran II A.1.d.1.d (kriteria desain pengolahan lumpur aktif: F/M, umur sel, MLSS, waktu detensi).",
+    "Perkiraan awal; bandingkan HRT dan beban volumetrik dengan kriteria desain yang dipilih. Kebutuhan oksigen dan produksi lumpur dihitung terpisah oleh ahli desain.",
+    docs=PTK, run=lambda i: ipal_lumpur_aktif(i["Q_m3_hari"], i["S0"], i["FM"], i["MLSS"]))
+reg("injeksi_darcy", "Laju injeksi dari hukum Darcy radial (Pertek)", "Air tanah & injeksi",
+    "q = 2π·k·h·(Pwf − Pres) / [μ·(ln(re/rw) + s)]",
+    [V("k_mD", "Permeabilitas reservoir", "mD", 100), V("h_m", "Ketebalan zona injeksi", "m", 20), V("mu_cP", "Viskositas fluida injeksi", "cP", 1),
+     V("re_m", "Jari-jari pengaruh sumur", "m", 300), V("rw_m", "Jari-jari lubang sumur", "m", 0.1), V("skin", "Faktor skin", "", 0, "dari uji sumur"),
+     V("Pres_kPa", "Tekanan reservoir", "kPa", 10000), V("Pwf_kPa", "Tekanan lubang sumur injeksi", "kPa", 12000, "harus < tekanan rekah formasi (lihat batas tekanan)")],
+    [("q_hari", "Laju injeksi", "m³/hari"), ("q_jam", "Laju injeksi", "m³/jam"), ("q_bpd", "Laju injeksi", "barel/hari")],
+    PERTEKREF5 + ", Lampiran II B.1.a.4.d (batas laju alir injeksi dengan metode Darcy atau Nodal Analysis).",
+    "Penapisan awal: aliran radial tunak satu fasa tak termampatkan. Kajian rinci (dua fasa, tubing, nodal analysis) oleh ahli reservoir. Isi parameter dari uji sumur dan data reservoir.",
+    docs=PTK, run=lambda i: injeksi_darcy(i["k_mD"], i["h_m"], i["mu_cP"], i["re_m"], i["rw_m"], i["skin"], i["Pres_kPa"], i["Pwf_kPa"]))
+reg("injeksi_batas_tekanan", "Batas tekanan lubang dan kepala sumur injeksi (Pertek)", "Air tanah & injeksi",
+    "Pwf maks = P_rekah·(1 − fs) ; WHP maks = Pwf maks − ρ·g·D/1000 + ΔP_friksi",
+    [V("P_rekah_kPa", "Tekanan rekah formasi di kedalaman target", "kPa", 20000, "dari Leak Off Test (LOT) saat pemboran"),
+     V("faktor_aman_pct", "Faktor keamanan (pengurangan)", "%", 10, "isian Anda/ahli; Lampiran II hanya mensyaratkan lebih kecil dari tekanan rekah"),
+     V("rho", "Densitas fluida injeksi", "kg/m³", 1000), V("D_m", "Kedalaman zona target", "m", 1500),
+     V("dP_friksi_kPa", "Kehilangan tekanan friksi", "kPa", 300)],
+    [("Pwf", "Tekanan lubang sumur maksimum", "kPa"), ("hidrostatik", "Tekanan hidrostatik kolom fluida", "kPa"),
+     ("WHP", "Tekanan kepala sumur maksimum", "kPa"), ("gradien", "Gradien fluida injeksi", "kPa/m")],
+    PERTEKREF5 + ", Lampiran II B.1.a.4.c dan e (batas tekanan injeksi dan tekanan kepala sumur).",
+    "WHP maksimum dihitung dari tekanan lubang maksimum yang lebih kecil dari tekanan rekah, dengan mempertimbangkan gradien fluida dan friksi.",
+    docs=PTK, run=lambda i: injeksi_batas_tekanan(i["P_rekah_kPa"], i["faktor_aman_pct"], i["rho"], i["D_m"], i["dP_friksi_kPa"]))
+reg("injeksi_volumetrik", "Daya tampung reservoir injeksi (metode volumetrik) (Pertek)", "Air tanah & injeksi",
+    "Vpori = A·h·φ ; Vinjeksi = Vpori × fraksi ; umur = Vinjeksi/(Q·365)",
+    [V("A_ha", "Luas daerah kajian injeksi", "ha", 100, "dari peta struktur dan peta isopach"), V("h_m", "Ketebalan netto zona injeksi", "m", 20),
+     V("phi_pct", "Porositas", "%", 20), V("fraksi_pct", "Fraksi ruang pori yang boleh diisi", "%", 10, "isian ahli reservoir (kompresibilitas, batas tekanan)"),
+     V("Q_hari", "Laju injeksi rencana", "m³/hari", 500)],
+    [("pori", "Volume pori", "m³"), ("V", "Volume injeksi yang dapat ditampung", "m³"), ("umur", "Umur injeksi", "tahun")],
+    PERTEKREF5 + ", Lampiran II B.1.a.4.a-b (pemodelan statik: metode volumetrik; luas daerah kajian dari peta struktur/isopach).",
+    "Perkiraan statik. Pemodelan dinamik (simulasi reservoir/material balance) tetap diperlukan bila disyaratkan.",
+    docs=PTK, run=lambda i: injeksi_volumetrik(i["A_ha"], i["h_m"], i["phi_pct"], i["fraksi_pct"], i["Q_hari"]))
+reg("beban_emisi_cerobong", "Beban emisi dari kecepatan alir, diameter, dan konsentrasi cerobong (Pertek)", "Kualitas udara",
+    "Q = v·π·D²/4 ; Qn = Q·(P/Pn)·(Tn/T) ; beban = C·Qn/1000",
+    [V("v", "Kecepatan alir gas", "m/detik", 10), V("D", "Diameter dalam cerobong", "m", 1.0), V("C", "Konsentrasi emisi", "mg/Nm³", 200),
+     V("T_c", "Suhu gas di cerobong", "°C", 150), V("P_kPa", "Tekanan gas", "kPa", 101.325),
+     V("Tn_c", "Suhu kondisi normal", "°C", 25, "ISI sesuai kondisi acuan baku mutu emisi yang dirujuk"),
+     V("Pn_kPa", "Tekanan kondisi normal", "kPa", 101.325, "ISI sesuai kondisi acuan baku mutu emisi yang dirujuk")],
+    [("A", "Luas penampang", "m²"), ("Qa", "Debit aktual", "m³/detik"), ("Qn", "Debit normal", "Nm³/detik"), ("Qn_jam", "Debit normal", "Nm³/jam"),
+     ("g_s", "Laju emisi", "g/detik"), ("kg_jam", "Beban emisi", "kg/jam"), ("ton_th", "Beban emisi", "ton/tahun (operasi terus-menerus)")],
+    PERTEKREF5 + ", Lampiran XI butir 4 (beban emisi = kecepatan alir × luas penampang cerobong × konsentrasi).",
+    "Koreksi O₂ memakai rumus 'Koreksi konsentrasi ke O₂ acuan'. Untuk beberapa cerobong, jumlahkan beban masing-masing. g/detik dapat dimasukkan sebagai sumber pada simulasi udara.",
+    docs=PTK, run=lambda i: beban_emisi_cerobong(i["v"], i["D"], i["C"], i["T_c"], i["P_kPa"], i["Tn_c"], i["Pn_kPa"]))
+reg("titik_sampling_cerobong", "Posisi lubang sampling emisi cerobong (Pertek)", "Kualitas udara",
+    "hilir ≥ 8·De ; hulu ≥ 2·De ; De = D (bulat) atau 2·L·W/(L+W) (persegi)",
+    [V("bentuk", "Bentuk cerobong", "", 0, "", typ="select", options=[[0, "bulat"], [1, "persegi/persegi panjang"]]),
+     V("D", "Diameter (bulat)", "m", 1.2), V("L", "Panjang (persegi)", "m", 1.0), V("W", "Lebar (persegi)", "m", 0.8)],
+    [("De", "Diameter ekuivalen", "m"), ("hilir", "Jarak minimum setelah gangguan aliran (8D)", "m"), ("hulu", "Jarak minimum sebelum ujung/gangguan berikut (2D)", "m"),
+     ("total", "Panjang lurus minimum", "m")],
+    PERTEKREF5 + ", Lampiran XI butir 5 (lubang sampling: 8D dari aliran bawah setelah gangguan dan 2D dari aliran atas).",
+    "Diameter ekuivalen untuk cerobong persegi memakai praktik metode uji emisi; Lampiran XI menyebut panjang dan lebar tanpa merinci rumusnya.",
+    docs=PTK, run=lambda i: titik_sampling_cerobong(i["bentuk"], i["D"], i["L"], i["W"]))
+
+BY_ID.update({e["id"]: e for e in CATALOG})                    # rumus yang didaftarkan setelah BY_ID dibangun (blok Pertek)
+
+
 CATEGORIES = ["Kependudukan", "Tenaga kerja & sosial", "Survei sosial ekonomi", "Keanekaragaman hayati", "Air bersih & air limbah", "Kualitas air", "Limbah padat", "Kualitas udara",
               "Kebisingan", "Lalu lintas", "Hidrologi & erosi", "Pertambangan & konstruksi", "Tata ruang & lahan",
-              "Gas rumah kaca & karbon", "Analisis biaya-manfaat", "Material & konstruksi", "Limbah B3", "Energi & bahan bakar"]
+              "Gas rumah kaca & karbon", "Analisis biaya-manfaat", "Material & konstruksi", "Limbah B3", "Energi & bahan bakar", "Air tanah & injeksi"]
 
 
 # =============================================================================== petunjuk pemakaian tiap rumus
@@ -2212,3 +2519,40 @@ def example_result(id: str):
     except (CalcError, KeyError):
         return None
     return {"inputs": {v["label"]: v["default"] for v in e["vars"]}, "outputs": r["outputs"]}
+
+
+# ---- petunjuk pakai & data yang dibutuhkan: kalkulator Pertek (Permen LHK 5/2021)
+HOWTO.update({
+    "neraca_air_proses": ("Menyusun dan memeriksa neraca air (syarat kajian teknis dan standar teknis air limbah): memastikan air yang masuk = air habis + air limbah.", "Air limbah (hitung) menjadi debit desain IPAL dan input hitungan beban/baku mutu. Selisih terhadap angka di diagram neraca harus ≈ 0; cari kebocoran atau pemakaian yang belum tercatat bila tidak balance."),
+    "kadar_limbah_maks": ("Menghitung kadar air limbah tertinggi yang masih menjaga mutu badan air tetap di baku mutu (dasar usulan baku mutu air limbah lokal, metode neraca massa).", "Cw maks dibandingkan dengan kadar efluen IPAL rencana. Bila hulu sudah melampaui baku (Cs ≥ Cbaku), tidak ada kapasitas: pertimbangkan pemanfaatan air limbah atau kompensasi beban."),
+    "bod_adveksi": ("Memperkirakan BOD di titik hilir sungai dengan peluruhan dan pengendapan (model analitik Lampiran II) untuk parameter BOD.", "L = BOD di titik tinjau. Bandingkan dengan baku mutu air kelas yang berlaku di titik pantau; ulangi untuk beberapa jarak untuk melihat sebaran."),
+    "danau_fosfat": ("Menghitung alokasi beban fosfat yang dapat diterima danau/waduk/situ (model analitik Lampiran II).", "La = beban P total yang boleh masuk; bandingkan dengan beban P dari air limbah dan sumber lain. Hasil sangat sensitif terhadap volume dan debit keluar."),
+    "dosis_aplikasi_tanah": ("Menghitung luas lahan, dosis, dan rotasi aplikasi air limbah ke tanah (kajian teknis pemanfaatan untuk nutrisi tanah).", "Luas lokasi harus tersedia di lahan yang memenuhi syarat (lihat pemeriksaan lahan). Kekerapan = berapa kali per tahun aplikasi diulang agar dosis tahunan tercapai."),
+    "cek_lahan_aplikasi": ("Memeriksa lahan calon lokasi aplikasi air limbah ke tanah terhadap syarat Lampiran II.", "Semua baris harus 1. Satu syarat gagal = lahan tidak boleh dipakai; cari lahan lain atau ubah jalur (mis. pengolahan lebih lanjut)."),
+    "cek_pond_resapan": ("Memeriksa lokasi pond resapan air limbah (resapan ke formasi/permukaan tanah).", "Kedua syarat harus 1. Pond hanya untuk akuifer bebas dan berpasir."),
+    "ipal_luas_hsl": ("Perkiraan awal luas unit sedimentasi, clarifier, atau flotasi dari beban hidrolik permukaan.", "A = luas permukaan. Cocokkan HSL dengan kriteria desain unit (Lampiran II hal. 118-120) dan dimensi rinci dari ahli desain."),
+    "ipal_volume_olr": ("Perkiraan awal volume reaktor biologi anaerob/aerob dari beban organik (OLR).", "V dan HRT dibandingkan dengan kriteria desain teknologi yang dipilih; bandingkan tiap alternatif teknologi dengan mengganti OLR."),
+    "ipal_lumpur_aktif": ("Perkiraan awal volume bak lumpur aktif dari F/M dan MLSS.", "HRT dan beban volumetrik dicek terhadap kriteria Lampiran II (lumpur aktif); kebutuhan oksigen dan produksi lumpur dihitung terpisah."),
+    "injeksi_darcy": ("Perkiraan awal laju injeksi air limbah ke formasi tertentu dari parameter reservoir dan tekanan lubang sumur.", "Laju hasil harus ≥ laju injeksi rencana. Pwf yang dipakai tidak boleh melebihi batas tekanan (lihat 'Batas tekanan lubang dan kepala sumur')."),
+    "injeksi_batas_tekanan": ("Menurunkan batas tekanan lubang sumur dan tekanan kepala sumur dari tekanan rekah formasi (LOT).", "WHP maksimum menjadi batas operasi pemantauan tekanan kepala sumur."),
+    "injeksi_volumetrik": ("Perkiraan statik daya tampung reservoir sasaran injeksi (metode volumetrik).", "Umur injeksi = berapa tahun volume dapat menampung laju rencana; bandingkan dengan masa operasi kegiatan."),
+    "beban_emisi_cerobong": ("Menghitung beban emisi tiap cerobong dari kecepatan alir, diameter, dan konsentrasi hasil uji (butir prakiraan dampak kajian teknis emisi).", "g/detik masuk ke simulasi udara sebagai laju emisi sumber; kg/jam dibandingkan dengan beban emisi dalam usulan nilai mutu emisi."),
+    "titik_sampling_cerobong": ("Menetapkan posisi lubang sampling emisi pada cerobong (rencana pemantauan emisi).", "Jarak 'hilir' dan 'hulu' dipakai untuk menempatkan lubang sampling; bila panjang lurus cerobong kurang, tulis keterbatasannya dan alternatif titiknya."),
+})
+DATA_NEEDED.update({
+    "neraca_air_proses": ["Sumber dan debit air baku tiap unit — pemrakarsa (neraca air, meteran)", "Air dalam produk, penguapan, pemakaian lain — data proses/utilitas", "Diagram neraca air yang diajukan — pemrakarsa"],
+    "kadar_limbah_maks": ["Baku Mutu Air kelas penerima — Baku Mutu Air Nasional / penetapan kelas", "Debit dan mutu badan air hulu (musim hujan dan kemarau) — pengukuran atau data instansi", "Debit air limbah — neraca air"],
+    "bod_adveksi": ["BOD campuran awal — hasil kadar_limbah/campuran_sungai", "K1, K3 — rentang tabel Lampiran II atau kalibrasi", "Jarak outfall–titik tinjau dan kecepatan aliran — pengukuran hidrologi"],
+    "danau_fosfat": ["Volume dan luas danau — pengukuran batimetri/data pengelola", "Debit keluar tahunan — data hidrologi", "Baku mutu/status trofik fosfat — peraturan yang dirujuk"],
+    "dosis_aplikasi_tanah": ["Kapasitas olah dan rasio air limbah per produk — pemrakarsa", "Dosis aplikasi — kajian hujan dan tanah setempat", "Luas flatbed/metode aplikasi — rencana teknis"],
+    "cek_lahan_aplikasi": ["Jenis tanah (gambut atau bukan) — survei tanah", "Permeabilitas tanah — uji lapangan/laboratorium", "Kedalaman muka air tanah — sumur pantau", "Kelerengan — peta kemiringan lereng"],
+    "cek_pond_resapan": ["Kedalaman muka air tanah dan rencana kedalaman pond — survei hidrogeologi", "Status karst lokasi — peta geologi/kawasan karst"],
+    "ipal_luas_hsl": ["Debit desain — neraca air", "Kriteria desain unit (HSL/HLR) — pustaka desain atau pemasok"],
+    "ipal_volume_olr": ["Debit dan konsentrasi COD/BOD — neraca air, uji laboratorium", "OLR teknologi terpilih — kriteria desain/pemasok"],
+    "ipal_lumpur_aktif": ["Debit dan BOD masuk — neraca air, uji laboratorium", "F/M dan MLSS — kriteria desain lumpur aktif"],
+    "injeksi_darcy": ["Permeabilitas, ketebalan, tekanan reservoir — data sumur/uji sumur", "Viskositas fluida — uji fluida", "Skin factor — uji sumur"],
+    "injeksi_batas_tekanan": ["Tekanan rekah formasi — Leak Off Test", "Densitas fluida injeksi dan kedalaman — data sumur", "Kehilangan friksi — hitungan hidrolika tubing"],
+    "injeksi_volumetrik": ["Luas daerah kajian — peta struktur dan isopach", "Ketebalan dan porositas — log sumur/inti batuan", "Fraksi pemanfaatan pori — ahli reservoir"],
+    "beban_emisi_cerobong": ["Kecepatan alir, suhu, tekanan gas — pengukuran emisi cerobong", "Diameter cerobong — gambar teknis", "Konsentrasi emisi — laboratorium terakreditasi"],
+    "titik_sampling_cerobong": ["Dimensi cerobong dan lokasi gangguan aliran (belokan, perubahan penampang) — gambar teknis/inspeksi"],
+})
