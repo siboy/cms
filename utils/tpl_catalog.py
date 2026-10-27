@@ -106,6 +106,7 @@ CATEGORIES_FALLBACK = [
 ]
 CAT_LABEL = {k: lbl for k, lbl, _ in CATEGORIES}
 CAT_LABEL["umum"] = "Umum (semua jenis kegiatan)"
+CAT_LABEL["aturan"] = "Outline sesuai aturan"
 CAT_LABEL["lainnya"] = "Kegiatan Lainnya"
 _CAT_RE = [(k, re.compile(r"(?<![a-z0-9])(?:" + "|".join(re.escape(w) for w in sorted(kw, key=len, reverse=True)) + r")(?![a-z0-9])"))
            for k, _lbl, kw in CATEGORIES]
@@ -427,7 +428,7 @@ def annotate(nodes: list[dict], category: str = "", kind: str = "") -> list[dict
     out = []
     for n in nodes:
         it = items.get(canon_key(n["t"]))
-        if it:
+        if it and not n.get("g"):                       # panduan bawaan node (template sesuai aturan) tidak ditimpa panduan global
             n = {**n, "g": it["g"], **({"gc": it["cat"][category]} if category in (it.get("cat") or {}) else {})}
         tl = tpl_tools.match(n["t"])
         ht = calc_hints(kind, category, canon_key(n["t"])) if kind else []
@@ -469,7 +470,7 @@ def search(q: str = "", kind: str = "", category: str = "") -> list[dict]:
             if score < 0:
                 continue
         res.append((score, t))
-    res.sort(key=lambda x: (-x[0], x[1]["kind"], x[1]["category"] == "umum", -(x[1].get("n_docs") or 0)))
+    res.sort(key=lambda x: (-x[0], x[1]["kind"], {"aturan": 0, "umum": 2}.get(x[1]["category"], 1), -(x[1].get("n_docs") or 0)))
     return [_summary(t) for _s, t in res]
 
 

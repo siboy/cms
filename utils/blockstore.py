@@ -1867,7 +1867,7 @@ class BlockStore:
                     from utils import tpl_tools
                     lst = "; ".join(f"{tpl_tools.get(h['tool'])['label']} ({h['n']} dari {h['of']} dokumen contoh)" for h in ht[:4] if tpl_tools.get(h["tool"]))
                     txt += f" Perhitungan yang lazim di bagian ini pada dokumen contoh sejenis: {lst}. Gunakan tombol 🧮 pada judul bagian ini untuk menghitung lalu menyisipkan hasilnya."
-                last = self.insert_block(doc_id, last, "note", esc_markup(txt), data={"source": "template_guide"}, user=user)
+                last = self.insert_block(doc_id, last, "note", esc_markup(txt).replace("\n", "\\n"), data={"source": "template_guide"}, user=user)
             for b in (n.get("b") or []) if content else []:
                 k = b.get("k")
                 if k == "p":

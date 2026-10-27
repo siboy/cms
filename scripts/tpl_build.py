@@ -220,6 +220,8 @@ def build(cands: list[dict], cache: dict, man: dict, r: SynologyReader, workers:
                     man[n]["used_in"].append(f"{kind}-umum")
     if not only:
         templates.append(tc.finalize("ka-umum", "ka", "umum", tc.BASELINE_KA, 0, "baku"))
+    from utils import tpl_aturan                        # outline dari teks peraturan (bukan konsensus): ikut bila tak ada --only
+    templates += [t for t in tpl_aturan.templates() if not only or f"{t['kind']}:aturan" in only]
     return templates
 
 

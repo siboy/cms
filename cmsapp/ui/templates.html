@@ -28,7 +28,7 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
 .tree .l1{font-weight:700;margin-top:6px}.tree .l2{padding-left:26px}.tree .l3{padding-left:46px;font-size:13px}.tree .l4{padding-left:66px;font-size:12.5px;color:var(--mut)}
 .tree div.n{cursor:pointer}.tree .ic{font-size:11px;color:var(--mut);white-space:nowrap}.tree .tw{display:inline-block;width:12px;color:var(--mut)}
 .tree .x{display:block;margin:2px 8px 8px 30px;padding:8px 10px;border-left:3px solid var(--acc);background:var(--card);border-radius:0 8px 8px 0;font-size:13px;font-weight:400}
-.x .tl{margin-top:8px;font-size:.92em}.x .tl .chip{display:inline-block;border:1px solid var(--acc);border-radius:10px;padding:1px 8px;margin:2px 2px 0 0}.x .g{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:6px 9px;margin-bottom:6px}.x .gc{display:block;margin-top:4px}
+.x .tl{margin-top:8px;font-size:.92em}.x .tl .chip{display:inline-block;border:1px solid var(--acc);border-radius:10px;padding:1px 8px;margin:2px 2px 0 0}.x .g{white-space:pre-line;background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:6px 9px;margin-bottom:6px}.x .gc{display:block;margin-top:4px}
 .x .bp{margin:4px 0;padding:5px 8px;border:1px dashed var(--line);border-radius:6px}.x .cap{font-size:12px;color:var(--mut);margin:6px 0 2px}
 .x table{border-collapse:collapse;font-size:12px;margin:2px 0 6px;max-width:100%}.x th,.x td{border:1px solid var(--line);padding:3px 7px;text-align:left}.x th{background:var(--acc-soft)}.x td{height:16px;color:var(--mut)}
 .x .sh{font-size:11px;color:var(--mut)}.opts{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;margin:6px 0}.opts label{display:flex;gap:5px;align-items:center}
@@ -103,7 +103,7 @@ async function load(){
   $('#msg').innerHTML=r.total?'':'<div class="note">Katalog template belum dibangun di server ini (jalankan <code>scripts/tpl_build.py</code>).</div>';
   $('#list').innerHTML=r.items.map(t=>`<div class="card${st.cur===t.id?' cur':''}${t.locked?' lock':''}" data-id="${esc(t.id)}" data-lock="${t.locked?1:''}"><b>${t.locked?'🔒 ':''}${esc(t.title)}</b>
    <div class="meta">${t.locked?'<span class="badge lk">Terkunci</span>':(st.lic&&!st.lic.active?'<span class="badge fr">Pratinjau gratis</span>':'')}<span class="badge">${esc(t.kind_label)}</span><span class="badge">${t.n_chapters} bab · ${t.n_nodes} bagian</span>
-   <span class="badge ${t.source==='baku'?'':'gr'}">${t.source==='baku'?'kerangka baku':'konsensus '+t.n_docs+' dokumen'}</span></div></div>`).join('')
+   <span class="badge ${t.source==='konsensus'?'gr':''}">${t.source==='aturan'?'sesuai aturan (PP 22/2021)':t.source==='baku'?'kerangka baku':'konsensus '+t.n_docs+' dokumen'}</span></div></div>`).join('')
    ||'<p class="mut">Tidak ada template yang cocok. Coba kata kunci lain (mis. “tambang”, “jalan”, “pabrik”).</p>';
   if(!st.cur&&r.items.length&&r.items.length<=1)open(r.items[0].id);
 }
