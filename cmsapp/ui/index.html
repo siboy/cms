@@ -232,8 +232,8 @@ header b{letter-spacing:.2px}
 </header>
 <div id="app"></div><div id="bar" hidden></div>
 <script src="/offline.js?v=1"></script>
-<script src="/proj-site.js?v=1"></script>
-<script src="/act-ui.js?v=1"></script>
+<script src="/proj-site.js?v=3"></script>
+<script src="/act-ui.js?v=2"></script>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
 let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,section=null,es=null,outline=[],locks={},hb=null,shareTok=null;
@@ -558,10 +558,10 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
   template_project_id:f.template_project_id?(f.template_project_id.value||null):null});
   m.remove();projectsView()}catch(x){note(x.message,1)}}}
 
-async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';curCat='surat';
+async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';if(curTab==='pic')curTab='laporan';if(curTab==='lokasi')curTab='ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
- const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['pic','PIC','👤'],['lokasi','Lokasi & Survei','📍'],['simulasi','Simulasi','🧮'],['tindak','LogBook','📒']];
+ const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['tim','Tim','👥'],['simulasi','Simulasi','🧮'],['tindak','LogBook','📒']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
@@ -678,6 +678,7 @@ async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${cur
  <label>Status <select id=pstatus>${['planning','ongoing','on_hold','completed'].map(s=>`<option value=${s} ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></label>
  <label title="Kosong = ikut hitungan Gantt. Terisi: bila Gantt lebih besar dipakai Gantt; bila lebih kecil dipakai rata-rata (override+Gantt)/2 — klaim manual selalu ditarik ke kenyataan">Override progress % <input type=number id=pov min=0 max=100 value="${p.progress_override??''}" placeholder="(dari Gantt)" style="width:70px"></label>
  </div>`:''}</div>`;
+ {const h=document.createElement('div');h.id='secLok';h.style.marginTop='12px';$('#ptab').append(h);if(window.tabLokasi)window.tabLokasi(h).catch(e=>{h.textContent=e.message})}
  if(!adm)return;
  $('#ptab').querySelectorAll('[data-f]').forEach(el=>el.onblur=()=>api('PATCH',`/projects/${curProj}`,{[el.dataset.f]:el.textContent.trim()}).catch(e=>note(e.message,1)));
  $('#pstart').onchange=e=>api('PATCH',`/projects/${curProj}`,{start_date:e.target.value||null}).catch(x=>note(x.message,1));
@@ -694,6 +695,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  $('#ptab').innerHTML=`<div class=lrwrap id=lrw><div class=lleft>`
  +`<div class=rc data-rt=laporan><div class=rh><b>📄 Laporan</b></div>
    ${['draft','interim','final'].map(t=>`<div style="margin:8px 0 4px;font-weight:600;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">${t} (${grp(t).length})</div>${grp(t).map(row).join('')||'<small style="color:var(--mut)">— belum ada —</small>'}`).join('')}</div>`
+ +`<div class=rc data-rt=pic><div class=rh><b>👤 PIC</b></div><div id=picHost>memuat…</div></div>`
  +`<div class=rc data-rt=dokumen><div class=rh><b>📂 Tambah Dokumen</b></div>`
  +(canManage?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
  <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
@@ -719,7 +721,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
     <textarea id=cin rows=2 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
     <button class=p type=button id=csend>➤</button></div>
   </div></div></div>
- <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=dokumen>📂 Dok</button><button data-m=task>✅ Task</button><button data-m=kalender>📅 Kal</button></div>`;
+ <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=pic>👤 PIC</button><button data-m=dokumen>📂 Dok</button><button data-m=task>✅ Task</button><button data-m=kalender>📅 Kal</button></div>`;
  initChat();renderTasks();renderBerkas();calCur=calCur||new Date();renderCal();
  $('#tkall').onchange=e=>{tkAll=e.target.checked;renderTasks()};
  $('#tkadd').onclick=taskAddDlg;
@@ -730,6 +732,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
   $('#repmenu .cur')?.classList.remove('cur');b.classList.add('cur');
   const m=b.dataset.m;$('#lrw').classList.toggle('showrep',m!=='chat');
   if(m!=='chat')$(`#lrw [data-rt="${m}"]`)?.scrollIntoView({behavior:'smooth',block:'start'})});
+ if($('#picHost'))tabPic($('#picHost')).catch(e=>{$('#picHost').textContent=e.message});
  $('#ptab').querySelectorAll('[data-open]').forEach(a=>a.onclick=e=>{e.preventDefault();openDoc(+a.dataset.open)});
  $('#ptab').querySelectorAll('[data-pr]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/projects/${curProj}/documents/${b.dataset.pr}/print`,{printed:!!+b.dataset.v});tabLaporan()}catch(e){note(e.message,1)}});
  if(!canManage)return;
@@ -924,10 +927,10 @@ async function initChat(){stopChat();chatLast=0;appendChat.day=null;
  inp.addEventListener('input',showMention);
  inp.addEventListener('blur',()=>setTimeout(()=>{mbox.hidden=true},200))}
 
-async function tabPic(){const {documents}=await api('GET',`/projects/${curProj}/documents`);
- if(!documents.length){$('#ptab').innerHTML='<p style="color:var(--mut)">Tautkan laporan dulu di tab Laporan.</p>';return}
+async function tabPic(host){const H=host||$('#ptab');const {documents}=await api('GET',`/projects/${curProj}/documents`);
+ if(!documents.length){H.innerHTML='<p style="color:var(--mut)">Tautkan laporan dulu di bagian Laporan.</p>';return}
  let users=[];try{users=(await api('GET',`/projects/${curProj}/team`)).team}catch(e){}
- $('#ptab').innerHTML=`<p><select id=ad>${documents.map(d=>`<option value=${d.doc_id}>${esc(d.label||d.filename)} (#${d.doc_id})</option>`).join('')}</select>
+ H.innerHTML=`<p><select id=ad>${documents.map(d=>`<option value=${d.doc_id}>${esc(d.label||d.filename)} (#${d.doc_id})</option>`).join('')}</select>
  ${hasPerm('project_team_manage')?' <button type=button id=goadm>Kelola tim…</button>':''}</p>
  ${!users.length?'<p style="color:var(--warn);font-size:13px">Belum ada anggota tim di proyek ini — tambahkan dulu di tab Tim sebelum menandai PIC.</p>':''}
  <div id=asg></div>`;

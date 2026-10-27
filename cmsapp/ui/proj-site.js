@@ -13,7 +13,7 @@
 .ps table{border-collapse:collapse;width:100%}.ps th,.ps td{border-bottom:1px solid var(--line);padding:4px 8px;text-align:left;font-size:13px;vertical-align:top}
 .ps td.n,.ps th.n{text-align:right;font-variant-numeric:tabular-nums}.ps .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:middle;margin-right:5px}
 .ps .mapbox{border:1px solid var(--line);border-radius:6px;overflow:auto;background:#fff}.ps .mapbox img{display:block;max-width:100%;height:auto}
-.ps .tree{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:6px 10px}.ps .tree div.ch{margin-left:20px}
+.ps .tree .sub{margin-left:16px;padding-left:8px;border-left:1px dashed var(--line)}.ps .tree{max-height:min(60vh,520px);overflow:auto;border:1px solid var(--line);border-radius:6px;padding:6px 10px}.ps .tree div.ch{margin-left:20px}
 .ps .tree label{display:inline-flex;gap:6px;align-items:center;margin:2px 0}.ps .tgl{cursor:pointer;color:var(--acc);margin-right:2px;padding:2px 8px;font-size:15px;user-select:none}
 .ps .prog{height:10px;background:var(--line);border-radius:6px;overflow:hidden}.ps .prog>i{display:block;height:100%;background:#2da44e}
 .ps .ok{color:#2da44e}.ps .warnb{color:#b45309}.ps .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ps .sum{font-size:12px;color:var(--mut)}
@@ -36,11 +36,12 @@
   const csvCell = v => /[",\n;]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
 
   // =============================================================================================== LOKASI & SURVEI
-  window.tabLokasi = async function () {
+  window.tabLokasi = async function (host) {
+    const H = host || $('#ptab');
     style();
     const pid = curProj, manage = await canManage(), M = await mods();
-    if (M.proyek_lokasi && !M.proyek_lokasi.on) { $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>📍 Lokasi, Wilayah Studi & Survei</b></div>${lockCard(M.proyek_lokasi)}${M.calc_survei && !M.calc_survei.on ? lockCard(M.calc_survei) : ''}</div>`; return; }
-    $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>📍 Lokasi, Wilayah Studi & Survei</b></div>
+    if (M.proyek_lokasi && !M.proyek_lokasi.on) { H.innerHTML = `<div class="rc ps"><div class=rh><b>📍 Lokasi, Wilayah Studi & Survei</b></div>${lockCard(M.proyek_lokasi)}${M.calc_survei && !M.calc_survei.on ? lockCard(M.calc_survei) : ''}</div>`; return; }
+    H.innerHTML = `<div class="rc ps"><div class=rh><b>📍 Lokasi, Wilayah Studi & Survei</b></div>
      <p style="color:var(--mut);font-size:12px">Alur: (1) masukkan koordinat lokasi sebagai layer → peta; (2) centang wilayah studi (kab/kota → kecamatan → desa); (3) jumlah penduduk dan responden survei dihitung otomatis dari data Kemendagri.</p>
      <div class=card id=lyCard>memuat…</div><div class=card id=siCard>memuat…</div><div class=card id=rgCard>memuat…</div><div class=card id=svCard>memuat…</div></div>`;
     await Promise.all([paintLayers(pid, manage), paintRegions(pid, manage)]);
@@ -266,6 +267,7 @@
       if (box.dataset.open) return;
       box.dataset.open = 1; tg.textContent = '▾'; box.innerHTML = '<span class=sum>memuat…</span>';
       try { box.innerHTML = (await kids(tg.dataset.t)).map(i => item(i, 2)).join(''); } catch (x) { box.innerHTML = `<span class=err>${esc(x.message)}</span>`; return; }
+      box.scrollIntoView({block: 'nearest'});
       if (deep) for (const c of box.querySelectorAll(':scope > div.ch')) if (level(c.dataset.code) < 4 && hasSel(c.dataset.code)) await openNode(c, true);
     };
     $('#rgProv').onchange = async () => {
