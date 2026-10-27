@@ -161,9 +161,17 @@ def act_list(pid, kind):
 def act_create(pid, kind):
     _can_write(pid)
     table = _spec(kind)[0]
-    d = _clean(kind, request.get_json(silent=True) or {}, partial=False)
+    raw = request.get_json(silent=True) or {}
+    d = _clean(kind, raw, partial=False)
     d.update(project_id=pid, created_by=g.user["username"], created_at=_now(), updated_at=_now())
     st = S()
+    sk = raw.get("source_key")                              # kunci idempoten dari antrean offline aplikasi (app-xxxx)
+    if isinstance(sk, str) and re.match(r"^app-[a-z0-9]{6,50}$", sk):
+        with st._tx() as c:
+            ex = st._one(c, f"SELECT id FROM {table} WHERE project_id=? AND source_key=?", (pid, sk))
+        if ex:
+            return jsonify(id=ex["id"], duplicate=True), 200
+        d["source_key"] = sk
     with st._tx() as c:
         cur = st._x(c, f"INSERT INTO {table} ({','.join(d)}) VALUES ({','.join('?' * len(d))})", list(d.values()))
         rid = cur.lastrowid

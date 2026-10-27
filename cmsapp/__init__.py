@@ -101,6 +101,12 @@ def create_app(cfg=Config) -> Flask:
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
+    @app.get("/offline.js")
+    def offline_js():
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "offline.js", mimetype="text/javascript")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     @app.get("/act-ui.js")
     def act_ui_js():
         resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "act-ui.js", mimetype="text/javascript")

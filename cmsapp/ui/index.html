@@ -217,6 +217,7 @@ header b{letter-spacing:.2px}
 <button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bdocs" hidden>Dokumen</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="badm" hidden>Admin</button><button id="bpriv" hidden>🔐 Privilege</button><button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button><button id="bout" hidden>Keluar</button>
 </nav></header>
 <div id="app"></div><div id="bar" hidden></div>
+<script src="/offline.js?v=1"></script>
 <script src="/proj-site.js?v=1"></script>
 <script src="/act-ui.js?v=1"></script>
 <script>
@@ -253,7 +254,7 @@ function listMark(ordered,sep){sep=sep||')';const sel=getSelection();if(!sel.ran
 /* Cache GET per-URL (ETag): server balas 304 tanpa membangun payload -> render dari salinan lokal.
    Teks JSON disimpan (bukan objek) supaya mutasi caller tak mencemari cache; LRU maks 150 entri. */
 const GC=new Map(),GC_MAX=150;
-async function api(m,u,b,raw){const hd=raw?{'X-CMS':'1'}:{...H};const c=m==='GET'?GC.get(u):null;if(c)hd['If-None-Match']=c.etag;
+async function apiNet(m,u,b,raw){const hd=raw?{'X-CMS':'1'}:{...H};const c=m==='GET'?GC.get(u):null;if(c)hd['If-None-Match']=c.etag;
  const r=await fetch('/api'+u,{method:m,headers:hd,body:raw?b:(b?JSON.stringify(b):undefined),credentials:'same-origin'});
  if(r.status===304&&c){GC.delete(u);GC.set(u,c);return JSON.parse(c.text)}
  let t='',j={};try{t=await r.text();j=t?JSON.parse(t):{}}catch(e){}
@@ -261,6 +262,8 @@ async function api(m,u,b,raw){const hd=raw?{'X-CMS':'1'}:{...H};const c=m==='GET
  const et=m==='GET'&&r.headers.get('ETag');
  if(et){if(GC.size>=GC_MAX&&!GC.has(u))GC.delete(GC.keys().next().value);GC.delete(u);GC.set(u,{etag:et,text:t})}
  return j}
+/* Mode offline: api() membungkus apiNet() -- GET dari cache saat tak ada jaringan, mutasi tertentu masuk antrean (offline.js) */
+async function api(m,u,b,raw){return window.OFF?OFF.call(apiNet,m,u,b,raw):apiNet(m,u,b,raw)}
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 /* ===== inline-markup <-> DOM (cermin utils/docx_build.parse_inline) ===== */
 const MARKS={'**':'b','__':'i','++':'u','^^':'sup','~~':'sub'};
@@ -305,7 +308,7 @@ function note(t,err){const b=$('#bar');b.hidden=!t;b.className=err?'err':'';b.te
 async function boot(){const qp=new URLSearchParams(location.search);const rtok=qp.get('reset');
  if(rtok)return resetPasswordView(rtok);
  const stok=qp.get('share');if(stok)return shareView(stok);
- try{me=(await api('GET','/me')).user}catch(e){return loginView()}
+ try{me=(await api('GET','/me')).user;if(window.OFF)OFF.setUser(me.username)}catch(e){return loginView()}
  pruneDrafts();
  $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;$('#bapk').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));
@@ -376,7 +379,7 @@ $('#bnotif').onclick=notifPanel;
 $('#bapk').onclick=async()=>{try{const r=await fetch('/cms.apk',{method:'HEAD'});
  if(r.ok)location.href='/install-apk';else note('APK belum tersedia di server ini — jalankan `make apk` dulu',1)}
  catch(e){note('APK belum tersedia',1)}};
-$('#bout').onclick=async()=>{await api('POST','/logout');location.reload()};
+$('#bout').onclick=async()=>{try{await api('POST','/logout')}catch(e){}if(window.OFF)await OFF.logout();location.reload()};
 $('#bmenu').onclick=()=>$('#navbtns').classList.toggle('open');
 $('#navbtns').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>$('#navbtns').classList.remove('open')));
 async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
