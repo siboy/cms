@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>sdrive — masuk perusahaan</title>
+<style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}
+main{width:min(92vw,380px);background:#1e293b;border-radius:16px;padding:28px}
+h1{margin:0 0 4px;font-size:22px}p{margin:0 0 18px;color:#94a3b8;font-size:14px}
+input,button{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #334155;font-size:16px}
+input{background:#0f172a;color:#e2e8f0;margin-bottom:10px}
+button{background:#f97316;color:#fff;border:0;font-weight:600;cursor:pointer}
+#err{color:#fca5a5;min-height:20px;margin-top:10px;font-size:14px}
+</style></head><body><main>
+<h1>sdrive</h1><p>Masukkan kode perusahaan Anda.</p>
+<form id="f"><input id="c" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="mis. chp" autofocus>
+<button>Masuk</button></form><div id="err"></div>
+<script>
+const f=document.getElementById('f'),c=document.getElementById('c'),e=document.getElementById('err');
+f.onsubmit=async ev=>{ev.preventDefault();e.textContent='';
+const code=c.value.trim().toLowerCase();if(!code){e.textContent='Isi kode perusahaan dulu';return}
+try{const r=await fetch('/api/resolve?code='+encodeURIComponent(code),{cache:'no-store'});
+const j=await r.json().catch(()=>({}));
+if(r.ok&&j.ok)location.href=j.url;else e.textContent=r.status===429?'Terlalu banyak percobaan, tunggu sebentar':'Kode perusahaan tidak dikenal'}
+catch(x){e.textContent='Tidak bisa menghubungi server'}};
+</script></main></body></html>

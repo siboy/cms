@@ -84,6 +84,9 @@ fi
 sed -e "s/__SLUG__/$SLUG/g" -e "s/__DOMAIN__/$DOMAIN/g" -e "s/__PORT__/$PORT/g" \
   "$REPO/docker/nginx-tenant.conf.template" > "$DEST/nginx-$SLUG.conf"
 
+# ---- hub sdrive (kode perusahaan -> subdomain): daftarkan tenant ini bila hub sudah dipasang
+if [ -d "$BASE/_hub" ]; then bash "$REPO/scripts/hub-sync.sh" || echo "[PERINGATAN] hub-sync gagal; jalankan manual" >&2; fi
+
 cat <<EOF
 
 [SELESAI] Tenant '$SLUG' jalan di 127.0.0.1:$PORT  (folder: $DEST)

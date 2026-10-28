@@ -1,0 +1,11 @@
+# Hub sdrive (nginx). Dipasang scripts/hub-sync.sh ke $HOME/cms-tenants/_hub. Host network: perlu
+# menjangkau 127.0.0.1:<port tenant>; yang didengarkan hanya 127.0.0.1:${HUB_PORT} (tunnel cloudflared ke sana).
+services:
+  hub:
+    image: nginx:1.27-alpine
+    container_name: ${HUB_NAME:-cms-hub}
+    restart: unless-stopped
+    network_mode: host
+    command: ["nginx", "-c", "/etc/nginx/hub/nginx.conf", "-g", "daemon off;"]
+    volumes:
+      - ./:/etc/nginx/hub:ro

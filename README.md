@@ -234,3 +234,14 @@ Jalankan DI HOST Docker (butuh docker CLI + `~/cms-tenants`). Panel memegang ken
 JANGAN diekspos publik; akses lewat SSH tunnel/VPN. Login = PANEL_PASSWORD; semua POST wajib header
 `X-PANEL: 1`. Metadata per tenant: `~/cms-tenants/<slug>/panel.json`; kuota storage saat ini
 tampilan/peringatan (soft limit), belum memblokir upload.
+
+## Hub sdrive (`sdrive.team` = pintu masuk, `*.sdrive.team` = router tenant)
+
+- `docker/hub/` (nginx) dipasang `bash scripts/hub-sync.sh [--up]` ke `$HOME/cms-tenants/_hub`; mendengarkan
+  `127.0.0.1:8890`. Apex: halaman "kode perusahaan" + `GET /api/resolve?code=<kode>` -> `{"ok":true,"url":"https://<kode>.sdrive.team"}`
+  (APK memakai ini; fallback ke `<kode>.sdrive.team` bila hub tak terjangkau). Wildcard: Host `<slug>.sdrive.team` -> port tenant.
+- Peta dibuat dari `.env` tiap tenant (hanya TENANT, TENANT_PORT, CMS_BASE_URL). Alias kode: `_hub/aliases` (`cms utama`).
+  `add-tenant.sh` memanggil `hub-sync.sh` otomatis bila `_hub` sudah ada -> tenant baru langsung punya subdomain.
+- Cloudflare (sekali): hapus record apex/`www` yang menunjuk Hostinger; di tunnel tambah Public Hostname `sdrive.team` dan
+  `*.sdrive.team` -> `http://localhost:8890` (wildcard butuh CNAME `*` ke `<tunnel-id>.cfargotunnel.com`, proxied).
+  Hostname eksplisit (`chp`, `cms`) tetap menang atas wildcard.
