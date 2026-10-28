@@ -3,6 +3,15 @@
 Dasar: Peraturan Menteri Perhubungan PM 17 Tahun 2021 tentang Penyelenggaraan Analisis Dampak Lalu Lintas (BN 528/2021; mencabut PM 75/2015, Pasal 59).
 Sudah terindeks di basis pengetahuan (`hp-kb pasal ... --reg permenhub-17-2021`; Lampiran I-VI berupa gambar, di-OCR). Status berlaku belum diverifikasi.
 
+## Dasar hukum (terindeks di basis pengetahuan)
+| Peraturan | Slug | Yang relevan |
+|---|---|---|
+| UU 22/2009 tentang Lalu Lintas dan Angkutan Jalan | `uu-22-2009` | Pasal 99 (kewajiban analisis dampak lalu lintas; muatan minimum), Pasal 100 |
+| PP 30/2021 tentang Penyelenggaraan Bidang LLAJ | `pp-30-2021` | BAB II Analisis Dampak Lalu Lintas (Pasal 2-8); Penjelasan Pasal 6 (trip rate ditetapkan secara nasional menurut jenis kegiatan) |
+| PM 17/2021 tentang Penyelenggaraan Analisis Dampak Lalu Lintas | `permenhub-17-2021` | seluruh isi penapisan dan template di sini |
+
+Perubahan UU 22/2009 oleh UU 11/2020 (Cipta Kerja) belum diperiksa; status berlaku ketiganya belum diverifikasi ke sumber resmi.
+
 ## Yang tersedia
 - **Penapisan** (`utils/andalalin.py`, panel "Penapisan Pertek dan Andalalin" di /templates; API `/api/templates/andalalin/jenis` dan `/andalalin/tapis`):
   51 jenis rencana pembangunan Lampiran I (21 berukuran, 30 "wajib" dengan kategori tetap), kategori dari perjalanan terhitung (Pasal 4 ayat 2 dan butir n-p),
@@ -30,7 +39,7 @@ Sudah terindeks di basis pengetahuan (`hp-kb pasal ... --reg permenhub-17-2021`;
 - Rusun sederhana tidak punya pita tinggi (di atas 800 unit = sedang).
 
 ## Belum dibuat
-- **Trip rate nasional** ("ditetapkan secara nasional", Pasal 12 ayat 1 huruf c): tidak ada di PM 17/2021; kalkulator memakainya sebagai isian.
+- **Trip rate nasional** ("ditetapkan secara nasional", Pasal 12 ayat 1 huruf c; PP 30/2021 Penjelasan Pasal 6 menegaskan faktor trip rate nasional menurut jenis kegiatan): daftar angkanya tidak ada di PM 17/2021 maupun PP 30/2021 (ketetapan terpisah, belum ditemukan/terindeks); kalkulator memakainya sebagai isian.
 - **Standar teknis penanganan dampak lalu lintas yang ditetapkan Menteri** (Pasal 11 ayat 2 huruf c): ketetapan terpisah, belum terindeks.
-- **PP 30/2021** (dasar Pasal 3, 5, 8) dan **UU 22/2009** belum diindeks.
+- Pasal-pasal PP 30/2021 di luar BAB II (angkutan, uji kendaraan, terminal, dan lain-lain) dan Pasal 100 UU 22/2009 belum dikaji untuk template; hanya dasar hukum Andalalin yang dipakai.
 - Lampiran IV-VI (format uji kompetensi, sertifikat, laporan tenaga ahli) bukan bagian dokumen Andalalin; tidak dibuat templatenya.
