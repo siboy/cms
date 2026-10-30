@@ -319,7 +319,14 @@ def patch_doc_meta(doc_id):
         raise ValueError("caption_numbering: 'global' atau 'per_chapter'")
     if "export_guide" in d:
         d["export_guide"] = bool(d["export_guide"])
-    meta = S().set_doc_meta(doc_id, **{k: d[k] for k in ("caption_numbering", "export_guide") if k in d})
+    if "open_edit" in d:
+        if not auth.has_perm(g.user, "pic_assign"):
+            abort(403, description="hanya yang berizin Tandai/Lepas PIC")
+        d["open_edit"] = bool(d["open_edit"])
+    meta = S().set_doc_meta(doc_id, **{k: d[k] for k in ("caption_numbering", "export_guide", "open_edit") if k in d})
+    if "open_edit" in d:
+        S().log_activity(g.user["username"], "doc.open_edit", doc_id=doc_id, target_type="doc",
+                         summary="semua tim penulis boleh edit" if d["open_edit"] else "hanya yang ditunjuk")
     return jsonify(meta=meta)
 
 
@@ -409,6 +416,7 @@ def _blocks_payload(doc_id):
     pm = s.pic_map(doc_id)
     edit_all = auth.has_perm(g.user, "block_edit_all")
     edit_assigned = auth.has_perm(g.user, "block_edit_assigned")
+    open_edit = edit_assigned and auth.doc_open_edit(doc_id)
     restrict = view_restricted()
     visible_heads = s.visible_headings_for_user(doc_id, g.user["id"]) if restrict else None
     res = []
@@ -434,6 +442,8 @@ def _blocks_payload(doc_id):
         else:
             scope_pics = stack[-1][1] if stack else []
         if edit_all:
+            o["can_edit"] = True
+        elif open_edit:
             o["can_edit"] = True
         elif edit_assigned:
             o["can_edit"] = any(p["user_id"] == g.user["id"] for p in scope_pics)

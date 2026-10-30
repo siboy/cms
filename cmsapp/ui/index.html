@@ -1404,7 +1404,7 @@ async function adminView(){closeDoc();const [{users},{docs},groups,adset]=await 
    email:f.email.value,phone_wa:f.phone_wa.value,expertise:f.expertise.value,role:f.role.value});note('Pengguna dibuat');adminView()}catch(x){note(x.message,1)}};
  $('#ad').onchange=()=>assignView(users);if(docs.length)assignView(users)}
 async function assignView(users){const d=+$('#ad').value;const isAdmin=hasPerm('pic_assign');const canOutline=hasPerm('outline_manage');const tl=toolsFor(b);
- const [{items},{map}]=await Promise.all([api('GET',`/docs/${d}/taggable`),api('GET',`/docs/${d}/pic-map`)]);
+ const [{items},{map},{meta}]=await Promise.all([api('GET',`/docs/${d}/taggable`),api('GET',`/docs/${d}/pic-map`),api('GET',`/docs/${d}/meta`).catch(()=>({meta:{}}))]);
  const {assignments}=await api('GET',`/admin/docs/${d}/assign`).catch(()=>({assignments:[]}));
  const parts=['cover','front','body','lampiran'].map(p=>({scope:'part:'+p,label:'Bagian: '+p}));
  const who=sc=>assignments.filter(a=>a.scope===sc);const nonAdmin=users.filter(u=>u.user_id&&!u.is_super&&u.active);
@@ -1421,11 +1421,17 @@ async function assignView(users){const d=+$('#ad').value;const isAdmin=hasPerm('
   const hiddenBadge=it.hidden?' <span class=badge style="background:var(--warn)" title="Tak ikut diekspor DOCX">🙈</span>':'';
   return `<tr><td style="padding-left:${indent}ch">${icon} ${esc((it.label||'').slice(0,70))}${node.scope&&!node.direct?' <small style="color:var(--mut)">(warisan)</small>':''}${done?' ✓':''}${hiddenBadge}</td>
   <td>${pics}</td><td class=acell><button type=button data-menu="${it.id}" title="Aksi">⋮</button></td></tr>`}).join('');
- $('#asg').innerHTML='<div class=otable><table><tr><th>Bagian</th><th>PIC</th>'+(isAdmin?'<th></th>':'')+'</tr>'+partRows+'</table></div>'
+ $('#asg').innerHTML=(isAdmin?`<p style="display:flex;gap:8px;align-items:center"><button type=button id=dmenu title="Pengaturan laporan ini">⋮</button>${meta.open_edit?'<span class=badge style="background:var(--warn)" title="Semua tim penulis boleh mengedit semua blok laporan ini">✏ Semua tim penulis boleh edit</span>':'<small style="color:var(--mut)">Hanya yang ditunjuk (PIC) yang bisa mengedit</small>'}</p>`:'')+'<div class=otable><table><tr><th>Bagian</th><th>PIC</th>'+(isAdmin?'<th></th>':'')+'</tr>'+partRows+'</table></div>'
   +'<h4 style="margin-top:14px">Heading, caption, tabel & gambar</h4>'
   +(canOutline?'<p><button type=button id=addh>+ Tambah heading…</button></p>':'')
   +'<div class=otable><table><tr><th>Item</th><th>PIC</th><th></th></tr>'+(itemRows||'<tr><td colspan=3 style="color:var(--mut)">Belum ada isi.</td></tr>')+'</table></div>'
   +`<p><small>Yang punya izin "Edit Semua Blok" otomatis boleh mengedit semua bab. PIC di heading/caption/tabel/gambar tertentu meng-override warisan dari atasannya (H1/bagian) hanya utk bagian itu ke bawah — klik ⋮ utk kelola PIC/catatan${canOutline?'/pindahkan posisi (heading memindahkan seluruh isi di bawahnya juga)/sembunyikan dari ekspor (tanpa dihapus)/hapus heading (isi di bawahnya tak ikut terhapus)':''}.${isAdmin?'':' Hanya yang punya izin "Tandai/Lepas PIC" yang bisa menambah/melepas penugasan; PIC yang bersangkutan boleh menandai selesai, yang punya izin "Kelola Outline" boleh mengembalikan.'}</small></p>`;
+ if(isAdmin&&$('#dmenu'))$('#dmenu').onclick=()=>{const m=document.createElement('div');m.className='mask';
+  m.innerHTML=`<form class=dlg><b>Pengaturan edit laporan ini</b>
+  <label style="display:flex;gap:8px;align-items:flex-start"><input type=checkbox name=oe ${meta.open_edit?'checked':''} style="margin-top:3px"><span>Semua tim penulis boleh mengedit semua blok<br><small style="color:var(--mut)">Aktif: siapa pun yang berizin "Edit Blok yang Ditugaskan" bisa mengedit seluruh isi laporan ini. Nonaktif (bawaan): hanya penulis yang ditunjuk (PIC) pada bab/bagian itu. Berlaku utk laporan ini saja; laporan lain tidak berubah. Pengguna tanpa izin edit (viewer) tetap tak bisa mengedit.</small></span></label>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Simpan</button></div></form>`;
+  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
+  f.onsubmit=async e=>{e.preventDefault();try{await api('PATCH',`/docs/${d}/meta`,{open_edit:f.oe.checked});note(f.oe.checked?'Semua tim penulis boleh edit laporan ini':'Kembali: hanya yang ditunjuk');m.remove();assignView(users)}catch(x){note(x.message,1)}}};
  if(isAdmin){
   document.querySelectorAll('[data-add]').forEach(sel=>sel.onchange=async()=>{if(!sel.value)return;try{await api('POST','/admin/assign',{doc_id:d,user_id:+sel.value,scope:sel.dataset.add});assignView(users)}catch(e){note(e.message,1)}});
   document.querySelectorAll('[data-rm]').forEach(a=>a.onclick=async e=>{e.preventDefault();const [u,sc]=a.dataset.rm.split('|');try{await api('POST','/admin/assign',{doc_id:d,user_id:+u,scope:sc,remove:true});assignView(users)}catch(x){note(x.message,1)}})}

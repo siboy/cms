@@ -536,6 +536,16 @@ def _doc_guard():
     return None
 
 
+def doc_open_edit(doc_id: int) -> bool:
+    """Saklar per laporan (meta `open_edit`, diatur admin lewat ⋮ di halaman penugasan): True = semua pemegang
+    block_edit_assigned (tim penulis) boleh mengedit SEMUA blok laporan ini, bukan hanya yang ditugaskan.
+    Laporan lain tak terpengaruh. Viewer (tanpa block_edit_assigned) tetap tak bisa mengedit."""
+    try:
+        return bool(store().get_doc_meta(int(doc_id)).get("open_edit"))
+    except KeyError:
+        return False
+
+
 def can_edit(doc_id: int, block_id: int) -> bool:
     """block_edit_all (mis. admin/author/owner/reviewer-qc): semua blok; block_edit_assigned (mis. editor):
     bila PIC efektif blok ini (heading/caption/tabel/gambar terdekat yang ditugaskan, berjenjang - override
@@ -546,5 +556,7 @@ def can_edit(doc_id: int, block_id: int) -> bool:
         return True
     if not has_perm(u, "block_edit_assigned"):
         return False
+    if doc_open_edit(doc_id):
+        return True
     pics, _ = store().effective_pic(doc_id, block_id)
     return any(p["user_id"] == u["id"] for p in pics)
