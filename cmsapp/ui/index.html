@@ -238,13 +238,15 @@ header b{letter-spacing:.2px}
 .mvrow input,.mvpos input{width:18px!important;height:18px;flex:none;margin:0!important;padding:0!important}
 .mvpos{display:flex;gap:14px;flex-wrap:wrap}.mvpos label{display:flex;gap:6px;align-items:center;font-weight:400!important}
 /* Aktivitas saya: tombol mengambang, toast aksi, baris daftar */
-#jfab{position:fixed;right:14px;bottom:14px;z-index:45;width:48px;height:48px;border-radius:50%;font-size:22px;line-height:1;padding:0;display:grid;place-items:center;
+#jfab{position:fixed;right:14px;bottom:14px;z-index:45;width:44px;height:44px;opacity:.94;touch-action:none;cursor:grab;border-radius:50%;font-size:22px;line-height:1;padding:0;display:grid;place-items:center;
  background:linear-gradient(135deg,var(--lilac),var(--mint));color:var(--ink);border:none;box-shadow:0 4px 14px rgba(0,0,0,.3)}
 #jfab #jcnt{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#d1242f;color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 4px}
 #jtoast{position:fixed;left:12px;right:74px;bottom:14px;z-index:46;max-width:560px;background:var(--card);border:1px solid var(--line);border-top:3px solid var(--mint);border-radius:12px;padding:9px 11px;box-shadow:0 6px 20px rgba(0,0,0,.3)}
 #jtoast[hidden]{display:none}#jtoast .jtl{font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 #jtoast .jta{display:flex;gap:8px;margin-top:7px;flex-wrap:wrap}#jtoast .jta button{padding:6px 10px;font-size:12.5px}
 body.jfab #bar{bottom:76px}
+body.jmask #jfab,body.jmask #jtoast{display:none!important}   /* ada dialog terbuka (Pindah, PIC, Riwayat, OK, dst): jangan menutupi tombolnya */
+body.jfab #ed{padding-bottom:84px}
 .jrow{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line)}.jrow .jic{font-size:16px;flex:none}.jrow .jbody{flex:1;min-width:0}
 .jrow .jl{font-size:13px;overflow-wrap:anywhere}.jrow small{color:var(--mut)}.jrow.undone .jl{text-decoration:line-through;opacity:.6}.jrow .jb{flex:none;padding:4px 10px;font-size:15px}
 /* petunjuk template (blok note, data.source=template_guide): kotak kuning bertanda jelas, beda dari paragraf biasa */
@@ -1818,9 +1820,23 @@ function confirmDelete(b){return new Promise(res=>{const m=document.createElemen
 let jState=null,jTimer=null;
 const jIcon=k=>({move:'↔️',delete:'🗑',insert:'➕',edit:'✏️',attr:'⚙️',info:'💬'}[k]||'•');
 const jAge=s=>s<45?'baru saja':s<3600?Math.round(s/60)+' mnt lalu':s<86400?Math.round(s/3600)+' jam lalu':Math.round(s/86400)+' hari lalu';
-function journalMount(){if($('#jfab'))return;const b=document.createElement('button');b.id='jfab';b.type='button';b.title='Aktivitas saya — urungkan / ulangi';b.innerHTML='🕘<span id=jcnt hidden></span>';
- b.onclick=()=>journalPanel();document.body.append(b);document.body.classList.add('jfab');jRefresh()}
-function journalUnmount(){$('#jfab')?.remove();$('#jtoast')?.remove();$('#jpanel')?.remove();document.body.classList.remove('jfab');jState=null;clearTimeout(jTimer)}
+let jMo=null;
+function jClamp(b){const x=Math.max(4,Math.min(innerWidth-b.offsetWidth-4,b.offsetLeft)),y=Math.max(4,Math.min(innerHeight-b.offsetHeight-4,b.offsetTop));b.style.left=x+'px';b.style.top=y+'px';b.style.right='auto';b.style.bottom='auto'}
+function journalMount(){if($('#jfab'))return;const b=document.createElement('button');b.id='jfab';b.type='button';b.title='Aktivitas saya — urungkan / ulangi (seret untuk memindahkan tombol)';b.innerHTML='🕘<span id=jcnt hidden></span>';
+ document.body.append(b);document.body.classList.add('jfab');
+ /* tombol bisa DIGESER (posisi tersimpan) dan otomatis disembunyikan selama ada dialog terbuka agar tak menutupi tombol Pindah/OK/dst */
+ try{const pos=JSON.parse(localStorage.getItem('jfabPos')||'null');if(pos){b.style.left=pos.x+'px';b.style.top=pos.y+'px';b.style.right='auto';b.style.bottom='auto';jClamp(b)}}catch(e){}
+ let drag=null;
+ b.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,l:b.offsetLeft,t:b.offsetTop,moved:false};if(b.setPointerCapture)try{b.setPointerCapture(e.pointerId)}catch(_){}});
+ b.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(!drag.moved&&Math.hypot(dx,dy)<8)return;drag.moved=true;
+  b.style.left=Math.max(4,Math.min(innerWidth-b.offsetWidth-4,drag.l+dx))+'px';b.style.top=Math.max(4,Math.min(innerHeight-b.offsetHeight-4,drag.t+dy))+'px';b.style.right='auto';b.style.bottom='auto'});
+ const end=()=>{if(drag&&drag.moved){try{localStorage.setItem('jfabPos',JSON.stringify({x:b.offsetLeft,y:b.offsetTop}))}catch(_){}b.dataset.dragged='1';setTimeout(()=>{delete b.dataset.dragged},0)}drag=null};
+ b.addEventListener('pointerup',end);b.addEventListener('pointercancel',end);
+ b.onclick=()=>{if(b.dataset.dragged)return;journalPanel()};
+ addEventListener('resize',()=>{const f=$('#jfab');if(f&&f.style.left)jClamp(f)});
+ jMo=new MutationObserver(()=>document.body.classList.toggle('jmask',!!document.querySelector('.mask,.fmask')));jMo.observe(document.body,{childList:true});
+ jRefresh()}
+function journalUnmount(){$('#jfab')?.remove();$('#jtoast')?.remove();$('#jpanel')?.remove();document.body.classList.remove('jfab','jmask');if(jMo){jMo.disconnect();jMo=null}jState=null;clearTimeout(jTimer)}
 function jBadge(){const c=$('#jcnt');if(!c)return;const n=jState?jState.entries.filter(e=>e.state==='done').length:0;c.hidden=!n;c.textContent=n}
 async function jRefresh(){if(!doc)return;try{jState=await api('GET',`/docs/${doc}/journal?limit=25`)}catch(e){return}jBadge();jDraw()}
 function journalNote(j){if(!j||!doc)return;let t=$('#jtoast');if(!t){t=document.createElement('div');t.id='jtoast';document.body.append(t)}
