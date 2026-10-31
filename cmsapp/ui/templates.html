@@ -38,6 +38,10 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
 .mask{position:fixed;top:0;left:0;right:0;bottom:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:40;padding:12px}
 .dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;width:min(460px,100%);display:flex;flex-direction:column;gap:10px}
 .dlg label{display:flex;flex-direction:column;gap:3px;font-size:13px}
+/* kotak centang: sejajar dengan teksnya (satu baris), bukan di atasnya */
+.dlg .opts{flex-direction:column;gap:10px}
+.dlg .opts label{flex-direction:row;align-items:center;gap:10px;font-size:13.5px;line-height:1.35}
+.dlg .opts input[type=checkbox]{flex:none;width:20px;height:20px;margin:0;padding:0;accent-color:var(--acc)}
 .card.lock{opacity:.55;cursor:not-allowed}.card.lock:hover{border-color:var(--line)}.badge.lk{background:#b45309;color:#fff}.badge.fr{background:#2da44e;color:#fff}.licbox{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 10px;background:var(--card)}.licbox.off{border-color:#b45309}.licbox input{min-width:240px}
 /* pratinjau template = detail kartu (desktop) / POPUP layar penuh (HP): daftar 1 kolom, jadi pratinjau tidak boleh nyempil di bawah daftar */
 .dtop{display:flex;gap:8px;align-items:flex-start}.dtop h2{flex:1;margin:0 0 4px}.dx,.mobonly{display:none}
