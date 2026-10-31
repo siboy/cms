@@ -230,6 +230,10 @@ header b{letter-spacing:.2px}
 .rc .rhm{padding-right:52px}
 .rc .rmenu{position:absolute;top:4px;right:4px;margin:0;min-width:44px;height:42px;padding:0 8px;font-size:20px;line-height:1;display:grid;place-items:center;border-radius:10px}
 .plbar{margin:0 0 12px}
+.shdr{font-size:11px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:2px 0}
+#mdocs{display:grid;gap:6px}#mdocs:empty{display:none}#mdocs button{display:block;width:100%;text-align:left;margin:0;font-weight:600}#mdocs button small{font-weight:400;color:var(--mut)}
+.scrow{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.scrow .scname{flex:1;min-width:0;overflow-wrap:anywhere;font-size:13px}
+.scrow .badge{flex:none}.badge.sc-draft{background:var(--line);color:var(--fg)}.badge.sc-interim{background:var(--lilac);color:var(--ink)}.badge.sc-final{background:var(--mint);color:var(--ink)}
 .curpos{padding:8px 10px;border-left:4px solid var(--mint);background:var(--bg);border-radius:6px;font-size:13px;overflow-wrap:anywhere}
 .mvrow.mvcur{background:var(--lilacsoft,rgba(216,180,248,.28));font-weight:600!important}
 .acts button:disabled{opacity:.35;filter:grayscale(1);cursor:not-allowed}
@@ -580,7 +584,7 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
  +'<div class="rg rgp">'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
   const unread=(p.unread_chat||0)+(p.unread_tasks||0);
   const final100=p.progress_override===100;
-  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class="rh rhm"><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${final100?`<span class=badge style="background:#2da44e" title="Dinyatakan FINAL oleh ${esc(p.progress_final_by||'?')} pada ${esc((p.progress_final_at||'').slice(0,10))}">✔ 100% Final</span>`:''}${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}${hasPerm('project_manage')?`<button type=button class=rmenu data-menu="${p.id}" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
+  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class="rh rhm"><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${final100?`<span class=badge style="background:#2da44e" title="Dinyatakan FINAL oleh ${esc(p.progress_final_by||'?')} pada ${esc((p.progress_final_at||'').slice(0,10))}">✔ 100% Final</span>`:''}${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}<button type=button class=rmenu data-menu="${p.id}" title="Menu proyek &amp; pintasan laporan" onclick="event.stopPropagation()">⋮</button></div>
   <div class=pc-cl style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
   <div class=pc-pg style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
   <div class=pc-dt style="font-size:11px;color:var(--mut)">${(p.start_date||p.end_date)?`${idDate(p.start_date)} → ${idDate(p.end_date)}`:''}</div>
@@ -618,16 +622,26 @@ async function workloadDlg(){let items=[],detail=false;
  m.onclick=e=>{if(e.target===m)m.remove()};
  try{paint()}catch(e){m.remove();note('Beban Tim gagal ditampilkan: '+e.message,1)}}
 
-function projectMenu(p,projects){const m=document.createElement('div');m.className='mask';
+/* Pintasan laporan proyek: dokumen tertaut diurut Draft -> Interim -> Final; satu klik langsung ke editor dgn OUTLINE terbuka (di HP laci outline dibuka) */
+const RT_LABEL={draft:'Draft',interim:'Interim',final:'Final'};
+function docShortcuts(documents){return ['draft','interim','final'].flatMap(t=>(documents||[]).filter(d=>d.report_type===t)).map(d=>({doc_id:d.doc_id,type:d.report_type,typeLabel:RT_LABEL[d.report_type]||d.report_type,name:(d.label||d.filename||('Dokumen '+d.doc_id)).slice(0,60)}))}
+async function openOutline(docId){await openDoc(+docId);if(innerWidth<=800){const sd=$('#side');if(sd)sd.classList.add('open')}}
+function projectMenu(p,projects){const mg=hasPerm('project_manage');const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>${esc(p.name)}</b>
- <button type=button id=mco>📑 Salin outline dokumen dari dokumen lain…</button>
+ <div id=mdocs></div>
+ ${mg?`<button type=button id=mco>📑 Salin outline dokumen dari dokumen lain…</button>
  ${hasPerm('template_use')?`<button type=button id=mtp>🧩 Buat dari template AMDAL / UKL-UPL…</button>`:''}
  <button type=button id=mct>👥 Salin tim dari dokumen lain…</button>
  <button type=button id=mts>💰 Set tim sales…</button>
  <button type=button id=mpic>🧑‍💼 Set PIC proyek…</button>
- <button type=button id=mpc>☎ Set kontak pemrakarsa…</button>
+ <button type=button id=mpc>☎ Set kontak pemrakarsa…</button>`:''}
  <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();
+ m.onclick=e=>{if(e.target===m)m.remove()};
+ api('GET',`/projects/${p.id}/documents`).then(({documents})=>{const L=docShortcuts(documents),box=m.querySelector('#mdocs');if(!box||!L.length)return;       // tanpa laporan: tak ada pintasan
+  box.innerHTML='<div class=shdr>📑 Pintasan outline laporan</div>'+L.map(d=>`<button type=button class=jump data-doc="${d.doc_id}">📑 Outline ${esc(d.typeLabel)}<small> — ${esc(d.name.slice(0,40))}</small></button>`).join('');
+  box.querySelectorAll('.jump').forEach(b=>b.onclick=()=>{m.remove();openOutline(b.dataset.doc).catch(e=>note(e.message,1))})}).catch(()=>{});
+ if(!mg)return;
  m.querySelector('#mco').onclick=()=>{m.remove();cloneDocDlg(p,projects)};
  m.querySelector('#mtp')?.addEventListener('click',()=>{location.href='/templates?project='+p.id});
  m.querySelector('#mct').onclick=()=>{m.remove();cloneTeamDlg(p,projects)};
@@ -825,6 +839,10 @@ async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${cur
  <label class=fl2>Status <select id=pstatus>${['planning','ongoing','on_hold','completed'].map(s=>`<option value=${s} ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></label>
  <label class=fl2 title="Kosong = ikut hitungan Gantt. Terisi: bila Gantt lebih besar dipakai Gantt; bila lebih kecil dipakai rata-rata (override+Gantt)/2 — klaim manual selalu ditarik ke kenyataan">Override progress % <input type=number id=pov min=0 max=100 value="${p.progress_override??''}" placeholder="(dari Gantt)" style="width:70px"></label>
  </div>`:''}</div>`;
+ {const hl=document.createElement('div');hl.id='secLap';hl.style.marginTop='12px';hl.hidden=true;$('#ptab').append(hl);       // Pintasan Laporan: di atas Tim Proyek; disembunyikan bila belum ada laporan
+  api('GET',`/projects/${curProj}/documents`).then(({documents})=>{const L=docShortcuts(documents);if(!L.length)return;
+   hl.innerHTML=`<div class=rc><div class=rh><b>📑 Pintasan Laporan</b><small style="color:var(--mut)">langsung ke outline dokumen</small></div>${L.map(d=>`<div class=scrow><span class="badge sc-${esc(d.type)}">${esc(d.typeLabel)}</span><span class=scname>${esc(d.name)}</span><button type=button class=p data-jump="${d.doc_id}">Buka outline →</button></div>`).join('')}</div>`;
+   hl.hidden=false;hl.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>openOutline(b.dataset.jump).catch(e=>note(e.message,1)))}).catch(()=>{})}
  {const ht=document.createElement('div');ht.id='secTim';ht.style.marginTop='12px';$('#ptab').append(ht);tabTim(ht).catch(e=>{ht.textContent=e.message});
   if(pendScroll==='secTim'){pendScroll=null;setTimeout(()=>ht.scrollIntoView({behavior:'smooth',block:'start'}),400)}}
  {const h=document.createElement('div');h.id='secLok';h.style.marginTop='12px';$('#ptab').append(h);if(window.tabLokasi)window.tabLokasi(h).catch(e=>{h.textContent=e.message})}
