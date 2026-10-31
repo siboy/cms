@@ -407,7 +407,11 @@ def load_bundle() -> dict:
     except OSError:
         return {"version": 0, "categories": [], "templates": []}
     if _cache["mtime"] != m:
-        _cache["data"] = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        from utils import tpl_extra                         # sub-bagian khusus terkurasi (mis. ANDAL tambang) disisipkan sekali saat bundel dimuat
+        for t in data.get("templates", []):
+            tpl_extra.extend(t)
+        _cache["data"] = data
         _cache["mtime"] = m
     return _cache["data"]
 
@@ -460,7 +464,7 @@ def annotate(nodes: list[dict], category: str = "", kind: str = "") -> list[dict
         it = items.get(canon_key(n["t"]))
         if it and not n.get("g"):                       # panduan bawaan node (template sesuai aturan) tidak ditimpa panduan global
             n = {**n, "g": it["g"], **({"gc": it["cat"][category]} if category in (it.get("cat") or {}) else {})}
-        tl = tpl_tools.match(n["t"])
+        tl = list(n.get("tools") or []) + [x for x in tpl_tools.match(n["t"]) if x not in (n.get("tools") or [])]   # alat yang ditetapkan eksplisit didahulukan
         ht = calc_hints(kind, category, canon_key(n["t"])) if kind else []
         tl = tl + [h["tool"] for h in ht if h["tool"] not in tl]
         if ht:

@@ -265,7 +265,7 @@ async function open(id){
    <div class="row small mut" style="margin-top:6px"><span class="fill">Klik sebuah bagian untuk melihat 💡 petunjuk dan 📝 contoh isinya (${nG} bagian berpetunjuk, ${nB} blok contoh).</span>
     <button type="button" id="ex" class="small">Buka semua</button></div>
    <div class="tree">${t.nodes.map((n,i)=>`<div class="n l${n.l}" data-i="${i}"><span class="tw">▸</span><span class="t">${esc(n.t)}</span>
-     <span class="ic">${(n.tools||[]).length?'🧮 ':''}${n.g?'💡':''}${(n.b||[]).length?' 📝'+n.b.length:''}</span>${n.s<100?`<span class="s">${n.s}%</span>`:''}</div>
+     <span class="ic">${n.khusus?'<span title="Sub-bagian khusus tambahan (terkurasi) — sesuaikan dengan pedoman yang berlaku">⛏ </span>':''}${(n.tools||[]).length?'🧮 ':''}${n.g?'💡':''}${(n.b||[]).length?' 📝'+n.b.length:''}</span>${n.s<100?`<span class="s">${n.s}%</span>`:''}</div>
      <div class="x hide" id="x${i}">${blocksHtml(n)}</div>`).join('')}</div>
    <div class="mut small" style="margin:6px 0">${t.nodes.length} bagian${t.n_nodes_all>t.nodes.length?' (dari '+t.n_nodes_all+')':''} — setelah disalin, semuanya blok biasa: edit, geser, atau hapus di editor.</div>
    ${st.lic&&!st.lic.active?'<div class="note">Ini pratinjau contoh. Mengimpor template ke dokumen memerlukan fitur Template yang aktif (pembelian + aktivasi oleh operator).</div>':''}

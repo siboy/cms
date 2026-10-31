@@ -1875,8 +1875,9 @@ class BlockStore:
         for n in nodes:
             ht = n.get("ht") or []                      # bagian yang di dokumen contoh memuat perhitungan -> penanda 🧮 di editor
             hd = {}
-            if ht:
-                hd["tools"] = [h["tool"] for h in ht]
+            tl_ids = [h["tool"] for h in ht] + [t for t in (n.get("tools") or []) if t not in [h["tool"] for h in ht]]   # dari contoh + alat terkait bagian (eksplisit/pola judul)
+            if tl_ids:
+                hd["tools"] = tl_ids
             ntbl = sum(1 for b in (n.get("b") or []) if b.get("k") in ("t", "kv"))
             if ntbl:
                 hd["tbl"] = ntbl                         # template menandai bagian ini butuh tabel (ikon ▦ di outline), walau isi tabel tak disalin
