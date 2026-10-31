@@ -222,33 +222,39 @@ header b{letter-spacing:.2px}
  .repmenu button.cur{background:var(--acc);color:#fff;font-weight:600}
 }
 
-/* ===== tampilan HP/APK (<=640px): tema emas, menu ⋮ = bottom sheet, filter proyek = bar bawah menyatu =====
-   backdrop-filter DIMATIKAN di HP: di WebView Android ia merusak anak yang meluap/fixed (menu ⋮ & dialog jadi garis putih tipis). */
-:root{--gold:#d4a017;--gold2:#f4d36e;--gold3:#a87b0c;--goldglow:rgba(212,160,23,.5);--goldink:#2b1d00}
-.plbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+/* ===== tampilan HP/APK (<=640px): tema emas, menu ⋮ = bottom sheet, filter proyek = bar bawah gaya tab Task/Gantt =====
+   backdrop-filter DIMATIKAN di HP: di WebView Android ia merusak anak yang meluap/fixed. */
+:root{--gold:#d4a017;--gold2:#f4d36e;--gold3:#a87b0c;--goldglow:rgba(212,160,23,.5);--goldsoft:rgba(212,160,23,.16);--goldink:#2b1d00}
+.plbar{margin:0 0 12px}
+.plbar .cattabs{display:flex;gap:6px;flex-wrap:wrap;padding:0;margin:0;overflow:visible}
+.plbar .ti{display:none}
 .plbar #npr{background:var(--acc);color:#fff;border-color:var(--acc)}
 #kscrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:39}#kscrim[hidden]{display:none}
 @media(max-width:640px){
  header,.mask{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
  header{box-shadow:0 1px 0 var(--gold3)}
  #bkeb{border:1px solid var(--gold);color:var(--gold);background:transparent;border-radius:10px;box-shadow:0 0 10px var(--goldglow)}
- #kmenu{position:fixed;left:0;right:0;top:auto;bottom:0;min-width:0;max-height:72vh;overflow-y:auto;border:none;border-top:2px solid var(--gold);
-  border-radius:18px 18px 0 0;padding:10px 10px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -12px 32px rgba(0,0,0,.4);z-index:60;gap:2px}
- #kmenu::before{content:'';display:block;flex:none;width:42px;height:4px;border-radius:2px;background:var(--gold3);margin:0 auto 8px}
- #kmenu button,#kmenu a{flex:none;padding:14px 14px;font-size:15px;border-radius:10px}
+ #kmenu{display:block;position:fixed;left:0;right:0;top:auto;bottom:0;min-width:0;min-height:96px;max-height:72vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  background:var(--card);border:none;border-top:2px solid var(--gold);border-radius:18px 18px 0 0;padding:10px 10px calc(12px + env(safe-area-inset-bottom));
+  box-shadow:0 -12px 32px rgba(0,0,0,.4);z-index:60}
+ #kmenu::before{content:'';display:block;width:42px;height:4px;border-radius:2px;background:var(--gold3);margin:0 auto 8px}
+ #kmenu button,#kmenu a{display:block;width:100%;padding:14px 14px;margin:0;font-size:15px;border-radius:10px}
+ #kmenu button[hidden]{display:none}
  #kmenu button:hover,#kmenu a:hover{background:transparent}
  #kmenu button:active,#kmenu a:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink)}
- .plbar{position:fixed;left:0;right:0;bottom:0;z-index:15;margin:0;flex-wrap:nowrap;gap:6px;padding:8px 8px calc(8px + env(safe-area-inset-bottom));
-  background:var(--card);border-top:1px solid var(--gold);box-shadow:0 -8px 22px rgba(0,0,0,.22)}
- .plbar .cattabs{flex:1;min-width:0!important;gap:4px;padding:0!important;overflow-x:auto;scrollbar-width:none}
+ /* bar bawah daftar proyek: sama seperti #ptabs (Task/Gantt/...) -- datar, ikon di atas label, menyatu; deret bisa digeser */
+ .plbar{position:fixed;left:0;right:0;bottom:0;z-index:16;margin:0;background:var(--card);border-top:1px solid var(--gold3);box-shadow:var(--sh2)}
+ .plbar .cattabs{display:flex;flex-wrap:nowrap;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
  .plbar .cattabs::-webkit-scrollbar{display:none}
- .plbar button{flex:0 0 auto;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--mut);font-size:12.5px;font-weight:600;
-  padding:10px 12px;white-space:nowrap;box-shadow:none;transition:background .15s,box-shadow .15s}
- .plbar button:hover{color:var(--mut);border-color:transparent}
- .plbar button.cur,.plbar #npr{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink);border-color:var(--gold3);box-shadow:0 4px 14px var(--goldglow)}
- .plbar #bwork{border-color:var(--gold3);color:var(--gold)}
- #docs{padding-bottom:92px}
- #bar{bottom:calc(84px + env(safe-area-inset-bottom))}
+ .plbar .cattabs button{flex:0 0 auto;min-width:72px;display:grid;place-items:center;gap:0;border:none;border-radius:0;background:none;color:var(--mut);box-shadow:none;
+  padding:5px 8px calc(7px + env(safe-area-inset-bottom));font-weight:500}
+ .plbar .cattabs button:hover{color:var(--mut);border-color:transparent}
+ .plbar .ti{display:block;font-size:18px;line-height:1.2;margin:0}.plbar .tl{font-size:9.5px;white-space:nowrap}
+ .plbar .cattabs button.cur{background:var(--goldsoft);color:var(--gold);font-weight:600;box-shadow:inset 0 2px 0 var(--gold),0 -6px 16px var(--goldglow);text-shadow:0 0 10px var(--goldglow)}
+ .plbar #npr{background:none;color:var(--gold);border:none;font-weight:600;text-shadow:0 0 10px var(--goldglow)}
+ .plbar #npr .ti{font-size:22px;filter:drop-shadow(0 2px 6px var(--goldglow))}
+ #docs{padding-bottom:84px}
+ #bar{bottom:calc(76px + env(safe-area-inset-bottom))}
 }
 </style></head><body>
 <header><b style="display:flex;align-items:center;gap:7px"><img src="/app-icon.svg" style="height:22px;border-radius:5px" alt="">sdrive</b><span id="who"></span><span id="pres" title="online"></span>
@@ -428,6 +434,8 @@ $('#bmenu').onclick=()=>$('#navbtns').classList.toggle('open');
 /* HP: menu ☰ dan ⋮ disatukan -- tombol bar (Proyek, Galeri, Bagikan, Ekspor, dst) pindah ke dalam menu ⋮; layar lebar dikembalikan */
 const NAVB=[...$('#navbtns').children],mqMob=matchMedia('(max-width:640px)');
 function placeNav(){const km=$('#kmenu'),nav=$('#navbtns');let sep=km.querySelector('.ksep');
+ /* HP: menu jadi anak <body> (bottom sheet fixed) -- di dalam <header> ia ikut konteks tumpukan/klip header & di APK hanya tampak layar abu-abu */
+ if(mqMob.matches)document.body.append(km);else $('#kwrap').append(km);
  if(mqMob.matches){if(!sep){sep=document.createElement('div');sep.className='ksep'}km.prepend(sep);for(const b of [...NAVB].reverse())km.prepend(b)}
  else{for(const b of NAVB)nav.append(b);if(sep)sep.remove()}}
 mqMob.addEventListener('change',placeNav);placeNav();
@@ -454,18 +462,18 @@ function idDate(s){if(!s)return '?';const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s);i
 
 let projFilter='aktif';
 async function projectsView(){closeDoc();const {projects}=await api('GET','/projects');
- const PSTAT=[['planning','Planning'],['ongoing','Ongoing'],['on_hold','On hold'],['completed','Done']];
+ const PSTAT=[['planning','Planning'],['ongoing','Ongoing'],['on_hold','On hold'],['completed','Done']],PICO={planning:'📝',ongoing:'🚧',on_hold:'⏸',completed:'✅'};
  const cnt=s=>projects.filter(p=>p.status===s).length;
  const shown=projects.filter(p=>projFilter==='semua'?true:projFilter==='aktif'?p.status!=='completed':p.status===projFilter);
  $('#app').innerHTML='<div id=docs>'
  +`<div class=plbar>
-   <div class=cattabs style="padding:0;margin:0;flex:1;min-width:200px">
-    ${hasPerm('project_manage')?'<button id=npr class=p>+ Proyek baru</button>':''}
-    <button data-pf=aktif class="${projFilter==='aktif'?'cur':''}" title="Semua yang belum Done">Aktif (${projects.filter(p=>p.status!=='completed').length})</button>
-    ${PSTAT.map(([k,l])=>`<button data-pf="${k}" class="${projFilter===k?'cur':''}">${l} (${cnt(k)})</button>`).join('')}
-    <button data-pf=semua class="${projFilter==='semua'?'cur':''}">Semua (${projects.length})</button>
+   <div class=cattabs>
+    ${hasPerm('project_manage')?'<button id=npr class=p><span class=ti>＋</span><span class=tl>Proyek baru</span></button>':''}
+    <button data-pf=aktif class="${projFilter==='aktif'?'cur':''}" title="Semua yang belum Done"><span class=ti>🗂</span><span class=tl>Aktif (${projects.filter(p=>p.status!=='completed').length})</span></button>
+    ${PSTAT.map(([k,l])=>`<button data-pf="${k}" class="${projFilter===k?'cur':''}"><span class=ti>${PICO[k]||'•'}</span><span class=tl>${l} (${cnt(k)})</span></button>`).join('')}
+    <button data-pf=semua class="${projFilter==='semua'?'cur':''}"><span class=ti>📚</span><span class=tl>Semua (${projects.length})</span></button>
+    ${hasPerm('project_view_all')||hasPerm('user_manage')?'<button id=bwork title="Profil beban kerja tiap orang"><span class=ti>📊</span><span class=tl>Beban Tim</span></button>':''}
    </div>
-   ${hasPerm('project_view_all')||hasPerm('user_manage')?'<button id=bwork title="Profil beban kerja tiap orang">📊 Beban Tim</button>':''}
   </div>`
  +'<div class=rg>'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
   const unread=(p.unread_chat||0)+(p.unread_tasks||0);
