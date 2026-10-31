@@ -23,7 +23,7 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
 .badge{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--acc-soft);color:var(--acc)}.badge.gr{background:#15803d1f;color:var(--ok)}
 .detail{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;position:sticky;top:60px}
 .detail h2{margin:0 0 4px;font-size:18px}
-.tree{border:1px solid var(--line);border-radius:8px;padding:6px 4px;max-height:60vh;overflow:auto;background:var(--bg);margin:10px 0}
+.tree{border:1px solid var(--line);border-radius:8px;padding:6px 4px;max-height:calc(var(--vh,1vh)*60);overflow:auto;background:var(--bg);margin:10px 0}
 .tree div{display:flex;gap:8px;align-items:baseline;padding:2px 8px;border-radius:5px}.tree div:hover{background:var(--acc-soft)}
 .tree .l1{font-weight:700;margin-top:6px}.tree .l2{padding-left:26px}.tree .l3{padding-left:46px;font-size:13px}.tree .l4{padding-left:66px;font-size:12.5px;color:var(--mut)}
 .tree div.n{cursor:pointer}.tree .ic{font-size:11px;color:var(--mut);white-space:nowrap}.tree .tw{display:inline-block;width:12px;color:var(--mut)}
@@ -35,10 +35,25 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
 .tree .t{flex:1}.tree .s{font-size:11px;color:var(--mut);white-space:nowrap}
 .note{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 10px;font-size:12.5px;margin:8px 0}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.row .fill{flex:1 1 220px}
-.mask{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:20;padding:12px}
+.mask{position:fixed;top:0;left:0;right:0;bottom:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:40;padding:12px}
 .dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;width:min(460px,100%);display:flex;flex-direction:column;gap:10px}
 .dlg label{display:flex;flex-direction:column;gap:3px;font-size:13px}
 .card.lock{opacity:.55;cursor:not-allowed}.card.lock:hover{border-color:var(--line)}.badge.lk{background:#b45309;color:#fff}.badge.fr{background:#2da44e;color:#fff}.licbox{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 10px;background:var(--card)}.licbox.off{border-color:#b45309}.licbox input{min-width:240px}
+/* pratinjau template = detail kartu (desktop) / POPUP layar penuh (HP): daftar 1 kolom, jadi pratinjau tidak boleh nyempil di bawah daftar */
+.dtop{display:flex;gap:8px;align-items:flex-start}.dtop h2{flex:1;margin:0 0 4px}.dx,.mobonly{display:none}
+.dfoot{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:8px 0}
+#dmask{position:fixed;top:0;left:0;right:0;bottom:0;background:#0009;z-index:25}
+@media(max-width:860px){
+ .dx{display:inline-block;font-size:18px;line-height:1;padding:8px 12px;border-radius:10px}.mobonly{display:inline-block}
+ .detail.modal{position:fixed;left:0;right:0;bottom:0;top:28px;z-index:30;padding:0;border-radius:18px 18px 0 0;border:none;border-top:3px solid var(--acc);
+  display:flex;flex-direction:column;box-shadow:0 -12px 32px rgba(0,0,0,.4)}
+ .detail.modal .dtop{padding:12px 12px 8px;border-bottom:1px solid var(--line);flex:none}
+ .detail.modal .dtop h2{font-size:16px;line-height:1.25}
+ .detail.modal .dbody{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px}
+ .detail.modal .tree{max-height:none;overflow:visible}
+ .detail.modal .dfoot{flex:none;margin:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--card)}
+ .detail.modal .dfoot button{flex:1;padding:12px 8px}
+}
 </style></head><body>
 <header><b>📑 Template Laporan AMDAL &amp; UKL-UPL</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
 <main>
@@ -55,9 +70,19 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
  <div class="list" id="list"></div>
  <div class="detail hide" id="detail"></div>
 </div>
+<div id="dmask" class="hide"></div>
 </main>
 <script>
 const $=s=>document.querySelector(s);
+const setVh=()=>document.documentElement.style.setProperty('--vh',(innerHeight*0.01)+'px');setVh();addEventListener('resize',setVh);   // unit vh di WebView APK terhitung ~0
+const isMob=()=>matchMedia('(max-width:860px)').matches;
+let dmPushed=false;   // tombol Back Android/browser menutup popup, bukan meninggalkan halaman
+function closeDetail(fromPop){$('#detail').classList.add('hide');$('#detail').classList.remove('modal');$('#dmask').classList.add('hide');document.body.style.overflow='';
+  st.cur=null;document.querySelectorAll('.card.cur').forEach(c=>c.classList.remove('cur'));
+  if(dmPushed&&fromPop!==true){dmPushed=false;history.back()}else dmPushed=false}
+addEventListener('popstate',()=>{if(dmPushed){dmPushed=false;closeDetail(true)}});
+addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#detail').classList.contains('hide')&&isMob())closeDetail()});
+$('#dmask').onclick=()=>closeDetail();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(method,path,body){
   const o={method,credentials:'same-origin',headers:{}};
@@ -107,7 +132,7 @@ async function load(){
    <div class="meta">${t.locked?'<span class="badge lk">Terkunci</span>':(st.lic&&!st.lic.active?'<span class="badge fr">Pratinjau gratis</span>':'')}<span class="badge">${esc(t.kind_label)}</span><span class="badge">${t.n_chapters} bab · ${t.n_nodes} bagian</span>
    <span class="badge ${t.source==='konsensus'?'gr':''}">${t.source==='aturan'?'sesuai aturan (PP 22/2021)':t.source==='baku'?'kerangka baku':'konsensus '+t.n_docs+' dokumen'}</span></div></div>`).join('')
    ||'<p class="mut">Tidak ada template yang cocok. Coba kata kunci lain (mis. “tambang”, “jalan”, “pabrik”).</p>';
-  if(!st.cur&&r.items.length&&r.items.length<=1)open(r.items[0].id);
+  if(!st.cur&&r.items.length&&r.items.length<=1&&!isMob())open(r.items[0].id);
 }
 const TP={jalur:'badan_air',kbli:'',jawab:{},res:null,kb:null,err:''};
 const TPJ=[['badan_air','Air limbah → badan air permukaan'],['formasi_pembuangan','Air limbah → formasi tertentu (injeksi)'],['aplikasi_tanah','Pemanfaatan → aplikasi ke tanah'],['formasi_pemanfaatan','Pemanfaatan → formasi tertentu (imbuhan/resapan)'],['laut','Air limbah → laut'],['emisi','Emisi sumber tidak bergerak'],['andalalin','Andalalin (analisis dampak lalu lintas, PM 17/2021)']];
@@ -226,9 +251,10 @@ async function open(id){
   let r;try{r=await api('GET',`/templates/${encodeURIComponent(id)}?min_share=${st.min}`)}catch(e){$('#msg').innerHTML=`<div class="err">${esc(e.message)}</div>`;return}
   const t=r.template,base=t.source==='baku';TOOLS=r.tools||{};
   const nG=t.nodes.filter(n=>n.g).length,nB=t.nodes.reduce((a,n)=>a+(n.b||[]).length,0);
+  const keepSc=$('.dbody')?$('.dbody').scrollTop:0;
   $('#detail').classList.remove('hide');
-  $('#detail').innerHTML=`<h2>${esc(t.title)}</h2>
-   <div class="mut small">${base?'Kerangka lazim (arsip hanya memuat formulir isian, bukan naskah KA) — cocokkan dengan format dalam peraturan yang berlaku.':
+  $('#detail').innerHTML=`<div class="dtop"><h2>${esc(t.title)}</h2><button type="button" class="dx" id="dclose" aria-label="Tutup">✕</button></div>
+   <div class="dbody"><div class="mut small">${base?'Kerangka lazim (arsip hanya memuat formulir isian, bukan naskah KA) — cocokkan dengan format dalam peraturan yang berlaku.':
     `Outline konsensus dari <b>${t.n_docs}</b> dokumen contoh yang sudah diajukan — hanya bagian yang lazim muncul. Angka % = porsi contoh yang memuat bagian itu.`}</div>
    ${base?'':`<div class="row" style="margin-top:8px"><label class="small fill">Kerincian: <b id="mv">${st.min===0?'lengkap':'hanya yang ≥ '+st.min+'%'}</b>
     <input id="min" type="range" min="0" max="90" step="5" value="${st.min}" style="width:100%"></label></div>`}
@@ -237,10 +263,14 @@ async function open(id){
    <div class="tree">${t.nodes.map((n,i)=>`<div class="n l${n.l}" data-i="${i}"><span class="tw">▸</span><span class="t">${esc(n.t)}</span>
      <span class="ic">${(n.tools||[]).length?'🧮 ':''}${n.g?'💡':''}${(n.b||[]).length?' 📝'+n.b.length:''}</span>${n.s<100?`<span class="s">${n.s}%</span>`:''}</div>
      <div class="x hide" id="x${i}">${blocksHtml(n)}</div>`).join('')}</div>
-   <div class="row"><span class="mut small fill">${t.nodes.length} bagian${t.n_nodes_all>t.nodes.length?' (dari '+t.n_nodes_all+')':''} — setelah disalin, semuanya blok biasa: edit, geser, atau hapus di editor.</span>
-   ${st.lic&&!st.lic.active?'<button class="p" id="cp" disabled title="Impor terkunci sampai fitur diaktifkan">🔒 Impor terkunci</button>':'<button class="p" id="cp">Salin jadi dokumen</button>'}</div>
+   <div class="mut small" style="margin:6px 0">${t.nodes.length} bagian${t.n_nodes_all>t.nodes.length?' (dari '+t.n_nodes_all+')':''} — setelah disalin, semuanya blok biasa: edit, geser, atau hapus di editor.</div>
    ${st.lic&&!st.lic.active?'<div class="note">Ini pratinjau contoh. Mengimpor template ke dokumen memerlukan fitur Template yang aktif (pembelian + aktivasi oleh operator).</div>':''}
-   <div class="note">${esc(r.disclaimer||'Template hanya kerangka dan contoh isi; penyusun tetap wajib menyesuaikan dengan peraturan yang berlaku dan karakter rencana kegiatan.')} Teks contoh disusun dari pola dokumen yang sudah diajukan; nama pemrakarsa &amp; wilayah diganti placeholder <code>[…]</code>.</div>`;
+   <div class="note">${esc(r.disclaimer||'Template hanya kerangka dan contoh isi; penyusun tetap wajib menyesuaikan dengan peraturan yang berlaku dan karakter rencana kegiatan.')} Teks contoh disusun dari pola dokumen yang sudah diajukan; nama pemrakarsa &amp; wilayah diganti placeholder <code>[…]</code>.</div></div>
+   <div class="dfoot"><button type="button" class="mobonly" id="dback">← Pilih contoh lain</button>
+   ${st.lic&&!st.lic.active?'<button class="p" id="cp" disabled title="Impor terkunci sampai fitur diaktifkan">🔒 Impor terkunci</button>':'<button class="p" id="cp" title="Buat dokumen baru berisi outline + petunjuk penulisan tiap bagian">📥 Salin outline &amp; petunjuk</button>'}</div>`;
+  if(isMob()){$('#detail').classList.add('modal');$('#dmask').classList.remove('hide');document.body.style.overflow='hidden';if(!dmPushed){history.pushState({dm:1},'');dmPushed=true}}
+  if(keepSc&&$('.dbody'))$('.dbody').scrollTop=keepSc;
+  $('#dclose').onclick=()=>closeDetail();$('#dback').onclick=()=>closeDetail();
   const rg=$('#min');if(rg){rg.oninput=()=>{st.min=+rg.value;$('#mv').textContent=st.min===0?'lengkap':'hanya yang ≥ '+st.min+'%'};rg.onchange=()=>open(id)}
   const tog=(i,on)=>{const x=$('#x'+i);if(!x)return;x.classList.toggle('hide',on===undefined?!x.classList.contains('hide'):!on);
     const row=document.querySelector(`.tree .n[data-i="${i}"] .tw`);if(row)row.textContent=x.classList.contains('hide')?'▸':'▾'};
