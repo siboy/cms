@@ -206,6 +206,11 @@ def list_sims(store, pid: int) -> dict:
             "percent": round(done / len(out) * 100) if out else None}
 
 
+def count_linked_docs(store, pid: int) -> int:
+    with store._tx() as c:
+        return store._one(c, "SELECT COUNT(*) AS n FROM cms_project_documents WHERE project_id=?", (pid,))["n"]
+
+
 def suggest_sims(store, pid: int) -> list[dict]:
     """Usulan tugas simulasi dari heading dokumen yang tertaut ke proyek (pola TOPIK saja, bukan struktural). Yang sudah menjadi tugas dilewati."""
     with store._tx() as c:

@@ -363,7 +363,7 @@
       <td>${s.status === 'selesai' ? `<span class=ok>✅ ada hasil</span> <span class=sum>(${s.n_runs}×)</span><div class=sum>${esc(s.last_run.by)} · ${esc((s.last_run.at || '').slice(0, 16))}</div><div class=sum>${fmtSum(s.last_run.summary)}</div>` : '<span class=warnb>☐ belum disimulasikan</span>'}</td>
       <td style="white-space:nowrap">${s.doc_id && s.block_id ? `<a href="${url(s)}" target=_blank rel=noopener>Buka alat ↗</a>` : ''}${manage ? ` <button type=button data-rm="${s.id}" title="Hapus tugas">✕</button>` : ''}</td></tr>`;
     const tbl = list => `<div style="overflow:auto"><table><tr><th>Topik simulasi</th><th>Dokumen / bagian</th><th>Tenaga ahli</th><th>Status & hasil terakhir</th><th></th></tr>${list.map(row).join('')}</table></div>`;
-    H.innerHTML = `<div class="rc ps"><div class=rh><b>🧮 Simulasi & perhitungan proyek</b>${manage ? '<button type=button id=smSug style="margin-left:auto">✨ Usulkan dari dokumen</button><button type=button id=smAdd>+ Tambah manual</button>' : ''}</div>
+    H.innerHTML = `<div class="rc ps"><div class=rh><b>🧮 Simulasi & perhitungan proyek</b>${manage ? '<button type=button id=smSug style="margin-left:auto" title="Pindai judul bagian di dokumen laporan proyek ini dan usulkan topik perhitungan/simulasi sebagai tugas untuk tenaga ahli">✨ Usulkan dari dokumen</button><button type=button id=smAdd>+ Tambah manual</button>' : ''}</div>
      <p class=sum>Topik simulasi mengikuti bagian dokumen yang berpotensi dihitung. Tenaga ahli mengerjakan dari bagian yang ditugaskan kepadanya: klik <b>Buka alat</b>, hitung, lalu <b>Sisipkan ke dokumen</b> — hasilnya tercatat di sini otomatis.</p>
      ${D.total ? `<div class=card><div class=row2><b>Kelengkapan simulasi</b><span class=sum>${D.done} dari ${D.total} topik sudah ada hasil</span><b style="margin-left:auto">${D.percent}%</b></div><div class=prog><i style="width:${D.percent}%"></i></div></div>` : ''}
      ${mine.length ? `<h4>Tugas saya (${mine.filter(s => s.status !== 'selesai').length} belum)</h4>${tbl(mine)}` : ''}
@@ -377,16 +377,25 @@
       try { await api('DELETE', `/projects/${pid}/sims/${b.dataset.rm}`); reload(); } catch (e) { note(e.message, 1); } });
     if (!manage) return;
     $('#smSug').onclick = async () => {
-      let items; try { items = (await api('GET', `/projects/${pid}/sims/suggest`)).items; } catch (e) { return note(e.message, 1); }
-      if (!items.length) return note('Tidak ada usulan baru dari dokumen yang tertaut');
-      const m = modal(`<b>Usulan topik simulasi dari bagian dokumen</b><p class=sum>Dicocokkan dari judul bagian (pola topik). Centang yang relevan untuk proyek ini; penanggung jawab otomatis mengikuti PIC bagian, bisa diubah setelahnya.</p>
-       <div style="max-height:52vh;overflow:auto"><table>${items.map((x, i) => `<tr><td><input type=checkbox data-i="${i}" checked></td><td>${x.icon} ${esc(x.tool_label)}</td><td>${esc(x.doc_name)} <div class=sum>§ ${esc(x.block_text)}${x.pic.length ? ' · PIC: ' + esc(x.pic.join(', ')) : ''}</div></td></tr>`).join('')}</table></div>
-       <div class=row2 style="justify-content:flex-end;margin-top:8px"><button type=button id=sx>Batal</button><button type=button id=sok class=p>Tambahkan terpilih</button></div>`, 760);
+      let r; try { r = await api('GET', `/projects/${pid}/sims/suggest`); } catch (e) { return note(e.message, 1); }
+      const items = r.items || [];
+      if (!items.length) {                                   // pesan lengkap dalam dialog (bukan toast kecil yang mudah terlewat)
+        const why = !r.docs ? 'Proyek ini <b>belum punya dokumen laporan yang tertaut</b>. Tautkan dulu dokumennya di bagian <b>Tambah Dokumen</b> (atau buat dari template), lalu coba lagi.'
+          : 'Tidak ada bagian dokumen yang judulnya cocok dengan topik simulasi/perhitungan, <b>atau semua usulan sudah menjadi tugas</b>. Anda tetap bisa menambah topik manual lewat tombol <b>＋ Topik</b>.';
+        const m0 = modal(`<b>Usulan topik simulasi</b><p class=sum style="margin:8px 0">${why}</p><div class=row2 style="justify-content:flex-end"><button type=button id=sx class=p>Mengerti</button></div>`, 520);
+        return void (m0.querySelector('#sx').onclick = () => m0.remove());
+      }
+      const nOpen = items.length - (r.locked || 0);
+      const m = modal(`<b>Usulan topik simulasi dari bagian dokumen</b>
+       <p class=sum>Tombol ini <b>memindai judul bagian di dokumen laporan proyek</b> dan mengusulkan topik perhitungan/simulasi yang relevan (mis. kebisingan, erosi, tenaga kerja) sebagai <b>tugas untuk tenaga ahli</b>. Centang yang dibutuhkan; penanggung jawab otomatis mengikuti PIC bagian dan bisa diubah setelahnya.</p>
+       <p class=sum><b>${items.length}</b> usulan: <b>${nOpen}</b> bisa ditambahkan${r.locked ? `, <b>${r.locked}</b> bertanda 🔒 karena alat hitungnya <b>belum dibeli</b> (beli lewat <a href="/store">Toko</a>, per paket waktu atau sekali pakai per laporan)` : ''}.</p>
+       <div style="max-height:calc(var(--vh,1vh)*48);overflow:auto"><table>${items.map((x, i) => `<tr${x.locked ? ' style="opacity:.75"' : ''}><td><input type=checkbox data-i="${i}" ${x.locked ? 'disabled' : 'checked'}></td><td>${x.icon} ${esc(x.tool_label)}${x.locked ? ' 🔒' : ''}</td><td>${esc(x.doc_name)} <div class=sum>§ ${esc(x.block_text)}${x.pic.length ? ' · PIC: ' + esc(x.pic.join(', ')) : ''}</div>${x.locked ? `<div class=sum>🔒 belum dibeli — <a href="/store?engine=${encodeURIComponent(x.tool_id)}&doc=${x.doc_id}">Beli untuk laporan ini</a></div>` : ''}</td></tr>`).join('')}</table></div>
+       <div class=row2 style="justify-content:flex-end;margin-top:8px"><button type=button id=sx>Tutup</button><button type=button id=sok class=p ${nOpen ? '' : 'disabled'}>Tambahkan terpilih</button></div>`, 760);
       m.querySelector('#sx').onclick = () => m.remove();
       m.querySelector('#sok').onclick = async () => {
         const pick = [...m.querySelectorAll('[data-i]:checked')].map(c => items[+c.dataset.i]);
-        if (!pick.length) return;
-        try { const r = await api('POST', `/projects/${pid}/sims`, {items: pick.map(x => ({tool_id: x.tool_id, doc_id: x.doc_id, block_id: x.block_id, title: x.tool_label + ' — ' + x.block_text.slice(0, 60)}))}); m.remove(); note(`${r.ids.length} topik ditambahkan`); reload(); } catch (e) { note(e.message, 1); }
+        if (!pick.length) return note('Centang minimal satu usulan yang tidak terkunci', 1);
+        try { const r2 = await api('POST', `/projects/${pid}/sims`, {items: pick.map(x => ({tool_id: x.tool_id, doc_id: x.doc_id, block_id: x.block_id, title: x.tool_label + ' — ' + x.block_text.slice(0, 60)}))}); m.remove(); note(`${r2.ids.length} topik ditambahkan`); reload(); } catch (e) { note(e.message, 1); }
       };
     };
     $('#smAdd').onclick = async () => {

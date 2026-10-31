@@ -402,7 +402,12 @@ def sims(pid):
 @guard("proyek_simulasi")
 def sims_suggest(pid):
     _manage(pid)
-    return jsonify(items=[x for x in pst.suggest_sims(S(), pid) if mods.tool_on(x["tool_id"])])
+    from cmsapp.license_api import set_doc_context      # lisensi per-laporan: konteks = laporan usulan itu
+    items = pst.suggest_sims(S(), pid)
+    for x in items:                                     # usulan alat yang BELUM dibeli tetap ditampilkan (bertanda terkunci), bukan disembunyikan
+        set_doc_context(x["doc_id"])
+        x["locked"] = not mods.tool_on(x["tool_id"])
+    return jsonify(items=items, docs=pst.count_linked_docs(S(), pid), locked=sum(1 for x in items if x["locked"]))
 
 
 @bp.post("/projects/<int:pid>/sims")

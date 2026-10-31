@@ -9,7 +9,7 @@ os.environ.setdefault("CMS_MODULES", "all")          # uji fungsi: semua modul a
 from flask import Flask, g  # noqa: E402
 
 from cmsapp import auth  # noqa: E402
-from utils import blockstore  # noqa: E402
+from utils import blockstore, projsite_store as pst  # noqa: E402
 
 auth.require = lambda *perms: (lambda f: f)                      # stub: semua rute terbuka
 auth.has_perm = lambda user, perm: True
@@ -81,6 +81,16 @@ def main():
     st.link_document(pid, doc, "draft", "")
     sg = cl.get(f"{P}/sims/suggest").get_json()["items"]
     check({x["tool_id"] for x in sg} == {"tenaga_kerja", "bising"}, "usulan simulasi dari heading")
+    # usulan alat yang BELUM dibeli/dibuka tetap tampil (terkunci) -- dulu disaring habis sehingga daftar kosong & tombol terasa mati
+    sgr = cl.get(f"{P}/sims/suggest").get_json()
+    check(sgr["docs"] == 1 and sgr["locked"] == 0 and all(x["locked"] is False for x in sgr["items"]), "modul terbuka: usulan tidak terkunci, 1 dokumen tertaut")
+    os.environ["CMS_MODULES"] = "proyek_simulasi,proyek_lokasi"          # seperti tenant nyata: modul pembawa aktif, alat hitung (calc_*) belum dibeli
+    sgl = cl.get(f"{P}/sims/suggest").get_json()
+    check({x["tool_id"] for x in sgl["items"]} == {"tenaga_kerja", "bising"} and sgl["locked"] == 2 and all(x["locked"] for x in sgl["items"]),
+          "alat belum dibeli: usulan TETAP ditampilkan, bertanda terkunci (tidak lagi daftar kosong)")
+    check(cl.post(f"{P}/sims", json={"items": [{"tool_id": "bising", "doc_id": sg[0]["doc_id"], "block_id": sg[0]["block_id"]}]}).status_code == 403, "menambah tugas dari alat terkunci tetap ditolak server")
+    os.environ["CMS_MODULES"] = "all"
+    check(pst.count_linked_docs(st, 99999) == 0, "proyek tanpa dokumen tertaut -> docs = 0 (dialog menjelaskan alasannya)")
     r = cl.post(f"{P}/sims", json={"items": [{"tool_id": x["tool_id"], "doc_id": x["doc_id"], "block_id": x["block_id"]} for x in sg]})
     check(r.status_code == 201 and len(r.get_json()["ids"]) == 2, "tambah tugas simulasi massal")
     check(cl.post(f"{P}/sims", json={"items": [{"tool_id": sg[0]["tool_id"], "doc_id": sg[0]["doc_id"], "block_id": sg[0]["block_id"]}]}).status_code == 400, "tugas tunggal ganda -> 400")

@@ -23,7 +23,7 @@ header b{flex:1}#login{max-width:320px;margin:calc(var(--vh,1vh)*15) auto;displa
 .blk.h .txt{font-weight:700}.blk .acts{display:none;gap:4px;margin-top:6px;flex-wrap:wrap}.blk:hover .acts,.blk.edit .acts{display:flex}
 textarea{width:100%;min-height:90px}table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:3px 6px}
 td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
-#bar{position:fixed;right:12px;bottom:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;max-width:320px}
+#bar{position:fixed;right:12px;bottom:12px;z-index:90;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;max-width:320px}
 .cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.bot{border-left-color:#7c3aed}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px;max-height:calc(var(--vh,1vh)*90);overflow-y:auto}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.dlg>*{min-width:0}.dlg select,.dlg input,.dlg textarea{width:100%;max-width:100%;box-sizing:border-box}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:calc(var(--vh,1vh)*30)}}
 .tw{overflow:auto;max-width:100%}.tw table{width:auto;min-width:100%}.tw td,.tw th{min-width:120px;vertical-align:top;padding:6px 8px;white-space:pre-wrap;word-break:break-word}.tw th{background:var(--bg)}
 .tw td[contenteditable]{min-height:2.4em;font-size:13px}
@@ -292,7 +292,7 @@ body.jfab #ed{padding-bottom:84px}
  .plbar #npr{background:none;color:var(--fg);border:none;font-weight:600}
  .plbar #npr .ti{width:30px;height:24px;display:grid;place-items:center;font-size:18px;font-weight:700;color:var(--ink);border-radius:8px;background:linear-gradient(135deg,var(--lilac),var(--mint));box-shadow:0 2px 8px var(--mintglow)}
  #docs{padding-bottom:84px}
- #bar{bottom:calc(76px + env(safe-area-inset-bottom))}
+ #bar{bottom:calc(112px + env(safe-area-inset-bottom));left:12px;max-width:none}      /* di atas bar bawah (tab proyek + menu laporan); z-index 90 = di atas semua panel */
  /* SEMUA dialog (.dlg) di HP: layout blok + lembar dari bawah. Grid/flex + max-height + overflow:auto menciutkan dialog jadi garis putih di WebView Android
     (menu ⋮ kartu proyek, Beban Tim, dst hanya tampak layar abu-abu). */
  .mask{display:flex;align-items:flex-end;justify-content:center}
@@ -343,7 +343,7 @@ body.jfab #ed{padding-bottom:84px}
 </header>
 <div id="kscrim" hidden></div><div id="app"></div><div id="bar" hidden></div>
 <script src="/offline.js?v=1"></script>
-<script src="/proj-site.js?v=4"></script>
+<script src="/proj-site.js?v=5"></script>
 <script src="/act-ui.js?v=2"></script>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
