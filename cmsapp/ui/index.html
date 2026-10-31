@@ -227,8 +227,8 @@ header b{letter-spacing:.2px}
 :root{--gold:#d4a017;--gold2:#f4d36e;--gold3:#a87b0c;--goldglow:rgba(212,160,23,.5);--goldsoft:rgba(212,160,23,.16);--goldink:#2b1d00}
 .rc{position:relative}
 /* ⋮ kartu proyek: SELALU di pojok kanan atas kartu (tidak ikut bergeser oleh panjang nama/lencana) */
-.rc .rhm{padding-right:44px}
-.rc .rmenu{position:absolute;top:6px;right:6px;margin:0;min-width:36px;height:34px;padding:0 8px;font-size:20px;line-height:1;display:grid;place-items:center;border-radius:10px}
+.rc .rhm{padding-right:52px}
+.rc .rmenu{position:absolute;top:4px;right:4px;margin:0;min-width:44px;height:42px;padding:0 8px;font-size:20px;line-height:1;display:grid;place-items:center;border-radius:10px}
 .plbar{margin:0 0 12px}
 .plbar .cattabs{display:flex;gap:6px;flex-wrap:wrap;padding:0;margin:0;overflow:visible}
 .plbar .ti{display:none}
@@ -237,7 +237,8 @@ header b{letter-spacing:.2px}
 @media(max-width:640px){
  header,.mask{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
  header{box-shadow:0 1px 0 var(--gold3)}
- #bkeb{border:1px solid var(--gold);color:var(--gold);background:transparent;border-radius:10px;box-shadow:0 0 10px var(--goldglow)}
+ #bkeb::after{content:'';position:absolute;inset:-10px}  /* area ketuk lebih lega dari tampilannya */
+ #bkeb{position:relative;min-width:48px;min-height:44px;border:1px solid var(--gold);color:var(--gold);background:transparent;border-radius:10px;box-shadow:0 0 10px var(--goldglow)}
  #kmenu{display:block;position:fixed;left:0;right:0;top:auto;bottom:0;min-width:0;min-height:96px;max-height:calc(var(--vh,1vh)*72);overflow-y:auto;-webkit-overflow-scrolling:touch;
   background:var(--card);border:none;border-top:2px solid var(--gold);border-radius:18px 18px 0 0;padding:10px 10px calc(12px + env(safe-area-inset-bottom));
   box-shadow:0 -12px 32px rgba(0,0,0,.4);z-index:60}
@@ -471,9 +472,13 @@ addEventListener('error',e=>dbg('jserror',{msg:e.message,src:(e.filename||'').sl
 addEventListener('unhandledrejection',e=>dbg('jsreject',{msg:String(e.reason&&e.reason.message||e.reason)}));
 new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1&&n.classList.contains('mask'))setTimeout(()=>dbgSnap('mask',n),300)}))).observe(document.body,{childList:true});
 const kSet=v=>{$('#kmenu').hidden=!v;$('#kscrim').hidden=!v;document.querySelector('header').classList.toggle('kopen',v)};
-$('#bkeb').onclick=e=>{e.stopPropagation();kSet($('#kmenu').hidden);if(!$('#kmenu').hidden)setTimeout(()=>dbgSnap('kmenu',$('#kmenu')),300)};
+/* ⋮ dibuka saat jari MENYENTUH (pointerdown), bukan menunggu jari diangkat: di APK, SwipeRefreshLayout membatalkan 'click' bila jari sedikit bergeser di tepi atas (gestur tarik-refresh) -> tombol terasa susah dipencet */
+let kAt=0;
+const kToggle=()=>{kAt=Date.now();const open=$('#kmenu').hidden;kSet(open);if(open)setTimeout(()=>dbgSnap('kmenu',$('#kmenu')),300)};
+$('#bkeb').addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;e.stopPropagation();kToggle()});
+$('#bkeb').onclick=e=>{e.stopPropagation();if(Date.now()-kAt<700)return;kToggle()};
 $('#kmenu').addEventListener('click',()=>kSet(false));
-document.addEventListener('click',e=>{if(!e.target.closest('#kwrap'))kSet(false)});
+document.addEventListener('click',e=>{if(Date.now()-kAt<700)return;if(!e.target.closest('#kwrap'))kSet(false)});
 $('#navbtns').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>$('#navbtns').classList.remove('open')));
 async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
  $('#app').innerHTML='<div id=docs><h3>Dokumen</h3>'+(hasPerm('doc_upload')?'<p><button id=up>+ Unggah DOCX</button></p>':'')+(docs.map(d=>`<p><a href="#" data-id="${d.id}">${esc(d.filename)}</a> <small>${esc(d.status)}</small></p>`).join('')||'<p>Belum ada dokumen.</p>')+'</div>';
