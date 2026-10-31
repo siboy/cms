@@ -230,6 +230,8 @@ header b{letter-spacing:.2px}
 .rc .rhm{padding-right:52px}
 .rc .rmenu{position:absolute;top:4px;right:4px;margin:0;min-width:44px;height:42px;padding:0 8px;font-size:20px;line-height:1;display:grid;place-items:center;border-radius:10px}
 .plbar{margin:0 0 12px}
+.curpos{padding:8px 10px;border-left:4px solid var(--mint);background:var(--bg);border-radius:6px;font-size:13px;overflow-wrap:anywhere}
+.mvrow.mvcur{background:var(--lilacsoft,rgba(216,180,248,.28));font-weight:600!important}
 .acts button:disabled{opacity:.35;filter:grayscale(1);cursor:not-allowed}
 .mvlist{max-height:calc(var(--vh,1vh)*45);overflow-y:auto;border:1px solid var(--line);border-radius:8px}
 .mvrow{display:flex;gap:8px;align-items:center;padding:7px 8px;border-bottom:1px solid var(--line);cursor:pointer;font-weight:400!important;color:var(--fg)}
@@ -1607,9 +1609,23 @@ function itemMenu(docId,it,items,canOutline,onDone){const m=document.createEleme
   if(delBtn)delBtn.onclick=async()=>{m.remove();if(!confirm('Hapus heading ini? (isi di bawahnya TIDAK ikut terhapus, hanya baris heading-nya)'))return;
    try{await api('DELETE',`/outline/${it.id}?version=${it.version}`);if(onDone)onDone()}catch(e){note(e.message,1)}}}}
 
-function moveItemDlg(docId,it,items,onDone){const heads=items.filter(x=>x.kind==='heading'&&x.id!==it.id);const m=document.createElement('div');m.className='mask';
+/* posisi item SAAT INI di outline (utk dialog pindah): teks manusiawi + penanda pada daftar tujuan.
+   Judul: 'tepat setelah bagian P (di dalam Induk)' / 'bagian PERTAMA di dalam Induk' / 'paling awal dokumen'; bukan-judul: 'di bawah heading H'. */
+function posInfo(arr,it){const i=arr.findIndex(x=>x.id===it.id);const lab=x=>((x.label||'').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,'').trim()||'(tanpa judul)').slice(0,50);
+ if(it.kind==='heading'){let parent=null,prev=null;
+  for(let k=i-1;k>=0;k--){const x=arr[k];if(x.kind!=='heading')continue;if(x.level<it.level){parent=x;break}if(x.level===it.level&&!prev)prev=x}
+  const text=prev?`tepat setelah bagian “${lab(prev)}”`+(parent?` (di dalam “${lab(parent)}”)`:''):parent?`sebagai bagian PERTAMA di dalam “${lab(parent)}”`:'paling awal dokumen';
+  const marks={};if(prev)marks[prev.id]='● posisi saat ini (tepat setelah ini)';if(parent)marks[parent.id]=(marks[parent.id]?marks[parent.id]+'; ':'')+'induk saat ini';
+  return {text,cur:prev?prev.id:(parent?null:''),marks}}
+ let h0=null;for(let k=i-1;k>=0;k--){if(arr[k].kind==='heading'){h0=arr[k];break}}
+ return {text:h0?`di bawah heading “${lab(h0)}”`:'sebelum heading pertama (awal dokumen)',cur:h0?h0.id:'',marks:h0?{[h0.id]:'● posisi saat ini'}:{}}}
+function moveItemDlg(docId,it,items,onDone){
+ const P=posInfo(items,it);const i0=items.findIndex(x=>x.id===it.id);const skip=new Set([it.id]);
+ if(it.kind==='heading'){for(let k=i0+1;k<items.length&&!(items[k].kind==='heading'&&items[k].level<=it.level);k++)skip.add(items[k].id)}      // tujuan tak boleh di dalam subtree-nya sendiri
+ const heads=items.filter(x=>x.kind==='heading'&&!skip.has(x.id));const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<form class=dlg><b>Pindahkan — ${esc((it.label||'').slice(0,60)||'(tanpa judul)')}</b>
- <label>Taruh setelah<select name=after><option value="">— paling awal dokumen —</option>${heads.map(h=>`<option value=${h.id}>${'— '.repeat(h.level-1)}${esc((h.label||'').slice(0,60))}</option>`).join('')}</select></label>
+ <div class=curpos>📍 <b>Posisi saat ini:</b> ${esc(P.text)}</div>
+ <label>Taruh setelah<select name=after><option value="" ${P.cur===''?'selected':''}>— paling awal dokumen —${P.cur===''?' ← ● posisi saat ini':''}</option>${heads.map(h=>`<option value=${h.id} ${P.cur===h.id?'selected':''}>${'— '.repeat(h.level-1)}${esc((h.label||'').slice(0,60))}${P.marks[h.id]?' ← '+esc(P.marks[h.id]):''}</option>`).join('')}</select></label>
  <small style="color:var(--mut)">${it.kind==='heading'?'Seluruh isi di bawah heading ini (sub-bab, paragraf, tabel, gambar) ikut pindah. Posisi = setelah SELURUH isi heading tujuan (jadi bab berikutnya), bukan nyelip di tengahnya.':'Item ini akan jadi yang PERTAMA di dalam heading tujuan.'}</small>
  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=x>Batal</button><button class=p>Pindah</button></div></form>`;
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
@@ -1960,14 +1976,19 @@ function moveToDlg(el,b){const isH=b.kind==='heading';
  if(isH){const i=outline.findIndex(h=>h.id===b.id);if(i>=0){let j=i+1;while(j<outline.length&&outline[j].level>outline[i].level)j++;cand=outline.filter((h,k)=>k<i||k>=j)}}
  let cur=null;for(let q=el.previousElementSibling;q;q=q.previousElementSibling){if(q.classList&&q.classList.contains('h')){cur=+q.dataset.id;break}}
  if(cur==null&&typeof section!=='undefined'&&section)cur=section;
+ const P=isH?posInfo(outline.map(h=>({id:h.id,kind:'heading',level:h.level,label:ph(h.text)})),{id:b.id,kind:'heading',level:(outline.find(h=>h.id===b.id)||{level:b.level||1}).level}):{marks:{},cur:null};
+ let nth='';if(!isH){let a=1,t=1;for(let q=el.previousElementSibling;q&&!(q.classList&&q.classList.contains('h'));q=q.previousElementSibling)if(q.dataset&&q.dataset.id){a++;t++}
+  for(let q=el.nextElementSibling;q&&!(q.classList&&q.classList.contains('h'));q=q.nextElementSibling)if(q.dataset&&q.dataset.id)t++;nth=`, blok ke-${a} dari ${t}`}
  const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>✥ Pindahkan ${isH?'bagian':'blok'} — “${esc(ph(b.text).slice(0,60))}”</b>
   <small style="color:var(--mut)">${isH?'Judul dipindah <b>beserta seluruh isinya</b>, ditaruh setelah SELURUH isi heading yang dipilih (jadi bagian berikutnya).':'Pilih sub-bab tujuan. Blok masuk di <b>akhir isi</b> (atau awal, setelah petunjuk) heading yang dipilih. Pemindahan bisa diurungkan dari 🕘 Aktivitas saya.'}</small>
+  <div class=curpos>📍 <b>Posisi saat ini:</b> ${esc(isH?P.text:(cur?`di bagian “${ph((outline.find(h=>h.id===cur)||{}).text).slice(0,50)}”${nth}`:`sebelum heading pertama${nth}`))}</div>
   <input id=mvq type=search placeholder="Cari judul di outline…">
-  <div id=mvl class=mvlist>${isH?`<label class=mvrow><input type=radio name=mvt value="" ><span>— Paling awal dokumen —</span></label>`:''}${cand.map(h=>`<label class=mvrow data-t="${esc(ph(h.text).toLowerCase())}" style="padding-left:${(h.level-1)*14+8}px"><input type=radio name=mvt value="${h.id}"><span>${esc(ph(h.text).slice(0,90))}${h.id===cur?' <small style="color:var(--mut)">(bagian saat ini)</small>':''}</span></label>`).join('')}</div>
+  <div id=mvl class=mvlist>${isH?`<label class="mvrow${P.cur===''?' mvcur':''}"><input type=radio name=mvt value="" ${P.cur===''?'checked':''}><span>— Paling awal dokumen —${P.cur===''?' <small>← ● posisi saat ini</small>':''}</span></label>`:''}${cand.map(h=>{const mk=isH?P.marks[h.id]:(h.id===cur?'● bagian saat ini':'');return `<label class="mvrow${mk?' mvcur':''}" data-t="${esc(ph(h.text).toLowerCase())}" style="padding-left:${(h.level-1)*14+8}px"><input type=radio name=mvt value="${h.id}" ${isH&&P.cur===h.id?'checked':''}><span>${esc(ph(h.text).slice(0,90))}${mk?` <small style="color:var(--mut)">← ${esc(mk)}</small>`:''}</span></label>`}).join('')}</div>
   ${isH?'':`<div class=mvpos><label><input type=radio name=mvp value=end checked> Di akhir isi bagian tujuan</label><label><input type=radio name=mvp value=start> Di awal isi (setelah petunjuk)</label></div>`}
   <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=mvx>Batal</button><button type=button class=p id=mvok>Pindahkan</button></div></div>`;
  document.body.append(m);m.onclick=e=>{if(e.target===m)m.remove()};$('#mvx').onclick=()=>m.remove();
+ const cr=m.querySelector('.mvcur');if(cr)setTimeout(()=>cr.scrollIntoView({block:'center'}),50);
  $('#mvq').oninput=e=>{const q=e.target.value.trim().toLowerCase();m.querySelectorAll('.mvrow[data-t]').forEach(r=>{r.style.display=!q||r.dataset.t.includes(q)?'':'none'})};
  $('#mvok').onclick=async()=>{const sel=m.querySelector('input[name=mvt]:checked');if(!sel)return note('Pilih bagian tujuan dulu',1);
   try{if(isH)await api('POST',`/blocks/${b.id}/outline-move`,{after_id:sel.value?+sel.value:null});
