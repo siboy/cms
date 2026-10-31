@@ -234,6 +234,7 @@ header b{letter-spacing:.2px}
 .blk.guide{background:#fff7e0;border-color:#f5c451;border-left:5px solid #f59e0b}
 .blk.guide .txt{color:#7a4a05;font-style:italic;font-size:13px}
 .blk.guide .meta{color:#b45309;font-weight:700}
+.blk.guide .gq{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.blk.guide .gq button{padding:7px 12px;font-weight:600}
 @media(prefers-color-scheme:dark){.blk.guide{background:#33260f;border-color:#7a5a1a;border-left-color:#f0a35e}.blk.guide .txt{color:#f3c98b}.blk.guide .meta{color:#f0a35e}}
 /* label isian = tebal; placeholder = abu-abu (bukan teks isian) */
 .fl small,.fl2{font-weight:700;color:var(--fg)}
@@ -1537,7 +1538,7 @@ async function adminView(){closeDoc();const [{users},{docs},groups,adset]=await 
  $('#nu').onsubmit=async e=>{e.preventDefault();const f=e.target;try{await api('POST','/admin/users',{username:f.username.value,name:f.name.value,password:f.password.value,
    email:f.email.value,phone_wa:f.phone_wa.value,expertise:f.expertise.value,role:f.role.value});note('Pengguna dibuat');adminView()}catch(x){note(x.message,1)}};
  $('#ad').onchange=()=>assignView(users);if(docs.length)assignView(users)}
-async function assignView(users){const d=+$('#ad').value;const isAdmin=hasPerm('pic_assign');const canOutline=hasPerm('outline_manage');const tl=toolsFor(b);
+async function assignView(users){const d=+$('#ad').value;const isAdmin=hasPerm('pic_assign');const canOutline=hasPerm('outline_manage');
  const [{items},{map},{meta}]=await Promise.all([api('GET',`/docs/${d}/taggable`),api('GET',`/docs/${d}/pic-map`),api('GET',`/docs/${d}/meta`).catch(()=>({meta:{}}))]);
  const {assignments}=await api('GET',`/admin/docs/${d}/assign`).catch(()=>({assignments:[]}));
  const parts=['cover','front','body','lampiran'].map(p=>({scope:'part:'+p,label:'Bagian: '+p}));
@@ -1753,9 +1754,14 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
  const canEdit=!!b.can_edit,gen=b.kind==='heading'&&(b.data||{}).generated,hidden=HIDEABLE_KINDS.includes(b.kind)&&(b.data||{}).hidden;
  const sdone=b.kind==='heading'&&!!(b.data||{}).section_done;
  const canOutline=hasPerm('outline_manage');
+ const tl=toolsFor(b);   // alat hitung/simulasi terkait heading/caption ini (tanpa baris ini view() melempar ReferenceError utk SETIAP blok -> editor kosong)
  el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${sdone?'<span class=badge style="background:#2da44e" title="Heading ditandai selesai diisi — dihitung penuh di progres task bab">✅ DONE</span>':''}${tl.length?`<span class=badge title="Bagian ini bisa dibantu mesin hitung/simulasi: ${esc(tl.map(t=>t.label).join(', '))}">🧮 ${tl.length>2?tl.length+' alat terkait':esc(tl.map(t=>t.label).join(' · '))}</span>`:''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
  if(b.kind==='note'&&(b.data||{}).source==='template_guide'){el.classList.add('guide');const k=el.querySelector('.meta span');if(k)k.textContent='💡 Petunjuk penulisan (tidak ikut ekspor)'}
- el.append(bodyOf(b));const a=document.createElement('div');a.className='acts';
+ el.append(bodyOf(b));
+ if(el.classList.contains('guide')&&canEdit){const q=document.createElement('div');q.className='gq';   // pintasan selalu terlihat (tombol aksi biasa baru muncul saat blok disentuh)
+  const qb=(t,f)=>{const x=document.createElement('button');x.type='button';x.textContent=t;x.onclick=()=>{try{f()}catch(e){note(e.message,1)}};q.append(x)};
+  qb('✍ Mulai menulis',()=>blockDlg(b));qb('▦ Tambah tabel',()=>tableDlg(b));el.append(q)}
+ const a=document.createElement('div');a.className='acts';
  const btn=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
  if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
   btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
