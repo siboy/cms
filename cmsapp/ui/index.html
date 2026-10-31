@@ -522,8 +522,9 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
  const PSTAT=[['planning','Planning'],['ongoing','Ongoing'],['on_hold','On hold'],['completed','Done']],PICO={planning:'📝',ongoing:'🚧',on_hold:'⏸',completed:'✅'};
  const cnt=s=>projects.filter(p=>p.status===s).length;
  const shown=projects.filter(p=>projFilter==='semua'?true:projFilter==='aktif'?p.status!=='completed':p.status===projFilter);
- /* urutan kartu: (0) belum Done ber-deadline, deadline terdekat -> terjauh (yang lewat tenggat otomatis paling atas); (1) belum Done tanpa deadline; (2) arsip = Done, yang terbaru selesai dulu, paling lama di dasar */
- {const dl=p=>(p.end_date||'').slice(0,10),grp=p=>p.status==='completed'?2:(dl(p)?0:1);
+ /* urutan kartu: (0) deadline hari ini ke depan, terdekat -> terjauh (mis. Okt, Nov, Des 2026, lalu 2027); (1) belum Done tanpa deadline; (2) ARSIP = deadline sudah lewat (< hari ini) atau status Done, urut terbaru -> terlama */
+ {const now=new Date(),today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const dl=p=>(p.end_date||'').slice(0,10),grp=p=>(p.status==='completed'||(dl(p)&&dl(p)<today))?2:(dl(p)?0:1);
   shown.sort((a,b)=>{const ga=grp(a),gb=grp(b);if(ga!==gb)return ga-gb;
    if(ga===0)return dl(a).localeCompare(dl(b));
    if(ga===2){const da=dl(a),db=dl(b);return da&&db?db.localeCompare(da):da?-1:db?1:0}
