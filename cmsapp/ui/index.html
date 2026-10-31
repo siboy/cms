@@ -455,8 +455,21 @@ function placeNav(){const km=$('#kmenu'),nav=$('#navbtns');let sep=km.querySelec
  else{for(const b of NAVB)nav.append(b);if(sep)sep.remove()}}
 mqMob.addEventListener('change',placeNav);placeNav();
 /* header.kopen: saat menu terbuka header diangkat di atas panel tetap (#side/#ptabs/.repmenu z 14-19) yang kalau tidak menutupi menu & menelan ketukannya (APK) */
+/* diagnostik: laporkan galat JS & geometri overlay (menu ⋮/dialog) ke /api/clientlog -- utk melacak overlay "abu-abu kosong" di APK */
+const dbg=(tag,data)=>{try{api('POST','/clientlog',{tag,...data}).catch(()=>{})}catch(e){}};
+const dbgBox=el=>{if(!el)return null;const r=el.getBoundingClientRect(),c=getComputedStyle(el);
+ return {tag:el.tagName+'#'+el.id+'.'+el.className,rect:[r.left,r.top,r.width,r.height].map(Math.round),disp:c.display,pos:c.position,z:c.zIndex,vis:c.visibility,op:c.opacity,
+  bg:c.backgroundColor,fg:c.color,ovf:c.overflowY,h:c.height,tr:c.transform,flt:c.filter,bf:c.backdropFilter,kids:el.children.length,txt:(el.innerText||'').slice(0,40)}};
+const dbgSnap=(tag,root)=>{const q=sel=>{const e=document.querySelector(sel);return dbgBox(e)};
+ const vv=window.visualViewport;const px=document.elementFromPoint(innerWidth/2,innerHeight-60);
+ dbg(tag,{vw:innerWidth,vh:innerHeight,dpr:devicePixelRatio,vv:vv?[Math.round(vv.width),Math.round(vv.height),vv.scale]:null,mob:matchMedia('(max-width:640px)').matches,
+  dark:matchMedia('(prefers-color-scheme:dark)').matches,sy:scrollY,root:dbgBox(root),dlg:dbgBox(root&&root.querySelector&&root.querySelector('.dlg')),
+  first:dbgBox(root&&root.firstElementChild),hdr:q('header'),at:px?px.tagName+'#'+px.id+'.'+px.className:null,bodyKids:document.body.children.length})};
+addEventListener('error',e=>dbg('jserror',{msg:e.message,src:(e.filename||'').slice(-40),line:e.lineno}));
+addEventListener('unhandledrejection',e=>dbg('jsreject',{msg:String(e.reason&&e.reason.message||e.reason)}));
+new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{if(n.nodeType===1&&n.classList.contains('mask'))setTimeout(()=>dbgSnap('mask',n),300)}))).observe(document.body,{childList:true});
 const kSet=v=>{$('#kmenu').hidden=!v;$('#kscrim').hidden=!v;document.querySelector('header').classList.toggle('kopen',v)};
-$('#bkeb').onclick=e=>{e.stopPropagation();kSet($('#kmenu').hidden)};
+$('#bkeb').onclick=e=>{e.stopPropagation();kSet($('#kmenu').hidden);if(!$('#kmenu').hidden)setTimeout(()=>dbgSnap('kmenu',$('#kmenu')),300)};
 $('#kmenu').addEventListener('click',()=>kSet(false));
 document.addEventListener('click',e=>{if(!e.target.closest('#kwrap'))kSet(false)});
 $('#navbtns').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>$('#navbtns').classList.remove('open')));

@@ -1246,6 +1246,17 @@ def admin_assign():
     return jsonify(ok=True)
 
 
+@bp.post("/clientlog")
+@auth.require()
+def clientlog():
+    """Diagnostik UI dari klien (APK/HP): galat JS & ukuran/posisi overlay saat menu/dialog dibuka. Hanya ke log server."""
+    import json as _json
+    d = body()
+    current_app.logger.warning("CLIENTDBG user=%s ua=%s %s", g.user["username"], (request.user_agent.string or "")[-60:],
+                               _json.dumps(d, ensure_ascii=False)[:3000])
+    return jsonify(ok=True)
+
+
 @bp.get("/admin/settings")
 @auth.require("user_manage")
 def admin_settings_get():
