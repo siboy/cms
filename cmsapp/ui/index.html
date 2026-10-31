@@ -273,20 +273,26 @@ header b{letter-spacing:.2px}
  .dlg>button:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink)}
  /* daftar proyek: 2 kartu per baris, kartu biru dengan aksen emas */
  .rgp{grid-template-columns:1fr 1fr!important;gap:10px;padding:0 8px}
- .rgp .rc{margin:0;padding:10px 10px 9px;color:#fff;border:1px solid rgba(244,211,110,.5);border-top:3px solid var(--gold);border-radius:14px;
-  background:linear-gradient(160deg,#2563eb 0%,#1746b8 45%,#0b2a6f 100%);
-  box-shadow:0 8px 18px rgba(11,42,111,.38),0 0 14px rgba(212,160,23,.18);min-width:0}
+ .rgp .rc{margin:0;padding:10px 10px 9px;color:#fff;border:1px solid rgba(244,211,110,.4);border-top:3px solid var(--gold);border-radius:14px;
+  background:linear-gradient(160deg,#6aa6ff 0%,#4a8cf3 50%,#3b79e0 100%);
+  box-shadow:0 6px 14px rgba(59,121,224,.28),0 0 12px rgba(212,160,23,.14);min-width:0;
+  display:flex;flex-direction:column}
+ /* blok bawah (progres, tanggal, lencana laporan) menempel ke dasar kartu dgn tinggi baku -> bar progres sejajar antar kartu sebaris, tanggal kosong tetap menyisakan ruang */
+ .rgp .rc .pc-cl{min-height:16px}
+ .rgp .rc .pc-pg{margin-top:auto;margin-bottom:6px}
+ .rgp .rc .pc-dt{min-height:15px}
+ .rgp .rc .pc-rp{min-height:20px;margin-top:4px!important}
  .rgp .rc:active{filter:brightness(1.08)}
  .rgp .rc .rh{margin-bottom:4px;gap:4px}
  .rgp .rc .rhm{padding-right:38px}
  .rgp .rc .rh b{flex:1 1 100%;margin:0;font-size:13.5px;line-height:1.25;color:#fff;overflow-wrap:anywhere}
  .rgp .rc .rmenu{top:5px;right:5px;min-width:34px;height:34px;padding:0;font-size:18px;color:var(--gold2);background:rgba(255,255,255,.12);
   border:1px solid rgba(244,211,110,.55);box-shadow:0 0 8px var(--goldglow)}
- .rgp .rc [style*="--mut"]{color:#c9d8ff!important}
+ .rgp .rc [style*="--mut"]{color:#eaf2ff!important}
  .rgp .rc .badge{font-size:10px;padding:1px 7px}
  .rgp .rc .badge:not([style]){background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink);font-weight:700}
  .rgp .rc .badge[style*="--mut"]{background:rgba(255,255,255,.18)!important;color:#fff}
- .rgp .rc .pbar{background:rgba(255,255,255,.2)}
+ .rgp .rc .pbar{background:rgba(255,255,255,.32)}
  .rgp .rc .pbar i{background:linear-gradient(90deg,var(--gold3),var(--gold2));box-shadow:0 0 8px var(--goldglow)}
  .rgp .rc small{color:var(--gold2);font-weight:700}
 }
@@ -532,10 +538,10 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
   const unread=(p.unread_chat||0)+(p.unread_tasks||0);
   const final100=p.progress_override===100;
   return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class="rh rhm"><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${final100?`<span class=badge style="background:#2da44e" title="Dinyatakan FINAL oleh ${esc(p.progress_final_by||'?')} pada ${esc((p.progress_final_at||'').slice(0,10))}">✔ 100% Final</span>`:''}${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}${hasPerm('project_manage')?`<button type=button class=rmenu data-menu="${p.id}" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
-  <div style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
-  <div style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
-  <div style="font-size:11px;color:var(--mut)">${idDate(p.start_date)} → ${idDate(p.end_date)}</div>
-  <div style="margin-top:6px">${['draft','interim','final'].map(t=>rc[t]?`<span class=badge style="background:var(--mut)">${t}: ${rc[t]}</span> `:'').join('')}</div></div>`}).join('')
+  <div class=pc-cl style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
+  <div class=pc-pg style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
+  <div class=pc-dt style="font-size:11px;color:var(--mut)">${(p.start_date||p.end_date)?`${idDate(p.start_date)} → ${idDate(p.end_date)}`:''}</div>
+  <div class=pc-rp style="margin-top:6px">${['draft','interim','final'].map(t=>rc[t]?`<span class=badge style="background:var(--mut)">${t}: ${rc[t]}</span> `:'').join('')}</div></div>`}).join('')
   ||'<p style="color:var(--mut)">Tidak ada proyek dengan status ini.</p>')+'</div></div>';
  document.querySelectorAll('[data-pf]').forEach(b=>b.onclick=()=>{projFilter=b.dataset.pf;projectsView()});
  if($('#bwork'))$('#bwork').onclick=workloadDlg;
