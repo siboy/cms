@@ -459,11 +459,11 @@ async function workloadDlg(){let items=[],detail=false;
  // true = angka skor/poin tampil; false = note kualitatif saja
  const LV={merah:['#d1242f','🔴 Overload'],kuning:['#b45309','🟡 Padat'],hijau:['#2da44e','🟢 Normal']};
  const m=document.createElement('div');m.className='mask';document.body.append(m);
- const paint=()=>{m.innerHTML=`<div class=dlg style="width:min(680px,94vw)">
+ const paint=()=>{m.innerHTML=`<div class=dlg style="display:block;min-height:120px;width:min(680px,94vw);overflow-y:auto;-webkit-overflow-scrolling:touch">
  <div style="display:flex;gap:8px;align-items:center"><b style="flex:1">📊 Beban Tim</b></div>
  ${detail?`<p style="color:var(--mut);font-size:12px;margin:0">Skor = proyek aktif + PIC belum selesai + task berjalan + poin usaha 14 hari (berbobot per jenis aksi; edit dihitung dari besar perubahan nyata, ±400 karakter = 1 poin). Koreksi oleh pihak lain mendiskon poin penulis (maks −60%). 🔥 Kelelahan: usaha luar jam kerja ≥8 poin, ≥30% total, ≥2 hari berbeda.</p>`:''}
- <div style="display:grid;gap:8px">${items.map(u=>{const [col,lbl]=LV[u.level];const w=Math.min(100,u.score/15*100);
-  return `<div style="border:1px solid var(--line);border-radius:10px;padding:8px 11px;${u.level==='merah'?'border-color:#d1242f;background:#d1242f14':''}">
+ <div style="display:block">${items.map(u=>{const [col,lbl]=LV[u.level]||LV.hijau;const w=Math.min(100,u.score/15*100);
+  return `<div style="margin:8px 0;border:1px solid var(--line);border-radius:10px;padding:8px 11px;${u.level==='merah'?'border-color:#d1242f;background:#d1242f14':''}">
    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(u.name||u.username)}</b>
     ${detail?`<span class=badge style="background:${col}">${lbl} · ${u.score}</span>`:''}
     ${u.effort_late>=4&&u.late_days>=2?'<span class=badge style="background:#b45309" title="Sering beraktivitas sebelum 07.00 / setelah 18.00 di hari kerja">🌙 Sering kerja lembur</span>':''}
@@ -476,7 +476,8 @@ async function workloadDlg(){let items=[],detail=false;
   </div>`}).join('')||'<p style="color:var(--mut)">Belum ada data pengguna.</p>'}</div>
  <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
   m.querySelector('#x').onclick=()=>m.remove()};
- m.onclick=e=>{if(e.target===m)m.remove()};paint()}
+ m.onclick=e=>{if(e.target===m)m.remove()};
+ try{paint()}catch(e){m.remove();note('Beban Tim gagal ditampilkan: '+e.message,1)}}
 
 function projectMenu(p,projects){const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>${esc(p.name)}</b>
