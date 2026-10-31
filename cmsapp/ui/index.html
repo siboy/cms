@@ -615,7 +615,7 @@ function setProjectFieldDlg(p,field,label,multiline){const m=document.createElem
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
  f.onsubmit=async e=>{e.preventDefault();try{await api('PATCH',`/projects/${p.id}`,{[field]:f.v.value});m.remove();note('Tersimpan');projectsView()}catch(x){note(x.message,1)}}}
 
-async function cloneDocDlg(p,projects){
+async function cloneDocDlg(p,projects,after){
  let docs=[];try{docs=(await api('GET','/docs-index')).docs}catch(e){note(e.message,1);return}
  if(!docs.length){note('Belum ada dokumen di sistem.',1);return}
  const docLabel=d=>`${d.filename}${d.project_name?` — ${d.project_name} (${d.report_type})`:' — (tak tertaut proyek)'}`;
@@ -632,7 +632,7 @@ async function cloneDocDlg(p,projects){
  f.pf.onchange=()=>{f.src.innerHTML=docOpts(f.pf.value)};
  f.onsubmit=async e=>{e.preventDefault();if(!f.src.value)return note('Pilih dokumen dulu',1);
   try{await api('POST',`/projects/${p.id}/clone-document`,{doc_id:+f.src.value,report_type:f.report_type.value,label:f.label.value});
-   m.remove();note('Dokumen laporan baru dibuat (outline tersalin)');projectsView()}catch(x){note(x.message,1)}}}
+   m.remove();note('Dokumen laporan baru dibuat (outline tersalin)');(after||projectsView)()}catch(x){note(x.message,1)}}}
 
 async function cloneTeamDlg(p,projects){
  let target=[];try{target=(await api('GET',`/projects/${p.id}/documents`)).documents}catch(e){}
@@ -819,7 +819,10 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
    ${['draft','interim','final'].map(t=>`<div style="margin:8px 0 4px;font-weight:600;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">${t} (${grp(t).length})</div>${grp(t).map(row).join('')||'<small style="color:var(--mut)">— belum ada —</small>'}`).join('')}</div>`
  +`<div class=rc data-rt=pic><div class=rh><b>👤 PIC</b></div><div id=picHost>memuat…</div></div>`
  +`<div class=rc data-rt=dokumen><div class=rh><b>📂 Tambah Dokumen</b></div>`
- +(canManage?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+ +(canManage?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+ ${hasPerm('template_use')?'<button type=button class=p id=ltpl title="Pilih template outline AMDAL / UKL-UPL, lalu salin jadi dokumen laporan proyek ini">🧩 Buat dari template</button>':''}
+ <button type=button id=lclone title="Salin outline (judul bab/sub-bab) dari dokumen lain yang sudah ada">📑 Salin outline dari dokumen lain</button></div>
+ <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
  <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
  <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
  <select id=lrt><option value=draft>Draft</option><option value=interim>Interim</option><option value=final>Final</option></select>
@@ -843,6 +846,9 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  initChat();renderTasks();renderBerkas();calCur=calCur||new Date();renderCal();
  $('#tkall').onchange=e=>{tkAll=e.target.checked;renderTasks()};
  $('#tkadd').onclick=taskAddDlg;
+ if($('#ltpl'))$('#ltpl').onclick=()=>{location.href='/templates?project='+curProj};
+ if($('#lclone'))$('#lclone').onclick=async()=>{try{const [{project},{projects}]=await Promise.all([api('GET',`/projects/${curProj}`),api('GET','/projects')]);
+  cloneDocDlg(project,projects,()=>projectDetailView(curProj,{tab:'laporan'}))}catch(e){note(e.message,1)}};
  $('#repmenu').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   $('#repmenu .cur')?.classList.remove('cur');b.classList.add('cur');
   const m=b.dataset.m;$('#lrw').classList.toggle('showrep',m!=='chat');
