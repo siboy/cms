@@ -271,30 +271,28 @@ header b{letter-spacing:.2px}
  .dlg>b:first-child{font-size:15px}
  .dlg>button{width:100%;text-align:left;padding:13px 12px;border-radius:10px}
  .dlg>button:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink)}
- /* daftar proyek: 2 kartu per baris, kartu biru dengan aksen emas */
+ /* daftar proyek: 2 kartu per baris. Palet: mint #A8E6CF, lilac #D8B4F8, krem #F8F9FA, slate #1F2937 */
  .rgp{grid-template-columns:1fr 1fr!important;gap:10px;padding:0 8px}
- .rgp .rc{margin:0;padding:10px 10px 9px;color:#fff;border:1px solid rgba(244,211,110,.4);border-top:3px solid var(--gold);border-radius:14px;
-  background:linear-gradient(160deg,#6aa6ff 0%,#4a8cf3 50%,#3b79e0 100%);
-  box-shadow:0 6px 14px rgba(59,121,224,.28),0 0 12px rgba(212,160,23,.14);min-width:0;
-  display:flex;flex-direction:column}
+ .rgp .rc{margin:0;padding:10px 10px 9px;color:#1F2937;border:1px solid #A8E6CF;border-top:4px solid #A8E6CF;border-radius:14px;
+  background:linear-gradient(165deg,#F8F9FA 0%,#EEF9F3 100%);
+  box-shadow:0 6px 16px rgba(31,41,55,.10);min-width:0;display:flex;flex-direction:column}
+ .rgp .rc:active{filter:brightness(.97)}
  /* blok bawah (progres, tanggal, lencana laporan) menempel ke dasar kartu dgn tinggi baku -> bar progres sejajar antar kartu sebaris, tanggal kosong tetap menyisakan ruang */
  .rgp .rc .pc-cl{min-height:16px}
  .rgp .rc .pc-pg{margin-top:auto;margin-bottom:6px}
  .rgp .rc .pc-dt{min-height:15px}
  .rgp .rc .pc-rp{min-height:20px;margin-top:4px!important}
- .rgp .rc:active{filter:brightness(1.08)}
  .rgp .rc .rh{margin-bottom:4px;gap:4px}
  .rgp .rc .rhm{padding-right:38px}
- .rgp .rc .rh b{flex:1 1 100%;margin:0;font-size:13.5px;line-height:1.25;color:#fff;overflow-wrap:anywhere}
- .rgp .rc .rmenu{top:5px;right:5px;min-width:34px;height:34px;padding:0;font-size:18px;color:var(--gold2);background:rgba(255,255,255,.12);
-  border:1px solid rgba(244,211,110,.55);box-shadow:0 0 8px var(--goldglow)}
- .rgp .rc [style*="--mut"]{color:#eaf2ff!important}
+ .rgp .rc .rh b{flex:1 1 100%;margin:0;font-size:13.5px;line-height:1.25;color:#1F2937;overflow-wrap:anywhere}
+ .rgp .rc .rmenu{top:5px;right:5px;min-width:34px;height:34px;padding:0;font-size:18px;color:#1F2937;background:#fff;border:1px solid #A8E6CF;box-shadow:0 1px 4px rgba(31,41,55,.12)}
+ .rgp .rc [style*="--mut"]{color:#4B5563!important}
  .rgp .rc .badge{font-size:10px;padding:1px 7px}
- .rgp .rc .badge:not([style]){background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink);font-weight:700}
- .rgp .rc .badge[style*="--mut"]{background:rgba(255,255,255,.18)!important;color:#fff}
- .rgp .rc .pbar{background:rgba(255,255,255,.32)}
- .rgp .rc .pbar i{background:linear-gradient(90deg,var(--gold3),var(--gold2));box-shadow:0 0 8px var(--goldglow)}
- .rgp .rc small{color:var(--gold2);font-weight:700}
+ .rgp .rc .badge:not([style]){background:#D8B4F8;color:#1F2937;font-weight:700}
+ .rgp .rc .badge[style*="--mut"]{background:rgba(31,41,55,.08)!important;color:#1F2937}
+ .rgp .rc .pbar{background:rgba(31,41,55,.10)}
+ .rgp .rc .pbar i{background:linear-gradient(90deg,#A8E6CF,#D8B4F8)}
+ .rgp .rc small{color:#1F2937;font-weight:700}
 }
 </style></head><body>
 <header><b style="display:flex;align-items:center;gap:7px"><img src="/app-icon.svg" style="height:22px;border-radius:5px" alt="">sdrive</b><span id="who"></span><span id="pres" title="online"></span>
