@@ -255,6 +255,17 @@ header b{letter-spacing:.2px}
  .plbar #npr .ti{font-size:22px;filter:drop-shadow(0 2px 6px var(--goldglow))}
  #docs{padding-bottom:84px}
  #bar{bottom:calc(76px + env(safe-area-inset-bottom))}
+ /* SEMUA dialog (.dlg) di HP: layout blok + lembar dari bawah. Grid/flex + max-height + overflow:auto menciutkan dialog jadi garis putih di WebView Android
+    (menu ⋮ kartu proyek, Beban Tim, dst hanya tampak layar abu-abu). */
+ .mask{display:flex;align-items:flex-end;justify-content:center}
+ .dlg{display:block;min-height:64px;max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  border:none;border-top:2px solid var(--gold);border-radius:18px 18px 0 0!important;padding:14px 14px calc(14px + env(safe-area-inset-bottom))!important;
+  box-shadow:0 -12px 32px rgba(0,0,0,.4)}
+ .dlg>*{display:block;margin:0 0 8px}
+ .dlg>[hidden]{display:none}
+ .dlg>b:first-child{font-size:15px}
+ .dlg>button{width:100%;text-align:left;padding:13px 12px;border-radius:10px}
+ .dlg>button:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink)}
 }
 </style></head><body>
 <header><b style="display:flex;align-items:center;gap:7px"><img src="/app-icon.svg" style="height:22px;border-radius:5px" alt="">sdrive</b><span id="who"></span><span id="pres" title="online"></span>
