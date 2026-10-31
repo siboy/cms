@@ -10,8 +10,8 @@
 button,input,select,textarea{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
 button{cursor:pointer}button.p{background:var(--acc);color:#fff;border-color:var(--acc)}
 header{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
-header b{flex:1}#login{max-width:320px;margin:15vh auto;display:grid;gap:8px}
-#main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 45px)}
+header b{flex:1}#login{max-width:320px;margin:calc(var(--vh,1vh)*15) auto;display:grid;gap:8px}
+#main{display:grid;grid-template-columns:280px 1fr;height:calc(calc(var(--vh,1vh)*100) - 45px)}
 #side{overflow:auto;border-right:1px solid var(--line);padding:8px;background:var(--card)}
 #side a{display:block;padding:3px 6px;border-radius:4px;cursor:pointer;color:var(--fg)}#side a:hover{background:var(--bg)}
 #side a.mine{font-weight:600}#side a.cur{background:var(--bg);outline:1px solid var(--acc)}
@@ -24,7 +24,7 @@ header b{flex:1}#login{max-width:320px;margin:15vh auto;display:grid;gap:8px}
 textarea{width:100%;min-height:90px}table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:3px 6px}
 td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 #bar{position:fixed;right:12px;bottom:12px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;max-width:320px}
-.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.bot{border-left-color:#7c3aed}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px;max-height:90vh;overflow-y:auto}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.dlg>*{min-width:0}.dlg select,.dlg input,.dlg textarea{width:100%;max-width:100%;box-sizing:border-box}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:30vh}}
+.cm{border-top:1px dashed var(--line);margin-top:8px;padding-top:6px}.cm .c{margin:4px 0;padding:4px 8px;border-left:3px solid var(--acc);background:var(--bg);border-radius:4px}.cm .c.bot{border-left-color:#7c3aed}.cm .c.re{margin-left:22px}.cm .c.done{opacity:.55;border-left-color:var(--mut)}.cm .c small{color:var(--mut)}.cm form{display:flex;gap:6px;margin-top:6px}.cm input{flex:1}.mask{position:fixed;inset:0;background:#0007;z-index:20;display:grid;place-items:center}.dlg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;width:min(460px,92vw);display:grid;gap:8px;max-height:calc(var(--vh,1vh)*90);overflow-y:auto}.dlg label{display:grid;gap:2px;font-size:12px;color:var(--mut)}.dlg>*{min-width:0}.dlg select,.dlg input,.dlg textarea{width:100%;max-width:100%;box-sizing:border-box}.tb{display:flex;gap:4px;margin-bottom:4px}.wys{min-height:70px;padding:6px 8px;border:1px solid var(--acc);border-radius:6px;background:var(--card);white-space:pre-wrap;outline:none}.txt a,.wys a{color:var(--acc)}.badge{background:var(--acc);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}.err{color:#d1242f}#docs{padding:20px}@media(max-width:800px){#main{grid-template-columns:1fr}#side{max-height:calc(var(--vh,1vh)*30)}}
 .tw{overflow:auto;max-width:100%}.tw table{width:auto;min-width:100%}.tw td,.tw th{min-width:120px;vertical-align:top;padding:6px 8px;white-space:pre-wrap;word-break:break-word}.tw th{background:var(--bg)}
 .tw td[contenteditable]{min-height:2.4em;font-size:13px}
 .fmask{position:fixed;inset:0;background:var(--bg);z-index:19;display:flex;flex-direction:column}.fhead{padding:8px 14px;border-bottom:1px solid var(--line);background:var(--card);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -45,7 +45,7 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 .tabs button{border:none;border-radius:6px 6px 0 0;background:transparent;padding:6px 12px}
 .tabs button.cur{background:var(--card);border:1px solid var(--line);border-bottom-color:var(--card);font-weight:600}
 .pbar{background:var(--bg);border-radius:6px;height:10px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--acc)}
-.notifd{position:fixed;right:12px;top:42px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px #0003;width:320px;max-height:60vh;overflow:auto;z-index:25;padding:6px}
+.notifd{position:fixed;right:12px;top:42px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px #0003;width:320px;max-height:calc(var(--vh,1vh)*60);overflow:auto;z-index:25;padding:6px}
 .notifd .ni{padding:6px 8px;border-radius:6px;cursor:pointer;font-size:12.5px}.notifd .ni:hover{background:var(--bg)}.notifd .ni b{display:block}
 .otable{overflow-x:auto;-webkit-overflow-scrolling:touch}.otable table{width:100%;border-collapse:collapse}
 .otable td,.otable th{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
@@ -74,7 +74,7 @@ header.kopen{z-index:40}
  #bmenu{display:none!important}
  #navbtns{display:none!important}
  #kmenu .ksep{height:1px;background:var(--line);margin:4px 0}
- #kmenu{max-height:75vh;overflow:auto}
+ #kmenu{max-height:calc(var(--vh,1vh)*75);overflow:auto}
  #navbtns{display:none;flex-direction:column;align-items:stretch;gap:6px;flex-basis:100%;
   margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
  #navbtns.open{display:flex}
@@ -120,7 +120,7 @@ header b{letter-spacing:.2px}
 .lleft .rc{overflow-x:auto}
 .chatwrap{flex:1 1 300px;max-width:430px;position:sticky;top:56px}
 .chatbox{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--r);
- box-shadow:var(--sh);height:min(70vh,620px);overflow:hidden}
+ box-shadow:var(--sh);height:min(calc(var(--vh,1vh)*70),620px);overflow:hidden}
 .chathead{padding:8px 12px;border-bottom:1px solid var(--line);font-weight:600;display:flex;gap:8px;align-items:center}
 .chatlog{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
 .msg{position:relative;max-width:80%;align-self:flex-start;padding:5px 10px;border-radius:12px 12px 12px 3px;
@@ -238,7 +238,7 @@ header b{letter-spacing:.2px}
  header,.mask{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
  header{box-shadow:0 1px 0 var(--gold3)}
  #bkeb{border:1px solid var(--gold);color:var(--gold);background:transparent;border-radius:10px;box-shadow:0 0 10px var(--goldglow)}
- #kmenu{display:block;position:fixed;left:0;right:0;top:auto;bottom:0;min-width:0;min-height:96px;max-height:72vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+ #kmenu{display:block;position:fixed;left:0;right:0;top:auto;bottom:0;min-width:0;min-height:96px;max-height:calc(var(--vh,1vh)*72);overflow-y:auto;-webkit-overflow-scrolling:touch;
   background:var(--card);border:none;border-top:2px solid var(--gold);border-radius:18px 18px 0 0;padding:10px 10px calc(12px + env(safe-area-inset-bottom));
   box-shadow:0 -12px 32px rgba(0,0,0,.4);z-index:60}
  #kmenu::before{content:'';display:block;width:42px;height:4px;border-radius:2px;background:var(--gold3);margin:0 auto 8px}
@@ -262,7 +262,7 @@ header b{letter-spacing:.2px}
  /* SEMUA dialog (.dlg) di HP: layout blok + lembar dari bawah. Grid/flex + max-height + overflow:auto menciutkan dialog jadi garis putih di WebView Android
     (menu ⋮ kartu proyek, Beban Tim, dst hanya tampak layar abu-abu). */
  .mask{display:flex;align-items:flex-end;justify-content:center}
- .dlg{display:block;min-height:64px;max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+ .dlg{display:block;min-height:64px;max-height:calc(var(--vh,1vh)*88);overflow-y:auto;-webkit-overflow-scrolling:touch;
   border:none;border-top:2px solid var(--gold);border-radius:18px 18px 0 0!important;padding:14px 14px calc(14px + env(safe-area-inset-bottom))!important;
   box-shadow:0 -12px 32px rgba(0,0,0,.4)}
  .dlg>*{display:block;margin:0 0 8px}
@@ -456,10 +456,12 @@ function placeNav(){const km=$('#kmenu'),nav=$('#navbtns');let sep=km.querySelec
 mqMob.addEventListener('change',placeNav);placeNav();
 /* header.kopen: saat menu terbuka header diangkat di atas panel tetap (#side/#ptabs/.repmenu z 14-19) yang kalau tidak menutupi menu & menelan ketukannya (APK) */
 /* diagnostik: laporkan galat JS & geometri overlay (menu ⋮/dialog) ke /api/clientlog -- utk melacak overlay "abu-abu kosong" di APK */
+/* --vh: unit vh di WebView APK ini terhitung ~0 utk max-height (dialog/menu menciut jadi tinggi minimum); pakai px dari innerHeight */
+const setVh=()=>document.documentElement.style.setProperty('--vh',(innerHeight*0.01)+'px');setVh();addEventListener('resize',setVh);
 const dbg=(tag,data)=>{try{api('POST','/clientlog',{tag,...data}).catch(()=>{})}catch(e){}};
 const dbgBox=el=>{if(!el)return null;const r=el.getBoundingClientRect(),c=getComputedStyle(el);
  return {tag:el.tagName+'#'+el.id+'.'+el.className,rect:[r.left,r.top,r.width,r.height].map(Math.round),disp:c.display,pos:c.position,z:c.zIndex,vis:c.visibility,op:c.opacity,
-  bg:c.backgroundColor,fg:c.color,ovf:c.overflowY,h:c.height,tr:c.transform,flt:c.filter,bf:c.backdropFilter,kids:el.children.length,txt:(el.innerText||'').slice(0,40)}};
+  bg:c.backgroundColor,fg:c.color,ovf:c.overflowY,h:c.height,mh:c.maxHeight,minh:c.minHeight,tr:c.transform,flt:c.filter,bf:c.backdropFilter,kids:el.children.length,txt:(el.innerText||'').slice(0,40)}};
 const dbgSnap=(tag,root)=>{const q=sel=>{const e=document.querySelector(sel);return dbgBox(e)};
  const vv=window.visualViewport;const px=document.elementFromPoint(innerWidth/2,innerHeight-60);
  dbg(tag,{vw:innerWidth,vh:innerHeight,dpr:devicePixelRatio,vv:vv?[Math.round(vv.width),Math.round(vv.height),vv.scale]:null,mob:matchMedia('(max-width:640px)').matches,
@@ -1404,7 +1406,7 @@ async function privilegeView(){closeDoc();
   </td>`).join('')}</tr>`;
  $('#app').innerHTML=`<div id=docs><h3>🔐 Privilege</h3>
  <p style="color:var(--mut);font-size:13px">Atur fitur apa saja yang bisa dipakai tiap grup. Grup "Super" otomatis punya semua akses (checkbox dikunci). Nama grup bisa diubah bebas (klik kotak nama di atas).</p>
- <div style="max-height:min(640px,65vh);overflow:auto;border:1px solid var(--line);border-radius:6px">
+ <div style="max-height:min(640px,calc(var(--vh,1vh)*65));overflow:auto;border:1px solid var(--line);border-radius:6px">
  <table style="margin:0"><tr><th style="min-width:260px;${stickyTh}">Fitur</th>${groups.map(groupCell).join('')}</tr>
  ${permissions.map(permRow).join('')}</table></div>
  <form id=fgroup style="display:flex;gap:6px;margin-top:10px;align-items:center">
@@ -1884,7 +1886,7 @@ async function formEd(id,open){const m=document.createElement('div');m.className
   document.body.append(d);d.querySelector('#x').onclick=()=>d.remove();d.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target,rows=f.t.value.replace(/\r/g,'').replace(/\n+$/,'').split('\n').filter(l=>l.trim()!=='').map(l=>l.split('\t'));
    if(!rows.length)return;const L=st.b.data.long;await op({op:'add',after:f.e.checked?L.records.length-1:-1,rows});d.remove()}}
  function colsDlg(){const L=st.b.data.long;let rows=L.columns.map(c=>({key:c.key,path:pathLine(c),merge:(L.merge||[]).includes(c.key),align:c.align||'',size:c.size||''}));
-  const d=document.createElement('div');d.className='mask';d.innerHTML=`<form class=dlg style="width:min(880px,96vw);max-height:92vh;overflow:auto"><b>Kolom & header tabel</b>
+  const d=document.createElement('div');d.className='mask';d.innerHTML=`<form class=dlg style="width:min(880px,96vw);max-height:calc(var(--vh,1vh)*92);overflow:auto"><b>Kolom & header tabel</b>
   <small>Satu baris = satu kolom isi. Tulis jalur header dipisah <code>&gt;</code>, mis. <code>Sumber Dampak &gt; Komponen Kegiatan</code>. Kolom bertetangga dengan awalan sama otomatis digabung (colspan); jalur lebih pendek otomatis rowspan.
   Awalan <code>/</code> (mis. <code>/20XX &gt; Q1</code>) memaksa grup baru walau namanya sama. "Gabung" = nilai sama berurutan di kolom itu digabung vertikal. Jumlah kolom header selalu = jumlah kolom isi.</small>
   <div id=cr></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button type=button id=ad>＋ Kolom</button><button type=button id=pv>Pratinjau header</button><span style="flex:1"></span><button type=button id=x>Batal</button><button class=p>Terapkan</button></div><div id=pvw></div></form>`;
