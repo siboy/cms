@@ -66,15 +66,15 @@ def main():
     ids = {}
     last = None
     for key, kind, lvl, text in [("A", "heading", 1, "Tahap Operasi"), ("p1", "paragraph", 0, "Kegiatan penambangan dilakukan secara terbuka."), ("p2", "paragraph", 0, "Alat berat yang dipakai."),
-                                 ("B", "heading", 2, "Pengupasan"), ("p3", "paragraph", 0, "Tanah penutup dikupas bertahap."), ("C", "heading", 2, "Penimbunan"),
+                                 ("B", "heading", 2, "Pengupasan"), ("g1", "note", 0, "Petunjuk: uraikan pengupasan."), ("p3", "paragraph", 0, "Tanah penutup dikupas bertahap."), ("C", "heading", 2, "Penimbunan"),
                                  ("p4", "paragraph", 0, "Timbunan dikendalikan."), ("p5", "paragraph", 0, "Saluran keliling."), ("D", "heading", 1, "Pasca Operasi"), ("p6", "paragraph", 0, "Reklamasi."),
                                  ("E", "heading", 1, "Pemantauan"), ("F", "heading", 2, "Udara"), ("p7", "paragraph", 0, "Debu dipantau."), ("G", "heading", 2, "Air"), ("p8", "paragraph", 0, "Kualitas air dipantau.")]:
-        last = ids[key] = st.insert_block(1, last, kind, text, lvl, None, "body", "ana")
+        last = ids[key] = st.insert_block(1, last, kind, text, lvl, {"source": "template_guide"} if key == "g1" else None, "body", "ana")
     order = lambda: [b["id"] for b in st.list_blocks(1)]
     name = {v: k for k, v in ids.items()}
     nm = lambda: [name[i] for i in order()]
     base = nm()
-    check(base == ["A", "p1", "p2", "B", "p3", "C", "p4", "p5", "D", "p6", "E", "F", "p7", "G", "p8"], "dokumen uji tersusun")
+    check(base == ["A", "p1", "p2", "B", "g1", "p3", "C", "p4", "p5", "D", "p6", "E", "F", "p7", "G", "p8"], "dokumen uji tersusun")
 
     def mv(lst, items, after):
         items = items if isinstance(items, list) else [items]
@@ -91,17 +91,45 @@ def main():
     def redo(u=1, to=None):
         return c.post("/api/docs/1/journal/redo", json={"to": to} if to else {}, headers=H(u))
 
-    # ---- 1. pindah satu paragraf antar bagian -> label jelas, urungkan mengembalikan PERSIS
-    r = c.post(f"/api/blocks/{ids['p2']}/move", json={"after_id": ids["p4"]}, headers=H())
+    # ---- 1. ↑↓ hanya DI DALAM sub-bab; antar bagian lewat /move-section
+    r = c.post(f"/api/blocks/{ids['p1']}/move", json={"after_id": ids["p2"]}, headers=H())
     j = r.get_json()["journal"]
-    check(r.status_code == 200 and j and j["kind"] == "move" and "dari bagian “Tahap Operasi” ke bagian “Penimbunan”" in j["label"] and "Alat berat" in j["label"], f"label pindah blok: {j and j['label']}")
-    check(nm() == mv(base, "p2", "p4"), "p2 berpindah")
-    u = undo(); uj = u.get_json()
-    check(u.status_code == 200 and uj["ok"] and nm() == base, "urungkan pindah blok -> urutan asal persis")
-    check(jl()["entries"][0]["state"] == "undone" and jl()["can_redo"] and not jl()["can_undo"], "status 'diurungkan', bisa diulang")
-    check(redo().status_code == 200 and nm() == mv(base, "p2", "p4"), "ulangi -> pindah lagi")
+    check(r.status_code == 200 and "dalam bagian “Tahap Operasi”" in j["label"] and nm() == mv(base, "p1", "p2"), f"pindah dalam sub-bab: {j and j['label']}")
+    check(undo().status_code == 200 and nm() == base, "urungkan pindah dalam sub-bab -> urutan asal persis")
+    n_before = len(jl()["entries"])
+    for what, bid_, after_ in [("keluar sub-bab (ke bagian lain)", "p2", "p5"), ("ke bawah judul berikutnya", "p2", "B"), ("ke atas petunjuk (setelah judul)", "p3", "B"),
+                               ("ke awal dokumen", "p3", None), ("ke dirinya sendiri", "p3", "p3")]:
+        r = c.post(f"/api/blocks/{ids[bid_]}/move", json={"after_id": ids[after_] if after_ else None}, headers=H())
+        check(r.status_code == 400 and "keluar dari sub-bab" in r.get_json()["error"] or (after_ == "p3" and r.status_code == 400), f"ditolak: {what} ({r.get_json().get('error','')[:60]})")
+    check(nm() == base and len(jl()["entries"]) == n_before, "penolakan tidak mengubah dokumen dan tidak mencatat aksi")
+    check(c.post(f"/api/blocks/{ids['g1']}/move", json={"after_id": ids["p3"]}, headers=H()).status_code == 400, "petunjuk template tidak bisa digeser")
+    check(c.post(f"/api/blocks/{ids['p3']}/move", json={"after_id": ids["g1"]}, headers=H()).status_code == 200 and nm() == base, "boleh 'naik' ke tepat di bawah petunjuk (posisi yang sama)")
     undo()
-    check(nm() == base, "urungkan lagi")
+    r = c.post(f"/api/blocks/{ids['p4']}/move", json={"after_id": ids["p5"]}, headers=H())
+    check(r.status_code == 200 and nm() == mv(base, "p4", "p5"), "turun ke akhir isi sub-bab diizinkan")
+    undo()
+    check(nm() == base, "urungkan")
+    # ---- 1b. pindah ke BAGIAN LAIN (✥): akhir / awal isi heading tujuan
+    r = c.post(f"/api/blocks/{ids['p2']}/move-section", json={"heading_id": ids["C"], "position": "end"}, headers=H())
+    j = r.get_json()["journal"]
+    check(r.status_code == 200 and "dari bagian “Tahap Operasi” ke bagian “Penimbunan”" in j["label"] and "akhir isi" in j["label"] and nm() == mv(base, "p2", "p5"), f"pindah ke akhir bagian lain: {j and j['label']}")
+    check(undo().status_code == 200 and nm() == base, "urungkan pindah ke bagian lain")
+    check(redo().status_code == 200 and nm() == mv(base, "p2", "p5"), "ulangi")
+    undo()
+    r = c.post(f"/api/blocks/{ids['p2']}/move-section", json={"heading_id": ids["B"], "position": "start"}, headers=H())
+    check(r.status_code == 200 and nm() == mv(base, "p2", "g1"), "posisi 'awal' = setelah judul DAN petunjuk (petunjuk tetap di atas)")
+    undo()
+    r = c.post(f"/api/blocks/{ids['p6']}/move-section", json={"heading_id": ids["F"], "position": "end"}, headers=H())
+    check(r.status_code == 200 and nm() == mv(base, "p6", "p7"), "tujuan heading yang punya isi: masuk di akhir isi langsungnya")
+    undo()
+    check(nm() == base, "urungkan")
+    check(c.post(f"/api/blocks/{ids['B']}/move-section", json={"heading_id": ids["C"]}, headers=H()).status_code == 400, "judul tidak dipindah lewat move-section")
+    check(c.post(f"/api/blocks/{ids['g1']}/move-section", json={"heading_id": ids["C"]}, headers=H()).status_code == 400, "petunjuk tidak dipindah lewat move-section")
+    check(c.post(f"/api/blocks/{ids['p2']}/move-section", json={"heading_id": ids["p3"]}, headers=H()).status_code == 400, "tujuan harus heading")
+    check(c.post(f"/api/blocks/{ids['p2']}/move-section", json={}, headers=H()).status_code == 400, "heading_id wajib")
+    CAN["edit"] = False
+    check(c.post(f"/api/blocks/{ids['p2']}/move-section", json={"heading_id": ids["C"]}, headers=H()).status_code == 403, "tanpa hak edit ditolak")
+    CAN["edit"] = True
 
     # ---- 2. pindah BAGIAN (heading + isi)
     r = c.post(f"/api/blocks/{ids['D']}/outline-move", json={"after_id": ids["B"]}, headers=H())   # D(+p6) -> setelah subtree B (p3)
@@ -127,12 +155,10 @@ def main():
     undo()
     check(nm() == base, "urungkan pindah ke awal")
 
-    # ---- 3. heading dipindah SENDIRIAN lewat /move -> label memperingatkan isi tertinggal
-    r = c.post(f"/api/blocks/{ids['B']}/move", json={"after_id": ids["p5"]}, headers=H())
-    lab = r.get_json()["journal"]["label"]
-    check("hanya judulnya" in lab and "1 blok isinya tetap di tempat" in lab, f"peringatan judul saja: {lab}")
-    undo()
-    check(nm() == base, "urungkan pindah judul")
+    # ---- 3. judul TIDAK bisa digeser sendirian lewat /move (penyebab isi 'menghilang'); gunakan outline-move
+    n_before = len(jl()["entries"])
+    r = c.post(f"/api/blocks/{ids['B']}/move", json={"after_id": ids["g1"]}, headers=H())
+    check(r.status_code == 400 and "Judul tidak bisa digeser sendirian" in r.get_json()["error"] and nm() == base and len(jl()["entries"]) == n_before, "judul tak bisa dipindah sendirian (tak berubah, tak tercatat)")
 
     # ---- 4. hapus / sisip + urungkan
     r = c.delete(f"/api/blocks/{ids['p3']}", headers=H())
@@ -177,9 +203,9 @@ def main():
     check(st.get_block(ids["p1"])["text"] == "Dari Budi", "teks Budi tidak tertimpa")
 
     # ---- 6. semantik linier: aksi baru membuang tail 'diulang'; urungkan sampai entri tertentu
-    a1 = c.post(f"/api/blocks/{ids['p4']}/move", json={"after_id": ids["p1"]}, headers=H()).get_json()["journal"]["id"]
-    a2 = c.post(f"/api/blocks/{ids['p5']}/move", json={"after_id": ids["p1"]}, headers=H()).get_json()["journal"]["id"]
-    a3 = c.post(f"/api/blocks/{ids['p6']}/move", json={"after_id": ids["p1"]}, headers=H()).get_json()["journal"]["id"]
+    a1 = c.post(f"/api/blocks/{ids['p4']}/move", json={"after_id": ids["p5"]}, headers=H()).get_json()["journal"]["id"]
+    a2 = c.post(f"/api/blocks/{ids['p1']}/move", json={"after_id": ids["p2"]}, headers=H()).get_json()["journal"]["id"]
+    a3 = c.post(f"/api/blocks/{ids['p2']}/move-section", json={"heading_id": ids["G"], "position": "end"}, headers=H()).get_json()["journal"]["id"]
     snap = nm()
     ru = undo(to=a2)
     check(ru.status_code == 200 and [r["id"] for r in ru.get_json()["results"]] == [a3, a2], "urungkan sampai entri a2 = urungkan a3 lalu a2")
@@ -189,7 +215,7 @@ def main():
     rr = redo(to=a3)
     check([r["id"] for r in rr.get_json()["results"]] == [a2, a3] and nm() == snap, "ulangi sampai a3 -> urutan kembali seperti semula")
     undo(to=a2)
-    c.post(f"/api/blocks/{ids['p3']}/move", json={"after_id": ids["p5"]}, headers=H())          # aksi baru
+    c.post(f"/api/blocks/{ids['p4']}/move", json={"after_id": ids["p5"]}, headers=H())          # aksi baru
     ents = jl()["entries"]
     check(not any(e["id"] in (a2, a3) for e in ents), "aksi baru membuang entri 'diulang' (dropped)")
     check(not jl()["can_redo"], "tak ada lagi yang bisa diulang")
@@ -200,7 +226,7 @@ def main():
     check(undo(2).status_code in (200, 409), "Budi bisa menjalankan miliknya")
 
     # ---- 8. izin: tanpa hak edit -> ditolak
-    c.post(f"/api/blocks/{ids['p6']}/move", json={"after_id": ids["p2"]}, headers=H())
+    c.post(f"/api/blocks/{ids['p1']}/move", json={"after_id": ids["p2"]}, headers=H())
     CAN["edit"] = False
     r = undo()
     check(r.status_code == 409 and "tidak lagi berhak" in r.get_json()["error"], "urungkan ditolak bila tak berhak mengubah bagian itu")
@@ -209,8 +235,8 @@ def main():
 
     # ---- 9. batas daftar & tak ada yang bisa diurungkan
     for _ in range(30):
-        c.post(f"/api/blocks/{ids['p6']}/move", json={"after_id": ids["p1"]}, headers=H())
-        c.post(f"/api/blocks/{ids['p6']}/move", json={"after_id": ids["p2"]}, headers=H())
+        c.post(f"/api/blocks/{ids['p1']}/move", json={"after_id": ids["p2"]}, headers=H())
+        c.post(f"/api/blocks/{ids['p2']}/move", json={"after_id": ids["p1"]}, headers=H())
     check(len(jl()["entries"]) == 25, "daftar dibatasi 25 entri")
     check(len(c.get("/api/docs/1/journal?limit=50", headers=H()).get_json()["entries"]) == 50, "limit hingga 50")
     with st._tx() as c_:

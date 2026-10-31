@@ -230,6 +230,11 @@ header b{letter-spacing:.2px}
 .rc .rhm{padding-right:52px}
 .rc .rmenu{position:absolute;top:4px;right:4px;margin:0;min-width:44px;height:42px;padding:0 8px;font-size:20px;line-height:1;display:grid;place-items:center;border-radius:10px}
 .plbar{margin:0 0 12px}
+.acts button:disabled{opacity:.35;filter:grayscale(1);cursor:not-allowed}
+.mvlist{max-height:calc(var(--vh,1vh)*45);overflow-y:auto;border:1px solid var(--line);border-radius:8px}
+.mvrow{display:flex;gap:8px;align-items:center;padding:7px 8px;border-bottom:1px solid var(--line);cursor:pointer;font-weight:400!important;color:var(--fg)}
+.mvrow input,.mvpos input{width:18px!important;height:18px;flex:none;margin:0!important;padding:0!important}
+.mvpos{display:flex;gap:14px;flex-wrap:wrap}.mvpos label{display:flex;gap:6px;align-items:center;font-weight:400!important}
 /* Aktivitas saya: tombol mengambang, toast aksi, baris daftar */
 #jfab{position:fixed;right:14px;bottom:14px;z-index:45;width:48px;height:48px;border-radius:50%;font-size:22px;line-height:1;padding:0;display:grid;place-items:center;
  background:linear-gradient(135deg,var(--lilac),var(--mint));color:var(--ink);border:none;box-shadow:0 4px 14px rgba(0,0,0,.3)}
@@ -1683,6 +1688,7 @@ $('#bshare').onclick=async()=>{const m=document.createElement('div');m.className
  try{await paint()}catch(e){m.remove();note(e.message,1)}};
 async function openDoc(id){doc=id;await loadTools();$('#app').innerHTML='<div id=main><nav id=side></nav><div id=ed></div></div><button id=stog title="Daftar isi">📑</button>';
  $('#stog').onclick=()=>$('#side').classList.toggle('open');
+ const edMv=e=>{const el=e.target.closest&&e.target.closest('.blk');if(el)mvState(el)};$('#ed').addEventListener('pointerover',edMv);$('#ed').addEventListener('pointerdown',edMv);$('#ed').addEventListener('focusin',edMv);
  $('#side').addEventListener('click',e=>{if(innerWidth<=800&&e.target.closest('a'))$('#side').classList.remove('open')});$('#bexp').hidden=!hasPerm('doc_export');$('#bopt').hidden=!hasPerm('outline_manage');$('#bgal').hidden=view_restricted_client();$('#bshare').hidden=!hasPerm('doc_share');
  await loadOutline();subscribe();journalMount();hb=setInterval(async()=>{for(const b of Object.keys(locks)){try{await api('POST',`/blocks/${b}/lock`)}catch(e){}}
   try{const p=await api('GET',`/docs/${doc}/presence`);$('#pres').textContent='● '+p.count+' online'}catch(e){}},60000)}
@@ -1832,7 +1838,7 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   const qb=(t,f)=>{const x=document.createElement('button');x.type='button';x.textContent=t;x.onclick=()=>{try{f()}catch(e){note(e.message,1)}};q.append(x)};
   qb('✍ Mulai menulis',()=>blockDlg(b));qb('▦ Tambah tabel',()=>tableDlg(b));el.append(q)}
  const a=document.createElement('div');a.className='acts';
- const AIC={'Edit':'✏️','+ Blok':'➕','+ Gambar':'🖼','+ Tabel':'▦','+ Page break':'📄 Page break','+ Daftar…':'📑 Daftar','Hapus':'🗑'};   // tombol aksi blok = ikon (label di title/aria-label); Page break & Daftar = ikon + teks
+ const AIC={'Pindahkan ke bagian lain':'✥','Edit':'✏️','+ Blok':'➕','+ Gambar':'🖼','+ Tabel':'▦','+ Page break':'📄 Page break','+ Daftar…':'📑 Daftar','Hapus':'🗑'};   // tombol aksi blok = ikon (label di title/aria-label); Page break & Daftar = ikon + teks
  const btn=(t,f)=>{const x=document.createElement('button');x.type='button';x.textContent=AIC[t]||t;if(AIC[t]){x.title=t;x.setAttribute('aria-label',t);x.style.cssText=AIC[t].includes(' ')?'padding:5px 9px;font-size:13px;line-height:1.2':'min-width:38px;padding:5px 9px;font-size:15px;line-height:1'}
   if(t==='Hapus')x.style.color='#d1242f';x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
  if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
@@ -1862,7 +1868,8 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
    btn(d.ordered?'→ Bullet':'→ Numbering',()=>api('PATCH',`/blocks/${b.id}`,{data:{...d,ordered:!d.ordered},version:b.version}));
    btn('⇥ Indent',()=>api('PATCH',`/blocks/${b.id}`,{data:{...d,ilvl:Math.min((d.ilvl||0)+1,3)},version:b.version}));
    btn('⇤ Outdent',()=>api('PATCH',`/blocks/${b.id}`,{data:{...d,ilvl:Math.max((d.ilvl||0)-1,0)},version:b.version}))}
-  btn('↑',()=>mv(el,b,-1));btn('↓',()=>mv(el,b,1));
+  btn('↑',()=>mv(el,b,-1));a.lastChild.classList.add('mvup');btn('↓',()=>mv(el,b,1));a.lastChild.classList.add('mvdn');
+  if(b.kind!=='heading'||hasPerm('outline_manage'))btn('Pindahkan ke bagian lain',()=>moveToDlg(el,b));
   if(['table','image'].includes(b.kind))btn('⛶ Landscape',async()=>wrapLandscape(el,b));
   if(b.kind==='table'&&b.data.long){btn('✎ Edit form',async()=>formEd(b.id));btn('Kolom & header',async()=>formEd(b.id,'cols'));
    btn('→ Mode grid',async()=>{if(confirm('Kembali ke mode grid? Edit per record dinonaktifkan untuk tabel ini.'))await api('POST',`/blocks/${b.id}/long`,{on:false})})}
@@ -1932,10 +1939,40 @@ function genTypeDlg(b){const m=document.createElement('div');m.className='mask';
  document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();
  f.onsubmit=async e=>{e.preventDefault();
   try{await api('POST',`/blocks/${b.id}/generated`,{generated:f.k.value||null,version:b.version});m.remove()}catch(x){note(x.message,1)}}}
-async function mv(el,b,dir){let after;
- if(dir<0){const p=el.previousElementSibling,pp=p&&p.previousElementSibling;if(!pp)throw new Error('sudah paling atas dalam bab');after=+pp.dataset.id}
- else{const n=el.nextElementSibling;if(!n)throw new Error('sudah paling bawah dalam bab');after=+n.dataset.id}
+/* ↑↓ hanya di DALAM sub-bab yang dibuka: tak melewati judul (atas) / judul berikutnya (bawah), tak menembus petunjuk template; judul & petunjuk tak digeser sendirian.
+   Keadaan tombol (abu-abu bila mentok) dihitung dari tetangga saat blok disentuh/disorot (mvState); server menegakkan aturan yang sama. */
+function mvLimits(el,b){const heading=b.kind==='heading',guide=el.classList.contains('guide');
+ const p=el.previousElementSibling,n=el.nextElementSibling;
+ const up=heading||guide||!p||!p.dataset.id||p.classList.contains('h')||p.classList.contains('guide');
+ const dn=heading||guide||!n||!n.dataset.id||n.classList.contains('h');
+ return {up,dn,why:{up:heading?'Judul tidak digeser sendirian — pakai ✥ Pindahkan':guide?'Petunjuk tetap di bawah judulnya':up?'Sudah paling atas di sub-bab ini (di bawah judul/petunjuk)':'Naikkan di dalam sub-bab ini',
+  dn:heading?'Judul tidak digeser sendirian — pakai ✥ Pindahkan':guide?'Petunjuk tetap di bawah judulnya':dn?'Sudah paling bawah di sub-bab ini':'Turunkan di dalam sub-bab ini'}}}
+function mvState(el){const u=el.querySelector('.mvup'),d=el.querySelector('.mvdn');if(!u||!d)return;
+ const L=mvLimits(el,{kind:el.classList.contains('h')?'heading':'x'});u.disabled=L.up;d.disabled=L.dn;u.title=L.why.up;d.title=L.why.dn}
+async function mv(el,b,dir){let after;const L=mvLimits(el,b);
+ if(dir<0){if(L.up)throw new Error(L.why.up);after=+el.previousElementSibling.previousElementSibling.dataset.id}
+ else{if(L.dn)throw new Error(L.why.dn);after=+el.nextElementSibling.dataset.id}
  await api('POST',`/blocks/${b.id}/move`,{after_id:after,version:b.version})}
+/* ✥ pindah ke bagian/sub-bab LAIN lewat outline: blok -> awal/akhir isi heading tujuan; judul -> beserta seluruh isinya setelah heading tujuan */
+function moveToDlg(el,b){const isH=b.kind==='heading';
+ const ph=t=>((t||'').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,'').trim())||'(tanpa judul)';
+ let cand=outline.slice();
+ if(isH){const i=outline.findIndex(h=>h.id===b.id);if(i>=0){let j=i+1;while(j<outline.length&&outline[j].level>outline[i].level)j++;cand=outline.filter((h,k)=>k<i||k>=j)}}
+ let cur=null;for(let q=el.previousElementSibling;q;q=q.previousElementSibling){if(q.classList&&q.classList.contains('h')){cur=+q.dataset.id;break}}
+ if(cur==null&&typeof section!=='undefined'&&section)cur=section;
+ const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<div class=dlg><b>✥ Pindahkan ${isH?'bagian':'blok'} — “${esc(ph(b.text).slice(0,60))}”</b>
+  <small style="color:var(--mut)">${isH?'Judul dipindah <b>beserta seluruh isinya</b>, ditaruh setelah SELURUH isi heading yang dipilih (jadi bagian berikutnya).':'Pilih sub-bab tujuan. Blok masuk di <b>akhir isi</b> (atau awal, setelah petunjuk) heading yang dipilih. Pemindahan bisa diurungkan dari 🕘 Aktivitas saya.'}</small>
+  <input id=mvq type=search placeholder="Cari judul di outline…">
+  <div id=mvl class=mvlist>${isH?`<label class=mvrow><input type=radio name=mvt value="" ><span>— Paling awal dokumen —</span></label>`:''}${cand.map(h=>`<label class=mvrow data-t="${esc(ph(h.text).toLowerCase())}" style="padding-left:${(h.level-1)*14+8}px"><input type=radio name=mvt value="${h.id}"><span>${esc(ph(h.text).slice(0,90))}${h.id===cur?' <small style="color:var(--mut)">(bagian saat ini)</small>':''}</span></label>`).join('')}</div>
+  ${isH?'':`<div class=mvpos><label><input type=radio name=mvp value=end checked> Di akhir isi bagian tujuan</label><label><input type=radio name=mvp value=start> Di awal isi (setelah petunjuk)</label></div>`}
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=mvx>Batal</button><button type=button class=p id=mvok>Pindahkan</button></div></div>`;
+ document.body.append(m);m.onclick=e=>{if(e.target===m)m.remove()};$('#mvx').onclick=()=>m.remove();
+ $('#mvq').oninput=e=>{const q=e.target.value.trim().toLowerCase();m.querySelectorAll('.mvrow[data-t]').forEach(r=>{r.style.display=!q||r.dataset.t.includes(q)?'':'none'})};
+ $('#mvok').onclick=async()=>{const sel=m.querySelector('input[name=mvt]:checked');if(!sel)return note('Pilih bagian tujuan dulu',1);
+  try{if(isH)await api('POST',`/blocks/${b.id}/outline-move`,{after_id:sel.value?+sel.value:null});
+   else await api('POST',`/blocks/${b.id}/move-section`,{heading_id:+sel.value,position:m.querySelector('input[name=mvp]:checked').value,version:b.version});
+   m.remove()}catch(x){note(x.message,1)}}}
 function blockDlg(b){const m=document.createElement('div');m.className='mask';const adm=hasPerm('chapter_create');
  m.innerHTML=`<form class=dlg><b>Sisipkan blok setelah blok ini</b>
  <label>Jenis<select name=t><option value=p>Paragraf</option><option value=h1 ${adm?'':'disabled'}>Heading 1 (bab baru${adm?'':' — hanya admin'})</option>

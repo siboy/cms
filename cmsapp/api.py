@@ -913,12 +913,59 @@ def restore(bid):
     return jsonify(ok=True, journal=jrec(b["doc_id"], "insert", jn.describe(S(), bid, "Memulihkan", kind=b["kind"], text=b.get("text", "")), {"ids": [bid]}))
 
 
+def _check_move_in_section(b: dict, after) -> None:
+    """Aturan ↑↓: blok TIDAK boleh keluar dari sub-bab-nya (atas = di bawah judul + petunjuk, bawah = sebelum heading berikutnya); judul dan petunjuk
+    tidak digeser sendirian. Pindah ke bagian lain = /move-section; pindah bagian utuh = /outline-move."""
+    if b["kind"] == "heading":
+        raise ValueError("Judul tidak bisa digeser sendirian (isinya akan tertinggal). Gunakan ✥ Pindahkan bagian untuk memindahkan judul beserta isinya.")
+    sp = S().section_span(b["id"])
+    if sp["is_guide"]:
+        raise ValueError("Petunjuk penulisan tetap berada tepat di bawah judulnya dan tidak bisa digeser.")
+    ids = sp["ids"]
+    ai = -1 if after is None else (ids.index(after) if after in ids else None)
+    if ai is None or after == b["id"] or (after is None and sp["heading"] is not None) or not (sp["pin_i"] <= ai <= sp["end_i"]):
+        sec = S().section_title(b["id"])
+        raise ValueError(f'Blok tidak bisa dipindah keluar dari sub-bab{f" “{jn.snip(sec, 40)}”" if sec else ""} atau ke atas petunjuknya. Untuk bagian lain gunakan ✥ Pindahkan.')
+
+
+@bp.post("/blocks/<int:bid>/move-section")
+@auth.require("block_edit_all", "block_edit_assigned")
+def move_to_section(bid):
+    """Pindahkan satu blok ke heading/sub-bab LAIN: body {heading_id, position: 'start'|'end'} (start = setelah judul + petunjuk, end = akhir isi langsung)."""
+    d = body()
+    b = guard(bid)
+    if b["kind"] == "heading":
+        raise ValueError("Judul dipindah beserta isinya lewat ✥ Pindahkan bagian (outline-move).")
+    hid = int(need(d.get("heading_id"), "heading_id"))
+    pos = "start" if d.get("position") == "start" else "end"
+    h = S().get_block(hid)
+    if h["doc_id"] != b["doc_id"] or h["kind"] != "heading":
+        raise ValueError("tujuan harus heading di dokumen yang sama")
+    if S().block_state(hid)["deleted"]:
+        raise ValueError("heading tujuan sudah dihapus")
+    if not auth.can_edit(b["doc_id"], hid):
+        abort(403, description="tujuan di luar bab Anda")
+    if S().section_span(bid)["is_guide"]:
+        raise ValueError("Petunjuk penulisan tetap berada tepat di bawah judulnya dan tidak bisa dipindah.")
+    anchor = S().section_anchor(hid, pos, exclude_id=bid)
+    src = chapter_id(bid)
+    before, src_sec = S().prev_block_id(bid), S().section_title(bid)
+    S().move_block(bid, anchor, g.user["username"], d.get("version"))
+    emit(b["doc_id"], "move", extra_ch=(src, chapter_id(anchor)), id=bid, after=anchor, force_global=True,
+         log_summary=f'{b["kind"]} #{bid} -> bagian #{hid} ({"awal" if pos == "start" else "akhir"} isi)')
+    after_actual, dst_sec = S().prev_block_id(bid), S().section_title(bid)
+    nm = f'{jn.KIND_LABEL.get(b["kind"], b["kind"])} “{jn.snip(b.get("text", ""))}”'
+    label = f'Memindahkan {nm} dari bagian “{jn.snip(src_sec, 45)}” ke bagian “{jn.snip(dst_sec, 45)}” ({"awal" if pos == "start" else "akhir"} isi)'
+    return jsonify(ok=True, journal=jrec(b["doc_id"], "move", label, {"ids": [bid], "before": before, "after": after_actual}))
+
+
 @bp.post("/blocks/<int:bid>/move")
 @auth.require("block_edit_all", "block_edit_assigned")
 def move(bid):
     d = body()
     b = guard(bid)
     after = d.get("after_id")
+    _check_move_in_section(b, after)
     if after is not None and not auth.can_edit(b["doc_id"], after):
         abort(403, description="tujuan di luar bab Anda")
     src = chapter_id(bid)

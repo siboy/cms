@@ -1369,6 +1369,49 @@ class BlockStore:
             anchor = bid
         return len(ids)
 
+    @staticmethod
+    def _is_guide(b: dict) -> bool:
+        return b.get("kind") == "note" and (b.get("data") or {}).get("source") == "template_guide"
+
+    def section_span(self, block_id: int) -> dict:
+        """Batas gerak sebuah blok NON-heading di dalam sub-bab-nya (dasar aturan ↑↓): `heading` induk (None bila blok ada sebelum heading
+        pertama), `pin_i` = indeks terendah yang boleh jadi anchor 'setelah' (tepat setelah judul + petunjuk template yang menempel di bawahnya),
+        `end_i` = indeks anchor terakhir (akhir isi LANGSUNG sebelum heading berikutnya, level apa pun). Indeks mengacu ke `ids` (urutan dokumen)."""
+        b = self.get_block(block_id)
+        blocks = self.list_blocks(b["doc_id"])
+        ids = [x["id"] for x in blocks]
+        idx = ids.index(block_id)
+        hi = next((i for i in range(idx - 1, -1, -1) if blocks[i]["kind"] == "heading"), None)
+        pin_i = -1 if hi is None else hi
+        if hi is not None:
+            j = hi + 1
+            while j < len(blocks) and j != idx and self._is_guide(blocks[j]):
+                pin_i = j
+                j += 1
+        k, end_i = (0 if hi is None else hi + 1), (-1 if hi is None else hi)
+        while k < len(blocks) and blocks[k]["kind"] != "heading":
+            end_i = k
+            k += 1
+        return {"heading": None if hi is None else blocks[hi]["id"], "pin_i": pin_i, "end_i": end_i, "ids": ids, "idx": idx,
+                "is_guide": self._is_guide(blocks[idx]), "kind": blocks[idx]["kind"]}
+
+    def section_anchor(self, heading_id: int, position: str, exclude_id: Optional[int] = None) -> Optional[int]:
+        """Id blok yang menjadi anchor 'setelah' utk menaruh blok di AWAL ('start': setelah judul+petunjuk) atau AKHIR ('end': isi langsung) heading itu."""
+        h = self.get_block(heading_id)
+        if h["kind"] != "heading":
+            raise ValueError("tujuan harus sebuah heading")
+        blocks = [x for x in self.list_blocks(h["doc_id"]) if x["id"] != exclude_id]
+        hi = next((i for i, x in enumerate(blocks) if x["id"] == heading_id), None)
+        if hi is None:
+            raise ValueError("heading tujuan tidak ditemukan")
+        pin = hi
+        while pin + 1 < len(blocks) and self._is_guide(blocks[pin + 1]):
+            pin += 1
+        end = hi
+        while end + 1 < len(blocks) and blocks[end + 1]["kind"] != "heading":
+            end += 1
+        return blocks[pin if position == "start" else max(pin, end)]["id"]
+
     ATTR_COLS = ("kind", "level", "style", "data", "status", "assignee")
 
     def block_attrs(self, block_id: int) -> Optional[dict]:
