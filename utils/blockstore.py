@@ -421,12 +421,27 @@ class BlockStore:
 
     # ------------------------------------------------------------ baca untuk UI
     def outline(self, doc_id: int, max_level: int = 3) -> list[dict]:
-        """Daftar heading (id, seq, level, text, part) untuk navigasi; ringan (tanpa isi blok)."""
+        """Daftar heading (id, seq, level, text, part) untuk navigasi; ringan (tanpa isi blok).
+        Tambahan penanda utk ikon di outline: `tbl` = bagian ini butuh/punya tabel (ada blok tabel langsung di bawah heading,
+        sampai heading berikutnya level apa pun, ATAU ditandai template data.tbl), `tools` = id alat hitung dari template (data.tools)."""
         with self._tx() as c:
-            rows = self._all(c, "SELECT id, seq, part, level, text, version FROM cms_blocks WHERE doc_id=? AND kind='heading' "
+            rows = self._all(c, "SELECT id, seq, part, level, text, version, data FROM cms_blocks WHERE doc_id=? AND kind='heading' "
                                 "AND level<=? AND deleted_at IS NULL ORDER BY seq, id", (doc_id, max_level))
-        return [{"id": r["id"], "seq": r["seq"], "part": r["part"], "level": r["level"], "text": r["text"] or "",
-                 "version": r["version"]} for r in rows]
+            allh = [r["seq"] for r in self._all(c, "SELECT seq FROM cms_blocks WHERE doc_id=? AND kind='heading' "
+                                                    "AND deleted_at IS NULL ORDER BY seq, id", (doc_id,))]
+            tbs = [r["seq"] for r in self._all(c, "SELECT seq FROM cms_blocks WHERE doc_id=? AND kind='table' "
+                                                  "AND deleted_at IS NULL ORDER BY seq", (doc_id,))]
+        import bisect
+        out = []
+        for r in rows:
+            d = _jload(r.get("data")) if r.get("data") else {}
+            i = bisect.bisect_right(allh, r["seq"])
+            nxt = allh[i] if i < len(allh) else float("inf")
+            k = bisect.bisect_left(tbs, r["seq"])
+            has_tbl = k < len(tbs) and tbs[k] < nxt
+            out.append({"id": r["id"], "seq": r["seq"], "part": r["part"], "level": r["level"], "text": r["text"] or "",
+                        "version": r["version"], "tbl": bool(has_tbl or d.get("tbl")), "tools": d.get("tools") or []})
+        return out
 
     def blocks_range(self, doc_id: int, from_seq: Optional[float] = None, to_seq: Optional[float] = None,
                      limit: int = 500) -> list[dict]:
@@ -1859,8 +1874,14 @@ class BlockStore:
         last = None
         for n in nodes:
             ht = n.get("ht") or []                      # bagian yang di dokumen contoh memuat perhitungan -> penanda 🧮 di editor
+            hd = {}
+            if ht:
+                hd["tools"] = [h["tool"] for h in ht]
+            ntbl = sum(1 for b in (n.get("b") or []) if b.get("k") in ("t", "kv"))
+            if ntbl:
+                hd["tbl"] = ntbl                         # template menandai bagian ini butuh tabel (ikon ▦ di outline), walau isi tabel tak disalin
             last = self.insert_block(doc_id, last, "heading", esc_markup(n["t"]), level=max(1, min(4, int(n["l"]))),
-                                     part="body", data=({"tools": [h["tool"] for h in ht]} if ht else None), user=user)
+                                     part="body", data=hd or None, user=user)
             if guide and (n.get("g") or ht):
                 txt = ("Petunjuk: " + n["g"] + (" " + n["gc"] if n.get("gc") else "")) if n.get("g") else "Petunjuk:"
                 if ht:

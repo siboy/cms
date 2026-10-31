@@ -155,11 +155,11 @@ def _doc_rev(doc_id: int) -> str:
     return f'W/"{seq}.{S().fingerprint(doc_id)}.{g.user["id"]}"'
 
 
-def etag_json(doc_id: int, build):
+def etag_json(doc_id: int, build, salt: str = ""):
     """Balas 304 (tanpa query berat/serialisasi) bila If-None-Match klien masih cocok; selain itu
     bangun payload via build() + pasang ETag. Klien (api() di ui/index.html) menyimpan payload per-URL
     dan memakai ulang saat 304."""
-    rev = _doc_rev(doc_id)
+    rev = _doc_rev(doc_id) + salt
     if request.headers.get("If-None-Match") == rev:
         resp = Response(status=304)
     else:
@@ -346,7 +346,7 @@ def outline(doc_id):
             visible = S().visible_headings_for_user(doc_id, g.user["id"])
             o = [h for h in o if h["id"] in visible]
         return dict(outline=o, rev=S().fingerprint(doc_id))
-    return etag_json(doc_id, build)
+    return etag_json(doc_id, build, salt="-o2")
 
 
 @bp.get("/docs/<int:doc_id>/pic-map")

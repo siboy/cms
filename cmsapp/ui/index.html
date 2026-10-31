@@ -234,6 +234,7 @@ header b{letter-spacing:.2px}
 .blk.guide{background:#fff7e0;border-color:#f5c451;border-left:5px solid #f59e0b}
 .blk.guide .txt{color:#7a4a05;font-style:italic;font-size:13px}
 .blk.guide .meta{color:#b45309;font-weight:700}
+#side a .oic{margin-left:5px;font-size:12px;opacity:.9;white-space:nowrap}
 .blk.guide .gq{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.blk.guide .gq button{padding:7px 12px;font-weight:600}
 @media(prefers-color-scheme:dark){.blk.guide{background:#33260f;border-color:#7a5a1a;border-left-color:#f0a35e}.blk.guide .txt{color:#f3c98b}.blk.guide .meta{color:#f0a35e}}
 /* label isian = tebal; placeholder = abu-abu (bukan teks isian) */
@@ -1674,11 +1675,14 @@ async function openDoc(id){doc=id;await loadTools();$('#app').innerHTML='<div id
  $('#side').addEventListener('click',e=>{if(innerWidth<=800&&e.target.closest('a'))$('#side').classList.remove('open')});$('#bexp').hidden=!hasPerm('doc_export');$('#bopt').hidden=!hasPerm('outline_manage');$('#bgal').hidden=view_restricted_client();$('#bshare').hidden=!hasPerm('doc_share');
  await loadOutline();subscribe();hb=setInterval(async()=>{for(const b of Object.keys(locks)){try{await api('POST',`/blocks/${b}/lock`)}catch(e){}}
   try{const p=await api('GET',`/docs/${doc}/presence`);$('#pres').textContent='● '+p.count+' online'}catch(e){}},60000)}
-async function loadOutline(){const r=await api('GET',`/docs/${doc}/outline?max_level=4`);outline=r.outline;
+async function loadOutline(){const r=await api('GET',`/docs/${doc}/outline?max_level=4`);outline=r.outline;try{await loadTools()}catch(e){}
  let chId=null;outline.forEach(h=>{if(h.level===1)chId=h.id;h.chapId=chId==null?h.id:chId});
  $('#side').innerHTML='<a id=back>← Dokumen</a>'+outline.map(h=>{const done=(h.pic||[]).length&&h.pic.every(p=>p.status==='done');
   const picBadge=(h.pic||[]).length?` <span class=badge data-pic="${h.id}" style="background:${done?'#2da44e':'var(--mut)'}${h.pic_direct?'':';opacity:.7'}" title="${h.pic_direct?'':'warisan — '}${h.pic.map(p=>p.username).join(', ')}">${h.pic.length}${done?' ✓':''}</span>`:'';
-  return `<a data-id="${h.id}" data-level="${h.level}" data-chapter="${h.chapId}" style="padding-left:${(h.level-1)*2}ch" class="lv${h.level} ${h.mine?'mine':''} ${h.id===(section||chapter)?'cur':''}">${esc((h.text||'(tanpa judul)').slice(0,60))}${picBadge}</a>`}).join('');
+  /* ikon penanda dari template: ▦ bagian ini butuh/punya tabel, 🧮 terkait alat hitung/simulasi (sama dg pratinjau template) */
+  const tlo=toolsFor({kind:'heading',text:h.text,data:{tools:h.tools}});
+  const ic=(h.tbl?'<span class=oic title="Bagian ini memerlukan tabel">▦</span>':'')+(tlo.length?`<span class=oic title="Terkait alat hitung/simulasi: ${esc(tlo.map(t=>t.label).join(', '))}">🧮</span>`:'');
+  return `<a data-id="${h.id}" data-level="${h.level}" data-chapter="${h.chapId}" style="padding-left:${(h.level-1)*2}ch" class="lv${h.level} ${h.mine?'mine':''} ${h.id===(section||chapter)?'cur':''}">${esc((h.text||'(tanpa judul)').slice(0,60))}${ic}${picBadge}</a>`}).join('');
  document.querySelectorAll('#side [data-pic]').forEach(s=>s.onclick=e=>{e.preventDefault();e.stopPropagation();
   const h=outline.find(x=>x.id===+s.dataset.pic);picDlg(doc,h.id,h.text||'H'+h.level,()=>loadOutline())});
  $('#back').onclick=docsView;document.querySelectorAll('#side a[data-id]').forEach(a=>a.onclick=async()=>{
@@ -1756,6 +1760,23 @@ function toolDlg(b,tl){const m=document.createElement('div');m.className='mask';
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()}}
 const GENLIST_LABELS={toc:'Daftar Isi',tof_tabel:'Daftar Tabel',tof_gambar:'Daftar Gambar'};
 const HIDEABLE_KINDS=['heading','table','image','caption'];
+/* konfirmasi hapus blok di dalam halaman (confirm() bawaan tak muncul di WebView APK): tampilkan jenis blok + cuplikan satu kalimat isinya */
+const KIND_LABEL={heading:'judul (heading)',paragraph:'paragraf',list_item:'butir daftar',caption:'caption',note:'catatan/petunjuk',table:'tabel',image:'gambar',page_break:'pindah halaman'};
+function blockSnippet(b){
+ if(b.kind==='image')return '(gambar'+((b.data||{}).alt?': '+b.data.alt:'')+')';
+ if(b.kind==='page_break')return '(pindah halaman)';
+ if(b.kind==='table'){const rows=((b.data||{}).rows||[]);const c0=rows[0]&&rows[0].cells&&rows[0].cells[0];let t='';try{t=c0?cellText(c0):''}catch(e){}
+  return `tabel ${rows.length} baris${t?' — '+t:''}`.replace(/\\(.)/g,'$1')}
+ const t=(b.text||'').replace(/\\n/g,' ').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,'').replace(/\s+/g,' ').trim();
+ if(!t)return '(blok kosong)';
+ const first=t.split(/(?<=[.!?])\s/)[0];return first.length>110?first.slice(0,110).trimEnd()+'…':(first.length<t.length?first+' …':first)}
+function confirmDelete(b){return new Promise(res=>{const m=document.createElement('div');m.className='mask';
+ m.innerHTML=`<div class=dlg><b>🗑 Hapus ${esc(KIND_LABEL[b.kind]||'blok')} ini?</b>
+  <div style="border-left:4px solid #d1242f;padding:8px 10px;background:var(--bg);border-radius:6px;font-style:italic;overflow-wrap:anywhere">“${esc(blockSnippet(b))}”</div>
+  <small style="color:var(--mut)">Yakin ingin menghapus blok ini? Periksa dulu isinya di atas supaya tidak terhapus tanpa sengaja.</small>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button type=button id=cx>Batal</button><button type=button id=cok style="background:#d1242f;border-color:#d1242f;color:#fff;font-weight:600">🗑 Ya, hapus</button></div></div>`;
+ const done=v=>{m.remove();res(v)};document.body.append(m);
+ m.querySelector('#cx').onclick=()=>done(false);m.querySelector('#cok').onclick=()=>done(true);m.onclick=e=>{if(e.target===m)done(false)}})}
 function view(b){const el=document.createElement('div');el.className='blk'+(b.kind==='heading'?' h':'')+(b.locked_by?' locked':'');el.dataset.id=b.id;
  const canEdit=!!b.can_edit,gen=b.kind==='heading'&&(b.data||{}).generated,hidden=HIDEABLE_KINDS.includes(b.kind)&&(b.data||{}).hidden;
  const sdone=b.kind==='heading'&&!!(b.data||{}).section_done;
@@ -1768,7 +1789,9 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   const qb=(t,f)=>{const x=document.createElement('button');x.type='button';x.textContent=t;x.onclick=()=>{try{f()}catch(e){note(e.message,1)}};q.append(x)};
   qb('✍ Mulai menulis',()=>blockDlg(b));qb('▦ Tambah tabel',()=>tableDlg(b));el.append(q)}
  const a=document.createElement('div');a.className='acts';
- const btn=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
+ const AIC={'Edit':'✏️','+ Blok':'➕','+ Gambar':'🖼','+ Tabel':'▦','+ Page break':'📄','+ Daftar…':'📑','Hapus':'🗑'};   // tombol aksi blok = ikon (label tetap di title/aria-label)
+ const btn=(t,f)=>{const x=document.createElement('button');x.type='button';x.textContent=AIC[t]||t;if(AIC[t]){x.title=t;x.setAttribute('aria-label',t);x.style.cssText='min-width:38px;padding:5px 9px;font-size:15px;line-height:1'}
+  if(t==='Hapus')x.style.color='#d1242f';x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
  if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
   btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
  if(tl.length&&canEdit)btn('🧮 Hitung / simulasikan…',async()=>toolDlg(b,tl));
@@ -1784,7 +1807,7 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   if(canOutline)btn('+ Daftar…',()=>genListDlg(b));
   if(canOutline&&b.kind==='heading')btn(gen?'📑 Jenis daftar…':'📑 Jadikan daftar…',()=>genTypeDlg(b));
   if(b.kind==='page_break')btn('⛶ Tata letak',async()=>{layoutDlg(b.data.layout||null,async layout=>{await api('PATCH',`/blocks/${b.id}`,{data:{layout},version:b.version})})});
-  btn('Hapus',async()=>{if(confirm('Hapus blok ini?'))await api('DELETE',`/blocks/${b.id}?version=${b.version}`)});
+  btn('Hapus',async()=>{if(await confirmDelete(b))await api('DELETE',`/blocks/${b.id}?version=${b.version}`)});
   if(['heading','paragraph','list_item'].includes(b.kind)){const ls=document.createElement('select');ls.title='Ubah jenis blok (paragraf / heading / daftar)';
    const opts=[['p','Paragraf'],['h1','H1 (bab)'],['h2','H2'],['h3','H3'],['h4','H4'],['ul','Bullet'],['ol','Numbering']];
    opts.forEach(([v,l])=>{const o=new Option(l,v);if(v==='h1'&&!hasPerm('chapter_create'))o.disabled=true;ls.add(o)});
