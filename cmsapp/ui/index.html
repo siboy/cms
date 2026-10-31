@@ -1789,8 +1789,8 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   const qb=(t,f)=>{const x=document.createElement('button');x.type='button';x.textContent=t;x.onclick=()=>{try{f()}catch(e){note(e.message,1)}};q.append(x)};
   qb('✍ Mulai menulis',()=>blockDlg(b));qb('▦ Tambah tabel',()=>tableDlg(b));el.append(q)}
  const a=document.createElement('div');a.className='acts';
- const AIC={'Edit':'✏️','+ Blok':'➕','+ Gambar':'🖼','+ Tabel':'▦','+ Page break':'📄','+ Daftar…':'📑','Hapus':'🗑'};   // tombol aksi blok = ikon (label tetap di title/aria-label)
- const btn=(t,f)=>{const x=document.createElement('button');x.type='button';x.textContent=AIC[t]||t;if(AIC[t]){x.title=t;x.setAttribute('aria-label',t);x.style.cssText='min-width:38px;padding:5px 9px;font-size:15px;line-height:1'}
+ const AIC={'Edit':'✏️','+ Blok':'➕','+ Gambar':'🖼','+ Tabel':'▦','+ Page break':'📄 Page break','+ Daftar…':'📑 Daftar','Hapus':'🗑'};   // tombol aksi blok = ikon (label di title/aria-label); Page break & Daftar = ikon + teks
+ const btn=(t,f)=>{const x=document.createElement('button');x.type='button';x.textContent=AIC[t]||t;if(AIC[t]){x.title=t;x.setAttribute('aria-label',t);x.style.cssText=AIC[t].includes(' ')?'padding:5px 9px;font-size:13px;line-height:1.2':'min-width:38px;padding:5px 9px;font-size:15px;line-height:1'}
   if(t==='Hapus')x.style.color='#d1242f';x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
  if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
   btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
