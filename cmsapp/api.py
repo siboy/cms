@@ -35,6 +35,30 @@ def snip(t, n=60) -> str:
     return t if len(t) <= n else t[:n] + "…"
 
 
+from utils import journal as jn  # noqa: E402
+
+
+def jrec(doc_id: int, kind: str, label: str, data: dict, undoable: bool = True):
+    """Catat aksi ke riwayat pribadi (undo/redo). Gagal mencatat TIDAK boleh menggagalkan aksi utamanya."""
+    try:
+        return jn.record(S(), doc_id, g.user, kind, label, data, undoable)
+    except Exception as e:                                  # noqa: BLE001
+        current_app.logger.warning("journal: gagal mencatat %s: %s", kind, e)
+        return None
+
+
+def jattr(bid: int, a0: dict, label: str, doc_id: int):
+    """Catat perubahan ATRIBUT blok (a0 = S().block_attrs sebelum aksi). Versi saat ini diambil setelah aksi."""
+    try:
+        a1 = S().block_attrs(bid)
+        if a0 == a1:
+            return None
+        return jrec(doc_id, "attr", label, {"id": bid, "before": a0, "after": a1, "at": S().block_state(bid)["version"]})
+    except Exception as e:                                  # noqa: BLE001
+        current_app.logger.warning("journal: gagal mencatat atribut: %s", e)
+        return None
+
+
 LOG_ACTIONS = {"block": "block.edit", "insert": "block.insert", "delete": "block.delete",
                "move": "block.move", "comment": "comment"}
 
@@ -550,6 +574,7 @@ def patch_block(bid):
     if ("level" in d or "kind" in d) and not auth.has_perm(g.user, "chapter_create") and (
             b["level"] == 1 or int(d.get("level") or (2 if d.get("kind") == "heading" else 0)) == 1):
         abort(403, description="tidak punya izin mengubah level bab")
+    a0 = S().block_attrs(bid)
     v = S().update_block(bid, g.user["username"], text=d.get("text"), data=d.get("data"), level=d.get("level"),
                          status=d.get("status"), assignee=d.get("assignee"), expected_version=d.get("version"),
                          kind=d.get("kind"))
@@ -564,7 +589,15 @@ def patch_block(bid):
         bits.append(f'jenis={d["kind"]}')
     emit(b["doc_id"], "block", id=bid, version=v, force_global="level" in d or "kind" in d,
          log_summary=f'{b["kind"]} #{bid}: ' + ("; ".join(bits) or "ubah atribut"))
-    return jsonify(id=bid, version=v)
+    j = None
+    if any(k in d for k in ("level", "kind", "status", "assignee")):
+        parts = ([f'jenis → {d["kind"]}'] if "kind" in d else []) + ([f'level → H{d["level"]}'] if "level" in d and d.get("level") else []) \
+            + ([f'status → {d["status"]}'] if d.get("status") is not None else []) + ([f'penanggung jawab → {d["assignee"] or "(kosong)"}'] if "assignee" in d else [])
+        j = jattr(bid, a0, jn.describe(S(), bid, "Mengubah " + ", ".join(parts) + " pada", kind=b["kind"], text=b.get("text")), b["doc_id"])
+    elif d.get("text") is not None or d.get("data") is not None:
+        j = jrec(b["doc_id"], "edit", jn.describe(S(), bid, "Mengubah", kind=b["kind"], text=d.get("text") if d.get("text") is not None else b.get("text")),
+                 {"id": bid, "old": b["version"], "new": v, "at": v})
+    return jsonify(id=bid, version=v, journal=j)
 
 
 @bp.post("/blocks/<int:bid>/generated")
@@ -574,10 +607,12 @@ def set_generated(bid):
     menyisipkan daftar baru). generated: 'toc'|'tof_tabel'|'tof_gambar'|null (null = kembalikan jadi heading biasa)."""
     d = body()
     b = S().get_block(bid)
+    a0 = S().block_attrs(bid)
     v = S().set_heading_generated(bid, d.get("generated") or None, g.user["username"], expected_version=d.get("version"))
     emit(b["doc_id"], "block", id=bid, version=v, force_global=True,
          log_summary=f'daftar otomatis heading #{bid} -> {d.get("generated") or "heading biasa"}')
-    return jsonify(id=bid, version=v)
+    lab = jn.describe(S(), bid, "Menjadikan", kind="heading", text=b.get("text", ""), with_section=False) + (f' daftar otomatis ({d["generated"]})' if d.get("generated") else " heading biasa kembali")
+    return jsonify(id=bid, version=v, journal=jattr(bid, a0, lab, b["doc_id"]))
 
 
 @bp.post("/docs/<int:doc_id>/outline")
@@ -593,7 +628,8 @@ def insert_outline(doc_id):
     nid = S().insert_block(doc_id, d.get("after_id"), "heading", d.get("text", ""), level=level,
                            part=d.get("part"), user=g.user["username"])
     emit(doc_id, "insert", ids=[nid], after=d.get("after_id"), log_summary=f'heading L{level} "{snip(d.get("text", ""))}"')
-    return jsonify(id=nid), 201
+    j = jrec(doc_id, "insert", jn.describe(S(), nid, "Menambah", kind="heading", text=d.get("text", "")), {"ids": [nid]})
+    return jsonify(id=nid, journal=j), 201
 
 
 @bp.delete("/outline/<int:bid>")
@@ -603,9 +639,10 @@ def delete_outline(bid):
     b = S().get_block(bid)
     if b["kind"] != "heading":
         raise ValueError("bukan blok heading")
+    label = jn.describe(S(), bid, "Menghapus", kind="heading", text=b.get("text", ""))
     S().delete_block(bid, g.user["username"], request.args.get("version", type=int))
     emit(b["doc_id"], "delete", id=bid, log_summary=f'heading #{bid}: "{snip(b.get("text", ""))}"')
-    return jsonify(ok=True)
+    return jsonify(ok=True, journal=jrec(b["doc_id"], "delete", label, {"id": bid}))
 
 
 @bp.post("/blocks/<int:bid>/hidden")
@@ -617,10 +654,12 @@ def set_hidden(bid):
     Lihat utils/docx_build._filter_hidden."""
     d = body()
     b = S().get_block(bid)
+    a0 = S().block_attrs(bid)
     v = S().set_block_hidden(bid, bool(d.get("hidden")), g.user["username"], expected_version=d.get("version"))
     emit(b["doc_id"], "block", id=bid, version=v, force_global=True, log_action="block.hidden",
          log_summary=f'{"sembunyikan" if d.get("hidden") else "tampilkan"} {b["kind"]} #{bid}')
-    return jsonify(id=bid, version=v)
+    lab = jn.describe(S(), bid, "Menyembunyikan" if d.get("hidden") else "Menampilkan lagi", kind=b["kind"], text=b.get("text", "")) + (" dari ekspor DOCX" if d.get("hidden") else " di ekspor DOCX")
+    return jsonify(id=bid, version=v, journal=jattr(bid, a0, lab, b["doc_id"]))
 
 
 @bp.post("/blocks/<int:bid>/section-done")
@@ -631,10 +670,12 @@ def section_done(bid):
     isi >= 1500 karakter otomatis dianggap DONE)."""
     d = body()
     b = guard(bid)
+    a0 = S().block_attrs(bid)
     v = S().set_section_done(bid, bool(d.get("done")), g.user["username"], expected_version=d.get("version"))
     emit(b["doc_id"], "block", id=bid, version=v, log_action="block.section_done",
          log_summary=f'heading #{bid}: {"DONE" if d.get("done") else "belum done"}')
-    return jsonify(id=bid, version=v)
+    lab = (f'Menandai judul “{jn.snip(b.get("text", ""), 60)}” sebagai DONE' if d.get("done") else f'Membatalkan tanda DONE pada judul “{jn.snip(b.get("text", ""), 60)}”')
+    return jsonify(id=bid, version=v, journal=jattr(bid, a0, lab, b["doc_id"]))
 
 
 @bp.post("/blocks/<int:bid>/outline-move")
@@ -646,6 +687,8 @@ def move_outline(bid):
     d = body()
     b = S().get_block(bid)
     after_id = d.get("after_id")
+    ids = S().subtree_ids(bid) if b["kind"] == "heading" else [bid]
+    before = S().prev_block_id(ids[0])
     if b["kind"] == "heading":
         n = S().move_subtree(bid, after_id, g.user["username"])
     else:
@@ -653,7 +696,12 @@ def move_outline(bid):
         n = 1
     emit(b["doc_id"], "move", id=bid, after=after_id, force_global=True,
          log_summary=f'{b["kind"]} #{bid} ({n} blok) -> setelah #{after_id or "(awal)"}')
-    return jsonify(ok=True, moved=n)
+    after_actual = S().prev_block_id(ids[0])
+    prev = S().block_state(after_actual) if after_actual else None
+    where = f'setelah “{jn.snip(prev["text"], 45)}”' if prev and prev.get("text") else ("ke awal dokumen" if not after_actual else "ke posisi baru")
+    nm = f'{jn.KIND_LABEL.get(b["kind"], b["kind"])} “{jn.snip(b.get("text", ""))}”'
+    label = f'Memindahkan bagian {nm} beserta {n - 1} blok isinya {where}' if b["kind"] == "heading" else f'Memindahkan {nm} {where}'
+    return jsonify(ok=True, moved=n, journal=jrec(b["doc_id"], "move", label, {"ids": ids, "before": before, "after": after_actual}))
 
 
 @bp.post("/docs/<int:doc_id>/blocks")
@@ -675,7 +723,8 @@ def insert(doc_id):
                            d.get("part"), g.user["username"])
     lvl = f' L{d.get("level")}' if kind == "heading" else ""
     emit(doc_id, "insert", ids=[nid], after=after, log_summary=f'{kind}{lvl} "{snip(d.get("text", ""))}"')
-    return jsonify(id=nid), 201
+    j = jrec(doc_id, "insert", jn.describe(S(), nid, "Menambah", kind=kind, text=d.get("text", "")), {"ids": [nid]})
+    return jsonify(id=nid, journal=j), 201
 
 
 @bp.post("/docs/<int:doc_id>/tables")
@@ -692,7 +741,10 @@ def add_table(doc_id):
                         d.get("caption"), g.user["username"])
     emit(doc_id, "insert", ids=ids, after=after,
          log_summary=f'tabel {len(rows)} baris' + (f' "{snip(d.get("caption"))}"' if d.get("caption") else ""))
-    return jsonify(ids=ids), 201
+    sec = S().section_title(ids[-1])
+    j = jrec(doc_id, "insert", f'Menambah tabel {len(rows)} baris' + (f' “{jn.snip(d.get("caption"), 40)}”' if d.get("caption") else "") + (f' (bagian “{jn.snip(sec, 50)}”)' if sec else ""),
+             {"ids": ids})
+    return jsonify(ids=ids, journal=j), 201
 
 
 @bp.patch("/blocks/<int:bid>/cell")
@@ -703,7 +755,8 @@ def cell(bid):
     v = S().set_cell(bid, int(need(d.get("row"), "row")), int(need(d.get("col"), "col")), str(d.get("text", "")),
                      g.user["username"], d.get("version"))
     emit(b["doc_id"], "block", id=bid, version=v)
-    return jsonify(id=bid, version=v)
+    j = jrec(b["doc_id"], "edit", jn.describe(S(), bid, "Mengubah isi", kind="table", text=""), {"id": bid, "old": b["version"], "new": v, "at": v})
+    return jsonify(id=bid, version=v, journal=j)
 
 
 @bp.post("/blocks/<int:bid>/rows")
@@ -717,7 +770,9 @@ def rows(bid):
         v = S().table_add_row(bid, int(d.get("after_row", -1)), [str(x) for x in d.get("values", [])],
                               g.user["username"], d.get("version"))
     emit(b["doc_id"], "block", id=bid, version=v)
-    return jsonify(id=bid, version=v)
+    j = jrec(b["doc_id"], "edit", jn.describe(S(), bid, "Menghapus baris pada" if d.get("delete") is not None else "Menambah baris pada", kind="table", text=""),
+             {"id": bid, "old": b["version"], "new": v, "at": v})
+    return jsonify(id=bid, version=v, journal=j)
 
 
 @bp.post("/blocks/<int:bid>/long")
@@ -792,7 +847,8 @@ def pagebreak(doc_id):
     layout = d.get("layout")
     nid = S().add_page_break(doc_id, after, g.user["username"], data={"layout": layout} if layout else None)
     emit(doc_id, "insert", ids=[nid], after=after, log_summary="page break")
-    return jsonify(id=nid), 201
+    j = jrec(doc_id, "insert", jn.describe(S(), nid, "Menambah", kind="page_break"), {"ids": [nid]})
+    return jsonify(id=nid, journal=j), 201
 
 
 @bp.post("/docs/<int:doc_id>/images")
@@ -812,7 +868,9 @@ def image(doc_id):
     finally:
         os.remove(t.name)
     emit(doc_id, "insert", ids=ids, after=after, log_summary=f'gambar "{snip(f.filename, 80)}"')
-    return jsonify(ids=ids), 201
+    sec = S().section_title(ids[-1])
+    j = jrec(doc_id, "insert", f'Menambah gambar “{jn.snip(f.filename, 40)}”' + (f' (bagian “{jn.snip(sec, 50)}”)' if sec else ""), {"ids": ids})
+    return jsonify(ids=ids, journal=j), 201
 
 
 @bp.post("/docs/<int:doc_id>/inline-asset")
@@ -839,9 +897,10 @@ def inline_asset(doc_id):
 @auth.require("block_edit_all", "block_edit_assigned")
 def delete(bid):
     b = guard(bid)
+    label = jn.describe(S(), bid, "Menghapus", kind=b["kind"], text=b.get("text", ""))
     S().delete_block(bid, g.user["username"], request.args.get("version", type=int))
     emit(b["doc_id"], "delete", id=bid, log_summary=f'{b["kind"]} #{bid}: "{snip(b.get("text", ""))}"')
-    return jsonify(ok=True)
+    return jsonify(ok=True, journal=jrec(b["doc_id"], "delete", label, {"id": bid}))
 
 
 @bp.post("/blocks/<int:bid>/restore")
@@ -851,7 +910,7 @@ def restore(bid):
     S().restore_block(bid, g.user["username"])
     emit(b["doc_id"], "insert", ids=[bid], after=None, log_action="block.restore",
          log_summary=f'pulihkan {b["kind"]} #{bid}: "{snip(b.get("text", ""))}"')
-    return jsonify(ok=True)
+    return jsonify(ok=True, journal=jrec(b["doc_id"], "insert", jn.describe(S(), bid, "Memulihkan", kind=b["kind"], text=b.get("text", "")), {"ids": [bid]}))
 
 
 @bp.post("/blocks/<int:bid>/move")
@@ -863,10 +922,20 @@ def move(bid):
     if after is not None and not auth.can_edit(b["doc_id"], after):
         abort(403, description="tujuan di luar bab Anda")
     src = chapter_id(bid)
+    before, src_sec = S().prev_block_id(bid), S().section_title(bid)
+    n_under = len(S().subtree_ids(bid)) - 1 if b["kind"] == "heading" else 0      # isi di bawah judul yang TIDAK ikut berpindah
     S().move_block(bid, after, g.user["username"], d.get("version"))
     emit(b["doc_id"], "move", extra_ch=(src, chapter_id(after)), id=bid, after=after,
          log_summary=f'{b["kind"]} #{bid} -> setelah #{after or "(awal)"}')
-    return jsonify(ok=True)
+    after_actual, dst_sec = S().prev_block_id(bid), S().section_title(bid)
+    nm = f'{jn.KIND_LABEL.get(b["kind"], b["kind"])} “{jn.snip(b.get("text", ""))}”'
+    if b["kind"] == "heading":
+        label = f'Memindahkan {nm} saja (hanya judulnya; {n_under} blok isinya tetap di tempat)' if n_under else f'Memindahkan {nm}'
+    elif src_sec != dst_sec:
+        label = f'Memindahkan {nm} dari bagian “{jn.snip(src_sec, 45)}” ke bagian “{jn.snip(dst_sec, 45)}”'
+    else:
+        label = f'Memindahkan {nm} dalam bagian “{jn.snip(src_sec, 45)}”'
+    return jsonify(ok=True, journal=jrec(b["doc_id"], "move", label, {"ids": [bid], "before": before, "after": after_actual}))
 
 
 @bp.post("/blocks/<int:bid>/revert")
@@ -877,7 +946,8 @@ def revert(bid):
     v = S().restore_version(bid, version, g.user["username"])
     emit(b["doc_id"], "block", id=bid, version=v, log_action="block.revert",
          log_summary=f'{b["kind"]} #{bid} -> kembalikan ke versi {version}')
-    return jsonify(id=bid, version=v)
+    j = jrec(b["doc_id"], "edit", jn.describe(S(), bid, f"Mengembalikan ke versi {version}:", kind=b["kind"], text=b.get("text", "")), {"id": bid, "old": b["version"], "new": v, "at": v})
+    return jsonify(id=bid, version=v, journal=j)
 
 
 # ---------------------------------------------------------------- komentar
@@ -921,6 +991,7 @@ def add_comment(bid):
     throttle(f"comment:{g.user['id']}", 30, 60)
     c = S().add_comment(bid, g.user["username"], text, d.get("parent_id"))
     emit(c["doc_id"], "comment", id=bid, cid=c["id"], log_action="comment.add", log_summary=snip(text, 120))
+    jrec(c["doc_id"], "info", jn.describe(S(), bid, "Membalas komentar pada" if d.get("parent_id") else "Menulis komentar pada", kind=b["kind"], text=b.get("text", "")) + f': “{jn.snip(text, 60)}”', {}, undoable=False)
     _notify_comment(b["doc_id"], bid, d.get("parent_id"), text)
     if mods.is_on("panduan_blok"):                      # pertanyaan di kotak komentar -> dijawab otomatis oleh worker (utils/blockbot.py)
         blockbot.enqueue(R(), b["doc_id"], bid, c["id"], d.get("parent_id"), g.user["username"], text)
@@ -968,6 +1039,7 @@ def resolve_comment(cid):
     cm = S().resolve_comment(cid, g.user["username"], resolved)
     emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid, log_action="comment.resolve",
          log_summary="selesai" if resolved else "buka lagi")
+    jrec(cm["doc_id"], "info", ("Menandai komentar selesai" if resolved else "Membuka lagi komentar") + f' pada {jn.snip(S().section_title(cm["block_id"]), 50) or "dokumen"}', {}, undoable=False)
     return jsonify(ok=True)
 
 
@@ -979,6 +1051,7 @@ def del_comment(cid):
         abort(403, description="hanya penulis komentar / admin")
     S().delete_comment(cid)
     emit(cm["doc_id"], "comment", id=cm["block_id"], cid=cid, log_action="comment.delete")
+    jrec(cm["doc_id"], "info", f'Menghapus komentar “{jn.snip(cm.get("text", ""), 50)}”', {}, undoable=False)
     return jsonify(ok=True)
 
 
@@ -1231,6 +1304,12 @@ def admin_assign():
     # juga menaikkan counter event -> ETag outline/pic-map/blocks kedaluwarsa (penugasan tak terdeteksi fingerprint)
     try:
         emit(doc_id, "pic", id=S().scope_target(scope)[0], user_id=uid, force_global=True)
+    except Exception:                                   # noqa: BLE001
+        pass
+    try:
+        _bid, _fb = S().scope_target(scope)
+        _lab = S().heading_label_of(_bid) if _bid else _fb
+        jrec(doc_id, "info", f'{"Melepas" if removing else "Menugaskan"} PIC {auth.get_user(uid).get("username", "#" + str(uid))} pada “{jn.snip(_lab, 60)}”', {}, undoable=False)
     except Exception:                                   # noqa: BLE001
         pass
     if not removing and uid != g.user["id"]:

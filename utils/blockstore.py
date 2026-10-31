@@ -926,7 +926,7 @@ class BlockStore:
     ACTION_EFFORT = {"doc.upload": 8.0, "project.file_upload": 3.0, "user.file_upload": 2.0,
                      "block.insert": 1.2, "block.edit": 0.0, "block.move": 0.3, "block.delete": 0.3,
                      "block.restore": 0.5, "block.revert": 0.5, "block.hidden": 0.2,
-                     "comment.add": 0.6, "comment.resolve": 0.2, "comment.delete": 0.1,
+                     "comment.add": 0.6, "comment.resolve": 0.2, "comment.delete": 0.1, "block.undo": 0.0, "block.redo": 0.0, "block.section_done": 0.2,
                      "doc.export": 0.8, "pic.assign": 0.3, "pic.unassign": 0.2, "doc.share": 0.2}
 
     def team_workload(self) -> list[dict]:
@@ -1073,7 +1073,8 @@ class BlockStore:
     ACTION_LABELS = {
         "block.edit": "blok diedit", "block.insert": "blok ditambahkan", "block.delete": "blok dihapus",
         "block.move": "blok dipindahkan", "block.restore": "blok dipulihkan", "block.revert": "blok dikembalikan ke versi lama",
-        "block.hidden": "blok disembunyikan/ditampilkan", "comment.add": "komentar ditulis",
+        "block.hidden": "blok disembunyikan/ditampilkan", "block.undo": "aksi diurungkan", "block.redo": "aksi diulang",
+        "block.section_done": "heading ditandai DONE/belum", "comment.add": "komentar ditulis",
         "comment.resolve": "komentar ditandai selesai/dibuka lagi", "comment.delete": "komentar dihapus",
     }
 
@@ -1321,6 +1322,74 @@ class BlockStore:
             self.move_block(bid, anchor, user=user)
             anchor = bid
         return len(moving_ids)
+
+    # ------------------------------------------------------------ bantu riwayat aksi (undo/redo, utils/journal.py)
+    def prev_block_id(self, block_id: int) -> Optional[int]:
+        """Blok (belum dihapus) yang tepat berada SEBELUM blok ini di dokumen; None bila paling awal."""
+        with self._tx() as c:
+            b = self._one(c, "SELECT doc_id, seq FROM cms_blocks WHERE id=?", (block_id,))
+            if not b:
+                return None
+            r = self._one(c, "SELECT id FROM cms_blocks WHERE doc_id=? AND deleted_at IS NULL AND (seq<? OR (seq=? AND id<?)) "
+                             "ORDER BY seq DESC, id DESC LIMIT 1", (b["doc_id"], b["seq"], b["seq"], block_id))
+        return r["id"] if r else None
+
+    def section_title(self, block_id: int) -> str:
+        """Teks (polos) heading terdekat di atas blok ini (heading sendiri bila blok itu heading); '' bila di luar bab."""
+        with self._tx() as c:
+            b = self._one(c, "SELECT doc_id, seq, kind, text FROM cms_blocks WHERE id=?", (block_id,))
+            if not b:
+                return ""
+            if b["kind"] == "heading":
+                return plain(b["text"] or "")
+            h = self._one(c, "SELECT text FROM cms_blocks WHERE doc_id=? AND kind='heading' AND deleted_at IS NULL AND seq<=? "
+                             "ORDER BY seq DESC, id DESC LIMIT 1", (b["doc_id"], b["seq"]))
+        return plain(h["text"] or "") if h else ""
+
+    def subtree_ids(self, heading_id: int) -> list[int]:
+        """Id heading + seluruh blok di bawahnya (sampai heading level sama/lebih tinggi berikutnya), berurutan -- sama dgn yang dipindah move_subtree."""
+        root = self.get_block(heading_id)
+        blocks = self.list_blocks(root["doc_id"])
+        idx = next((i for i, b in enumerate(blocks) if b["id"] == heading_id), None)
+        if idx is None:
+            return [heading_id]
+        end = idx + 1
+        while end < len(blocks) and not (blocks[end]["kind"] == "heading" and blocks[end]["level"] <= root["level"]):
+            end += 1
+        return [b["id"] for b in blocks[idx:end]]
+
+    def move_blocks_after(self, ids: list[int], after_id: Optional[int], user: str = "") -> int:
+        """Pindahkan kelompok blok (urutan dipertahankan) PERSIS ke setelah after_id -- tanpa aturan 'lompati subtree heading'
+        milik move_subtree, jadi bisa dipakai mengembalikan posisi asal. after_id=None -> paling awal dokumen."""
+        if after_id is not None and after_id in ids:
+            raise ValueError("posisi tujuan berada di dalam kelompok yang dipindah")
+        anchor = after_id
+        for bid in ids:
+            self.move_block(bid, anchor, user=user)
+            anchor = bid
+        return len(ids)
+
+    ATTR_COLS = ("kind", "level", "style", "data", "status", "assignee")
+
+    def block_attrs(self, block_id: int) -> Optional[dict]:
+        """Nilai MENTAH atribut yang dipakai undo/redo 'atribut' (sembunyikan, DONE, daftar otomatis, status, penanggung jawab, jenis/level)."""
+        with self._tx() as c:
+            r = self._one(c, "SELECT kind, level, style, data, status, assignee FROM cms_blocks WHERE id=?", (block_id,))
+        return None if not r else {k: r[k] for k in self.ATTR_COLS}
+
+    def restore_attrs(self, block_id: int, attrs: dict, user: str = "", expected_version: Optional[int] = None) -> int:
+        """Tulis kembali atribut (lihat block_attrs) -> versi baru. Teks/isi tidak disentuh."""
+        sets = {k: attrs[k] for k in self.ATTR_COLS if k in attrs}
+        if not sets:
+            raise ValueError("tidak ada atribut untuk dipulihkan")
+        return self._mutate(block_id, user, expected_version, sets, "restore atribut")
+
+    def block_state(self, block_id: int) -> Optional[dict]:
+        """{id, doc_id, kind, version, deleted} ringan; None bila tak ada."""
+        with self._tx() as c:
+            r = self._one(c, "SELECT id, doc_id, kind, version, deleted_at, text FROM cms_blocks WHERE id=?", (block_id,))
+        return None if not r else {"id": r["id"], "doc_id": r["doc_id"], "kind": r["kind"], "version": r["version"],
+                                   "deleted": r["deleted_at"] is not None, "text": r["text"] or ""}
 
     # ------------------------------------------------------------ konten khusus
     def add_page_break(self, doc_id: int, after_id: Optional[int], user: str = "", data: Optional[dict] = None) -> int:

@@ -48,6 +48,9 @@ def create_app(cfg=Config) -> Flask:
     from cmsapp.license_api import bp as lic_bp
     app.register_blueprint(lic_bp)
 
+    from cmsapp.journal_api import bp as journal_bp
+    app.register_blueprint(journal_bp)
+
     @app.after_request
     def _security_headers(resp):
         h = resp.headers
