@@ -15,7 +15,7 @@ bp = Blueprint("modules", __name__, url_prefix="/api")
 def locked_response(key: str):
     if key.startswith("tool:"):
         tid = key[5:]
-        return jsonify(error=mods.locked_message(key), code="module_locked", module=key, tool=tid, label=mods.tool_label(tid)), 403
+        return jsonify(error=mods.locked_message(key), code="module_locked", module=mods.TOOL_MODULE.get(tid, key), tool=tid, label=mods.tool_label(tid)), 403
     return jsonify(error=mods.locked_message(key), code="module_locked", module=key, label=mods.LABEL.get(key, key)), 403
 
 
