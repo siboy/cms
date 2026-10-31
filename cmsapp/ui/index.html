@@ -272,6 +272,10 @@ header b{letter-spacing:.2px}
  .dlg>button{width:100%;text-align:left;padding:13px 12px;border-radius:10px}
  .dlg>button:active{background:linear-gradient(90deg,var(--lilac),var(--mint));color:var(--ink)}
  /* daftar proyek: 2 kartu per baris. Palet: mint #A8E6CF, lilac #D8B4F8, krem #F8F9FA, slate #1F2937 */
+ /* form ringkasan proyek: 2 kolom; Nama/Deskripsi/Kontak selebar baris. (span 2 di grid 1 kolom membuat kolom implisit -> Nama terhimpit, Klien melebar) */
+ .rgf{grid-template-columns:1fr 1fr!important;gap:8px}
+ .rgf .fl{min-width:0}
+ .fl.w2,.fl.wall{grid-column:1/-1}
  .rgp{grid-template-columns:1fr 1fr!important;gap:10px;padding:0 8px}
  .rgp .rc{margin:0;padding:10px 10px 9px;color:#1F2937;border:1px solid #A8E6CF;border-top:4px solid #A8E6CF;border-radius:14px;
   background:linear-gradient(165deg,#F8F9FA 0%,#EEF9F3 100%);
@@ -666,9 +670,13 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
 async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';if(curTab==='tim'){curTab='ringkasan';pendScroll='secTim'}if(curTab==='pic')curTab='laporan';if(curTab==='lokasi')curTab='ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
- const tabs=[['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['kalender','Kalender','📅'],['simulasi','Simulasi','🧮'],['tindak','LogBook','📒']];
+ /* _beban & _aktif = jalan pintas, bukan tab: Beban Tim membuka panel beban, Aktif kembali ke daftar proyek aktif */
+ const tabs=[...(hasPerm('project_view_all')||hasPerm('user_manage')?[['_beban','Beban Tim','📊']]:[]),['_aktif','Aktif','🗂'],['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['kalender','Kalender','📅'],['simulasi','Simulasi','🧮'],['tindak','LogBook','📒']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
-  $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{curTab=b.dataset.k;paintTabs();renderTab()})};
+  $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.k;
+   if(k==='_aktif'){projFilter='aktif';projectsView();return}
+   if(k==='_beban'){workloadDlg();return}
+   curTab=k;paintTabs();renderTab()})};
  paintTabs();await renderTab()}
 async function renderTab(){const fns={ringkasan:tabRingkasan,laporan:tabLaporan,gantt:tabGantt,kalender:tabKalender,tim:tabTim,pic:tabPic,lokasi:tabLokasi,simulasi:tabSimulasi,aktivitas:tabAktivitas,tindak:()=>window.tabTindak()};
  stopChat();try{await fns[curTab]()}catch(e){note(e.message,1)}}
@@ -768,8 +776,8 @@ async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${cur
  $('#ptab').innerHTML=`<div class=rc>
  <div style="display:flex;align-items:center;gap:8px"><div class=pbar style="max-width:300px;flex:1"><i style="width:${p.progress_effective}%"></i></div>
  <b>${p.progress_effective}%</b><small style="color:var(--mut)">${p.progress_override===100?`✔ FINAL — dilaporkan <b>${esc(p.progress_final_by||'?')}</b> ${esc(idDate((p.progress_final_at||'').slice(0,10)))}`:`(Gantt: ${p.progress_gantt??'—'}% · status blok: ${p.progress_auto}%${p.progress_override!=null?` · override: ${p.progress_override}%`:''})`}</small></div>
- <div class=rg style="margin-top:10px">
- <label class=fl><small>Nama</small><div class=fld contenteditable="${adm}" data-f=name>${esc(p.name)}</div></label>
+ <div class="rg rgf" style="margin-top:10px">
+ <label class="fl wall"><small>Nama</small><div class=fld contenteditable="${adm}" data-f=name>${esc(p.name)}</div></label>
  <label class=fl><small>Klien</small><div class=fld contenteditable="${adm}" data-f=client>${esc(p.client||'')}</div></label>
  <label class=fl><small>Lokasi</small><div class=fld contenteditable="${adm}" data-f=location>${esc(p.location||'')}</div></label>
  <label class="fl w2"><small>Deskripsi</small><div class=fld contenteditable="${adm}" data-f=description>${esc(p.description||'')}</div></label>
