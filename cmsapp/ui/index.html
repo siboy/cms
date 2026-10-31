@@ -230,6 +230,13 @@ header b{letter-spacing:.2px}
 .rc .rhm{padding-right:52px}
 .rc .rmenu{position:absolute;top:4px;right:4px;margin:0;min-width:44px;height:42px;padding:0 8px;font-size:20px;line-height:1;display:grid;place-items:center;border-radius:10px}
 .plbar{margin:0 0 12px}
+/* label isian = tebal; placeholder = abu-abu (bukan teks isian) */
+.fl small,.fl2{font-weight:700;color:var(--fg)}
+.fl2 input,.fl2 select,.fl2 textarea{font-weight:400}
+.dlg label:not([style*=flex]){font-weight:700;color:var(--fg)}
+.dlg label:not([style*=flex]) input,.dlg label:not([style*=flex]) select,.dlg label:not([style*=flex]) textarea,.dlg label:not([style*=flex]) small{font-weight:400}
+::placeholder{color:#9aa3b2;opacity:1;font-weight:400}
+.fld:empty::before{content:attr(data-ph);color:#9aa3b2;font-weight:400;pointer-events:none}
 .plbar .cattabs{display:flex;gap:6px;flex-wrap:wrap;padding:0;margin:0;overflow:visible}
 .plbar .ti{display:none}
 .plbar #npr{background:var(--acc);color:#fff;border-color:var(--acc)}
@@ -777,19 +784,19 @@ async function tabRingkasan(){const {project:p}=await api('GET',`/projects/${cur
  <div style="display:flex;align-items:center;gap:8px"><div class=pbar style="max-width:300px;flex:1"><i style="width:${p.progress_effective}%"></i></div>
  <b>${p.progress_effective}%</b><small style="color:var(--mut)">${p.progress_override===100?`✔ FINAL — dilaporkan <b>${esc(p.progress_final_by||'?')}</b> ${esc(idDate((p.progress_final_at||'').slice(0,10)))}`:`(Gantt: ${p.progress_gantt??'—'}% · status blok: ${p.progress_auto}%${p.progress_override!=null?` · override: ${p.progress_override}%`:''})`}</small></div>
  <div class="rg rgf" style="margin-top:10px">
- <label class="fl wall"><small>Nama</small><div class=fld contenteditable="${adm}" data-f=name>${esc(p.name)}</div></label>
- <label class=fl><small>Klien</small><div class=fld contenteditable="${adm}" data-f=client>${esc(p.client||'')}</div></label>
- <label class=fl><small>Lokasi</small><div class=fld contenteditable="${adm}" data-f=location>${esc(p.location||'')}</div></label>
- <label class="fl w2"><small>Deskripsi</small><div class=fld contenteditable="${adm}" data-f=description>${esc(p.description||'')}</div></label>
- <label class=fl><small>Tim sales</small><div class=fld contenteditable="${adm}" data-f=sales_team>${esc(p.sales_team||'')}</div></label>
- <label class=fl><small>PIC proyek</small><div class=fld contenteditable="${adm}" data-f=pic>${esc(p.pic||'')}</div></label>
- <label class="fl w2"><small>Kontak pemrakarsa</small><div class=fld contenteditable="${adm}" data-f=pemrakarsa_contact>${esc(p.pemrakarsa_contact||'')}</div></label>
+ <label class="fl wall"><small>Nama</small><div class=fld contenteditable="${adm}" data-f=name data-ph="Nama proyek">${esc(p.name)}</div></label>
+ <label class=fl><small>Klien</small><div class=fld contenteditable="${adm}" data-f=client data-ph="Nama klien">${esc(p.client||'')}</div></label>
+ <label class=fl><small>Lokasi</small><div class=fld contenteditable="${adm}" data-f=location data-ph="Lokasi proyek">${esc(p.location||'')}</div></label>
+ <label class="fl w2"><small>Deskripsi</small><div class=fld contenteditable="${adm}" data-f=description data-ph="Deskripsi singkat proyek">${esc(p.description||'')}</div></label>
+ <label class=fl><small>Tim sales</small><div class=fld contenteditable="${adm}" data-f=sales_team data-ph="Nama tim sales">${esc(p.sales_team||'')}</div></label>
+ <label class=fl><small>PIC proyek</small><div class=fld contenteditable="${adm}" data-f=pic data-ph="Nama PIC proyek">${esc(p.pic||'')}</div></label>
+ <label class="fl w2"><small>Kontak pemrakarsa</small><div class=fld contenteditable="${adm}" data-f=pemrakarsa_contact data-ph="Nama / telepon / email pemrakarsa">${esc(p.pemrakarsa_contact||'')}</div></label>
  </div>
  ${adm?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
- <label>Mulai <input type=date id=pstart value="${p.start_date||''}"></label>
- <label>Selesai <input type=date id=pend value="${p.end_date||''}"></label>
- <label>Status <select id=pstatus>${['planning','ongoing','on_hold','completed'].map(s=>`<option value=${s} ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></label>
- <label title="Kosong = ikut hitungan Gantt. Terisi: bila Gantt lebih besar dipakai Gantt; bila lebih kecil dipakai rata-rata (override+Gantt)/2 — klaim manual selalu ditarik ke kenyataan">Override progress % <input type=number id=pov min=0 max=100 value="${p.progress_override??''}" placeholder="(dari Gantt)" style="width:70px"></label>
+ <label class=fl2>Mulai <input type=date id=pstart value="${p.start_date||''}"></label>
+ <label class=fl2>Selesai <input type=date id=pend value="${p.end_date||''}"></label>
+ <label class=fl2>Status <select id=pstatus>${['planning','ongoing','on_hold','completed'].map(s=>`<option value=${s} ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></label>
+ <label class=fl2 title="Kosong = ikut hitungan Gantt. Terisi: bila Gantt lebih besar dipakai Gantt; bila lebih kecil dipakai rata-rata (override+Gantt)/2 — klaim manual selalu ditarik ke kenyataan">Override progress % <input type=number id=pov min=0 max=100 value="${p.progress_override??''}" placeholder="(dari Gantt)" style="width:70px"></label>
  </div>`:''}</div>`;
  {const ht=document.createElement('div');ht.id='secTim';ht.style.marginTop='12px';$('#ptab').append(ht);tabTim(ht).catch(e=>{ht.textContent=e.message});
   if(pendScroll==='secTim'){pendScroll=null;setTimeout(()=>ht.scrollIntoView({behavior:'smooth',block:'start'}),400)}}
