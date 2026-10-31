@@ -317,7 +317,7 @@ header b{letter-spacing:.2px}
 </header>
 <div id="kscrim" hidden></div><div id="app"></div><div id="bar" hidden></div>
 <script src="/offline.js?v=1"></script>
-<script src="/proj-site.js?v=3"></script>
+<script src="/proj-site.js?v=4"></script>
 <script src="/act-ui.js?v=2"></script>
 <script>
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
@@ -674,11 +674,11 @@ function projectDlg(projects){const m=document.createElement('div');m.className=
   template_project_id:f.template_project_id?(f.template_project_id.value||null):null});
   m.remove();projectsView()}catch(x){note(x.message,1)}}}
 
-async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';if(curTab==='tim'){curTab='ringkasan';pendScroll='secTim'}if(curTab==='pic')curTab='laporan';if(curTab==='lokasi')curTab='ringkasan';curCat='surat';
+async function projectDetailView(id,opts){closeDoc();curProj=id;curTab=(opts&&opts.tab)||'ringkasan';if(curTab==='tim'){curTab='ringkasan';pendScroll='secTim'}if(curTab==='pic')curTab='laporan';if(curTab==='simulasi'){curTab='laporan';pendScroll='simHost'}if(curTab==='lokasi')curTab='ringkasan';curCat='surat';
  $('#app').innerHTML='<div id=docs><div id=ptabs class=tabs></div><div id=ptab></div></div>';
  // kembali ke daftar proyek: tombol "Proyek" di header (selalu ada) — baris "← Proyek" dihapus biar konten rapat ke header
  /* _beban & _aktif = jalan pintas, bukan tab: Beban Tim membuka panel beban, Aktif kembali ke daftar proyek aktif */
- const tabs=[...(hasPerm('project_view_all')||hasPerm('user_manage')?[['_beban','Beban Tim','📊']]:[]),['_aktif','Aktif','🗂'],['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['kalender','Kalender','📅'],['simulasi','Simulasi','🧮'],['tindak','LogBook','📒']];
+ const tabs=[...(hasPerm('project_view_all')||hasPerm('user_manage')?[['_beban','Beban Tim','📊']]:[]),['_aktif','Aktif','🗂'],['ringkasan','Ringkasan','📋'],['laporan','MyTask','📄'],['gantt','Gantt','📊'],['kalender','Kalender','📅'],['tindak','LogBook','📒']];
  const paintTabs=()=>{$('#ptabs').innerHTML=tabs.map(([k,l,ic])=>`<button data-k="${k}" class="${k===curTab?'cur':''}"><span class=ti>${ic}</span><span class=tl>${l}</span></button>`).join('');
   $('#ptabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.k;
    if(k==='_aktif'){projFilter='aktif';projectsView();return}
@@ -830,6 +830,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
    <button type=button id=tkadd>+ Task</button></div>
    <p style="color:var(--mut);font-size:12px;margin:2px 0 8px">Dari Diskusi: tulis <b>#task @nama</b> (atau <b>#namatopik @tim</b> / <b>@all</b>) — otomatis masuk daftar task orang yang di-tag. Tanpa tag = catatan tugasmu sendiri.</p>
    <div id=tklist style="display:grid;gap:6px"></div></div>`
+ +`<div data-rt=simulasi id=simHost style="margin-top:10px">memuat…</div>`
  +`</div><div class=chatwrap><div class=chatbox id=cbox>
    <div class=chathead>💬 Diskusi Tim <small style="font-weight:400;color:var(--mut)">tempel (Ctrl+V) / seret gambar ke sini</small></div>
    <div class=chatlog id=clog></div>
@@ -838,7 +839,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
     <textarea id=cin rows=2 placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" maxlength=4000></textarea>
     <button class=p type=button id=csend>➤</button></div>
   </div></div></div>
- <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=pic>👤 PIC</button><button data-m=dokumen>📂 Dok</button><button data-m=task>✅ Task</button></div>`;
+ <div class=repmenu id=repmenu><button data-m=chat class=cur>💬 Diskusi</button><button data-m=laporan>Laporan</button><button data-m=pic>👤 PIC</button><button data-m=dokumen>📂 Dok</button><button data-m=task>✅ Task</button><button data-m=simulasi>🧮 Simulasi</button></div>`;
  initChat();renderTasks();renderBerkas();calCur=calCur||new Date();renderCal();
  $('#tkall').onchange=e=>{tkAll=e.target.checked;renderTasks()};
  $('#tkadd').onclick=taskAddDlg;
@@ -847,6 +848,8 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
   const m=b.dataset.m;$('#lrw').classList.toggle('showrep',m!=='chat');
   if(m!=='chat')$(`#lrw [data-rt="${m}"]`)?.scrollIntoView({behavior:'smooth',block:'start'})});
  if($('#picHost'))tabPic($('#picHost')).catch(e=>{$('#picHost').textContent=e.message});
+ if($('#simHost')){(window.tabSimulasi?tabSimulasi($('#simHost')):Promise.resolve()).catch(e=>{$('#simHost').textContent=e.message});
+  if(pendScroll==='simHost'){pendScroll=null;$('#lrw').classList.add('showrep');setTimeout(()=>$('#simHost')?.scrollIntoView({behavior:'smooth',block:'start'}),600)}}
  $('#ptab').querySelectorAll('[data-open]').forEach(a=>a.onclick=e=>{e.preventDefault();openDoc(+a.dataset.open)});
  $('#ptab').querySelectorAll('[data-pr]').forEach(b=>b.onclick=async()=>{try{await api('POST',`/projects/${curProj}/documents/${b.dataset.pr}/print`,{printed:!!+b.dataset.v});tabLaporan()}catch(e){note(e.message,1)}});
  if(!canManage)return;

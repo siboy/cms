@@ -346,10 +346,11 @@
   }
 
   // =============================================================================================== SIMULASI
-  window.tabSimulasi = async function () {
+  window.tabSimulasi = async function (host) {
     style();
+    const H = host || $('#ptab');
     const pid = curProj, manage = await canManage(), M = await mods();
-    if (M.proyek_simulasi && !M.proyek_simulasi.on) { $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>🧮 Simulasi & perhitungan proyek</b></div>${lockCard(M.proyek_simulasi)}</div>`; return; }
+    if (M.proyek_simulasi && !M.proyek_simulasi.on) { H.innerHTML = `<div class="rc ps"><div class=rh><b>🧮 Simulasi & perhitungan proyek</b></div>${lockCard(M.proyek_simulasi)}</div>`; return; }
     const [D, team] = await Promise.all([api('GET', `/projects/${pid}/sims`), api('GET', `/projects/${pid}/team`).then(r => r.team || []).catch(() => [])]);
     const people = team.filter(t => t.user_id);
     const meId = (typeof me !== 'undefined' && me) ? me.id : null, mine = D.sims.filter(s => s.assignee && s.assignee.id === meId);
@@ -362,17 +363,17 @@
       <td>${s.status === 'selesai' ? `<span class=ok>✅ ada hasil</span> <span class=sum>(${s.n_runs}×)</span><div class=sum>${esc(s.last_run.by)} · ${esc((s.last_run.at || '').slice(0, 16))}</div><div class=sum>${fmtSum(s.last_run.summary)}</div>` : '<span class=warnb>☐ belum disimulasikan</span>'}</td>
       <td style="white-space:nowrap">${s.doc_id && s.block_id ? `<a href="${url(s)}" target=_blank rel=noopener>Buka alat ↗</a>` : ''}${manage ? ` <button type=button data-rm="${s.id}" title="Hapus tugas">✕</button>` : ''}</td></tr>`;
     const tbl = list => `<div style="overflow:auto"><table><tr><th>Topik simulasi</th><th>Dokumen / bagian</th><th>Tenaga ahli</th><th>Status & hasil terakhir</th><th></th></tr>${list.map(row).join('')}</table></div>`;
-    $('#ptab').innerHTML = `<div class="rc ps"><div class=rh><b>🧮 Simulasi & perhitungan proyek</b>${manage ? '<button type=button id=smSug style="margin-left:auto">✨ Usulkan dari dokumen</button><button type=button id=smAdd>+ Tambah manual</button>' : ''}</div>
+    H.innerHTML = `<div class="rc ps"><div class=rh><b>🧮 Simulasi & perhitungan proyek</b>${manage ? '<button type=button id=smSug style="margin-left:auto">✨ Usulkan dari dokumen</button><button type=button id=smAdd>+ Tambah manual</button>' : ''}</div>
      <p class=sum>Topik simulasi mengikuti bagian dokumen yang berpotensi dihitung. Tenaga ahli mengerjakan dari bagian yang ditugaskan kepadanya: klik <b>Buka alat</b>, hitung, lalu <b>Sisipkan ke dokumen</b> — hasilnya tercatat di sini otomatis.</p>
      ${D.total ? `<div class=card><div class=row2><b>Kelengkapan simulasi</b><span class=sum>${D.done} dari ${D.total} topik sudah ada hasil</span><b style="margin-left:auto">${D.percent}%</b></div><div class=prog><i style="width:${D.percent}%"></i></div></div>` : ''}
      ${mine.length ? `<h4>Tugas saya (${mine.filter(s => s.status !== 'selesai').length} belum)</h4>${tbl(mine)}` : ''}
      <h4>Semua topik simulasi</h4>${D.total ? tbl(D.sims) : '<p class=sum>Belum ada topik simulasi. Klik “Usulkan dari dokumen” untuk membuat daftar dari bagian-bagian dokumen proyek ini.</p>'}
      ${D.extra_runs.length ? `<h4>Hasil lain (belum terkait topik)</h4><table>${D.extra_runs.map(r => `<tr><td>${esc(r.title || r.tool_id)}</td><td class=sum>${esc(r.by)} · ${esc((r.at || '').slice(0, 16))}</td><td class=sum>${fmtSum(r.summary)}</td></tr>`).join('')}</table>` : ''}</div>`;
-    const reload = () => window.tabSimulasi();
-    $('#ptab').querySelectorAll('[data-as]').forEach(sel => sel.onchange = async () => {
+    const reload = () => window.tabSimulasi(host);
+    H.querySelectorAll('[data-as]').forEach(sel => sel.onchange = async () => {
       try { await api('PATCH', `/projects/${pid}/sims/${sel.dataset.as}`, {assignee_id: sel.value ? +sel.value : null}); note('Penanggung jawab disimpan'); reload(); } catch (e) { note(e.message, 1); }
     });
-    $('#ptab').querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { if (!confirm('Hapus tugas simulasi ini? (hasil yang sudah disisipkan di dokumen tidak terhapus)')) return;
+    H.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { if (!confirm('Hapus tugas simulasi ini? (hasil yang sudah disisipkan di dokumen tidak terhapus)')) return;
       try { await api('DELETE', `/projects/${pid}/sims/${b.dataset.rm}`); reload(); } catch (e) { note(e.message, 1); } });
     if (!manage) return;
     $('#smSug').onclick = async () => {
