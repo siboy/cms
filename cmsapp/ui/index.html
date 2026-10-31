@@ -224,7 +224,7 @@ header b{letter-spacing:.2px}
 
 /* ===== tampilan HP/APK (<=640px): tema emas, menu ⋮ = bottom sheet, filter proyek = bar bawah gaya tab Task/Gantt =====
    backdrop-filter DIMATIKAN di HP: di WebView Android ia merusak anak yang meluap/fixed. */
-:root{--gold:#d4a017;--gold2:#f4d36e;--gold3:#a87b0c;--goldglow:rgba(212,160,23,.5);--goldsoft:rgba(212,160,23,.16);--goldink:#2b1d00}
+:root{--mint:#A8E6CF;--lilac:#D8B4F8;--ink:#1F2937;--mintglow:rgba(168,230,207,.65);--lilacglow:rgba(216,180,248,.55);--lilacsoft:rgba(216,180,248,.28)}
 .rc{position:relative}
 /* ⋮ kartu proyek: SELALU di pojok kanan atas kartu (tidak ikut bergeser oleh panjang nama/lencana) */
 .rc .rhm{padding-right:52px}
@@ -236,41 +236,41 @@ header b{letter-spacing:.2px}
 #kscrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:39}#kscrim[hidden]{display:none}
 @media(max-width:640px){
  header,.mask{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
- header{box-shadow:0 1px 0 var(--gold3)}
+ header{box-shadow:0 1px 0 var(--mint)}
  #bkeb::after{content:'';position:absolute;inset:-10px}  /* area ketuk lebih lega dari tampilannya */
- #bkeb{position:relative;min-width:48px;min-height:44px;border:1px solid var(--gold);color:var(--gold);background:transparent;border-radius:10px;box-shadow:0 0 10px var(--goldglow)}
+ #bkeb{position:relative;min-width:48px;min-height:44px;border:1px solid var(--lilac);color:var(--fg);background:var(--lilacsoft);border-radius:10px;box-shadow:0 1px 6px var(--lilacglow)}
  #kmenu{display:block;position:fixed;left:0;right:0;top:auto;bottom:0;min-width:0;min-height:96px;max-height:calc(var(--vh,1vh)*72);overflow-y:auto;-webkit-overflow-scrolling:touch;
-  background:var(--card);border:none;border-top:2px solid var(--gold);border-radius:18px 18px 0 0;padding:10px 10px calc(12px + env(safe-area-inset-bottom));
+  background:var(--card);border:none;border-top:3px solid var(--mint);border-radius:18px 18px 0 0;padding:10px 10px calc(12px + env(safe-area-inset-bottom));
   box-shadow:0 -12px 32px rgba(0,0,0,.4);z-index:60}
- #kmenu::before{content:'';display:block;width:42px;height:4px;border-radius:2px;background:var(--gold3);margin:0 auto 8px}
+ #kmenu::before{content:'';display:block;width:42px;height:4px;border-radius:2px;background:var(--lilac);margin:0 auto 8px}
  #kmenu button,#kmenu a{display:block;width:100%;padding:14px 14px;margin:0;font-size:15px;border-radius:10px}
  #kmenu button[hidden]{display:none}
  #kmenu button:hover,#kmenu a:hover{background:transparent}
- #kmenu button:active,#kmenu a:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink)}
+ #kmenu button:active,#kmenu a:active{background:linear-gradient(90deg,var(--lilac),var(--mint));color:var(--ink)}
  /* bar bawah daftar proyek: sama seperti #ptabs (Task/Gantt/...) -- datar, ikon di atas label, menyatu; deret bisa digeser */
- .plbar{position:fixed;left:0;right:0;bottom:0;z-index:16;margin:0;background:var(--card);border-top:1px solid var(--gold3);box-shadow:var(--sh2)}
+ .plbar{position:fixed;left:0;right:0;bottom:0;z-index:16;margin:0;background:var(--card);border-top:2px solid var(--mint);box-shadow:var(--sh2)}
  .plbar .cattabs{display:flex;flex-wrap:nowrap;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
  .plbar .cattabs::-webkit-scrollbar{display:none}
  .plbar .cattabs button{flex:0 0 auto;min-width:72px;display:grid;place-items:center;gap:0;border:none;border-radius:0;background:none;color:var(--mut);box-shadow:none;
   padding:5px 8px calc(7px + env(safe-area-inset-bottom));font-weight:500}
  .plbar .cattabs button:hover{color:var(--mut);border-color:transparent}
  .plbar .ti{display:block;font-size:18px;line-height:1.2;margin:0}.plbar .tl{font-size:9.5px;white-space:nowrap}
- .plbar .cattabs button.cur{background:var(--goldsoft);color:var(--gold);font-weight:600;box-shadow:inset 0 2px 0 var(--gold),0 -6px 16px var(--goldglow);text-shadow:0 0 10px var(--goldglow)}
- .plbar #npr{background:none;color:var(--gold);border:none;font-weight:600;text-shadow:0 0 10px var(--goldglow)}
- .plbar #npr .ti{font-size:22px;filter:drop-shadow(0 2px 6px var(--goldglow))}
+ .plbar .cattabs button.cur{background:var(--lilacsoft);color:var(--fg);font-weight:700;box-shadow:inset 0 3px 0 var(--lilac),0 -6px 16px var(--lilacglow)}
+ .plbar #npr{background:none;color:var(--fg);border:none;font-weight:600}
+ .plbar #npr .ti{width:30px;height:24px;display:grid;place-items:center;font-size:18px;font-weight:700;color:var(--ink);border-radius:8px;background:linear-gradient(135deg,var(--lilac),var(--mint));box-shadow:0 2px 8px var(--mintglow)}
  #docs{padding-bottom:84px}
  #bar{bottom:calc(76px + env(safe-area-inset-bottom))}
  /* SEMUA dialog (.dlg) di HP: layout blok + lembar dari bawah. Grid/flex + max-height + overflow:auto menciutkan dialog jadi garis putih di WebView Android
     (menu ⋮ kartu proyek, Beban Tim, dst hanya tampak layar abu-abu). */
  .mask{display:flex;align-items:flex-end;justify-content:center}
  .dlg{display:block;min-height:64px;max-height:calc(var(--vh,1vh)*88);overflow-y:auto;-webkit-overflow-scrolling:touch;
-  border:none;border-top:2px solid var(--gold);border-radius:18px 18px 0 0!important;padding:14px 14px calc(14px + env(safe-area-inset-bottom))!important;
+  border:none;border-top:3px solid var(--mint);border-radius:18px 18px 0 0!important;padding:14px 14px calc(14px + env(safe-area-inset-bottom))!important;
   box-shadow:0 -12px 32px rgba(0,0,0,.4)}
  .dlg>*{display:block;margin:0 0 8px}
  .dlg>[hidden]{display:none}
  .dlg>b:first-child{font-size:15px}
  .dlg>button{width:100%;text-align:left;padding:13px 12px;border-radius:10px}
- .dlg>button:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink)}
+ .dlg>button:active{background:linear-gradient(90deg,var(--lilac),var(--mint));color:var(--ink)}
  /* daftar proyek: 2 kartu per baris. Palet: mint #A8E6CF, lilac #D8B4F8, krem #F8F9FA, slate #1F2937 */
  .rgp{grid-template-columns:1fr 1fr!important;gap:10px;padding:0 8px}
  .rgp .rc{margin:0;padding:10px 10px 9px;color:#1F2937;border:1px solid #A8E6CF;border-top:4px solid #A8E6CF;border-radius:14px;
