@@ -53,7 +53,8 @@ td[contenteditable]:focus{outline:2px solid var(--acc)}img{max-width:100%}
 #navbtns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #bmenu{display:none}
 #kwrap{position:relative;margin-left:auto;order:2}
-#bkeb{font-size:20px;line-height:1;padding:4px 10px}
+#bkeb{font-size:20px;line-height:1;padding:8px 14px;min-width:44px;min-height:40px;touch-action:manipulation}
+header.kopen{z-index:40}
 #kmenu{position:absolute;right:0;top:calc(100% + 6px);min-width:190px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:30;display:flex;flex-direction:column;gap:2px}
 #kmenu[hidden]{display:none}
 #kmenu button,#kmenu a{display:block;width:100%;text-align:left;border:none;background:none;color:inherit;font:inherit;font-size:14px;padding:8px 10px;border-radius:7px;cursor:pointer;text-decoration:none;box-sizing:border-box}
@@ -401,9 +402,11 @@ function placeNav(){const km=$('#kmenu'),nav=$('#navbtns');let sep=km.querySelec
  if(mqMob.matches){if(!sep){sep=document.createElement('div');sep.className='ksep'}km.prepend(sep);for(const b of [...NAVB].reverse())km.prepend(b)}
  else{for(const b of NAVB)nav.append(b);if(sep)sep.remove()}}
 mqMob.addEventListener('change',placeNav);placeNav();
-$('#bkeb').onclick=e=>{e.stopPropagation();const k=$('#kmenu');k.hidden=!k.hidden};
-$('#kmenu').addEventListener('click',()=>{$('#kmenu').hidden=true});
-document.addEventListener('click',e=>{if(!e.target.closest('#kwrap'))$('#kmenu').hidden=true});
+/* header.kopen: saat menu terbuka header diangkat di atas panel tetap (#side/#ptabs/.repmenu z 14-19) yang kalau tidak menutupi menu & menelan ketukannya (APK) */
+const kSet=v=>{$('#kmenu').hidden=!v;document.querySelector('header').classList.toggle('kopen',v)};
+$('#bkeb').onclick=e=>{e.stopPropagation();kSet($('#kmenu').hidden)};
+$('#kmenu').addEventListener('click',()=>kSet(false));
+document.addEventListener('click',e=>{if(!e.target.closest('#kwrap'))kSet(false)});
 $('#navbtns').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>$('#navbtns').classList.remove('open')));
 async function docsView(){closeDoc();const {docs}=await api('GET','/docs');
  $('#app').innerHTML='<div id=docs><h3>Dokumen</h3>'+(hasPerm('doc_upload')?'<p><button id=up>+ Unggah DOCX</button></p>':'')+(docs.map(d=>`<p><a href="#" data-id="${d.id}">${esc(d.filename)}</a> <small>${esc(d.status)}</small></p>`).join('')||'<p>Belum ada dokumen.</p>')+'</div>';
@@ -428,12 +431,12 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
  $('#app').innerHTML='<div id=docs>'
  +`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
    <div class=cattabs style="padding:0;margin:0;flex:1;min-width:200px">
+    ${hasPerm('project_manage')?'<button id=npr class=p style="background:var(--acc);color:#fff;border-color:var(--acc)">+ Proyek baru</button>':''}
     <button data-pf=aktif class="${projFilter==='aktif'?'cur':''}" title="Semua yang belum Done">Aktif (${projects.filter(p=>p.status!=='completed').length})</button>
     ${PSTAT.map(([k,l])=>`<button data-pf="${k}" class="${projFilter===k?'cur':''}">${l} (${cnt(k)})</button>`).join('')}
     <button data-pf=semua class="${projFilter==='semua'?'cur':''}">Semua (${projects.length})</button>
    </div>
    ${hasPerm('project_view_all')||hasPerm('user_manage')?'<button id=bwork title="Profil beban kerja tiap orang">📊 Beban Tim</button>':''}
-   ${hasPerm('project_manage')?'<button id=npr class=p>+ Proyek baru</button>':''}
   </div>`
  +'<div class=rg>'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
   const unread=(p.unread_chat||0)+(p.unread_tasks||0);
