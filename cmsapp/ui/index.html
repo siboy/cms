@@ -230,6 +230,11 @@ header b{letter-spacing:.2px}
 .rc .rhm{padding-right:52px}
 .rc .rmenu{position:absolute;top:4px;right:4px;margin:0;min-width:44px;height:42px;padding:0 8px;font-size:20px;line-height:1;display:grid;place-items:center;border-radius:10px}
 .plbar{margin:0 0 12px}
+/* petunjuk template (blok note, data.source=template_guide): kotak kuning bertanda jelas, beda dari paragraf biasa */
+.blk.guide{background:#fff7e0;border-color:#f5c451;border-left:5px solid #f59e0b}
+.blk.guide .txt{color:#7a4a05;font-style:italic;font-size:13px}
+.blk.guide .meta{color:#b45309;font-weight:700}
+@media(prefers-color-scheme:dark){.blk.guide{background:#33260f;border-color:#7a5a1a;border-left-color:#f0a35e}.blk.guide .txt{color:#f3c98b}.blk.guide .meta{color:#f0a35e}}
 /* label isian = tebal; placeholder = abu-abu (bukan teks isian) */
 .fl small,.fl2{font-weight:700;color:var(--fg)}
 .fl2 input,.fl2 select,.fl2 textarea{font-weight:400}
@@ -1749,6 +1754,7 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
  const sdone=b.kind==='heading'&&!!(b.data||{}).section_done;
  const canOutline=hasPerm('outline_manage');
  el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${sdone?'<span class=badge style="background:#2da44e" title="Heading ditandai selesai diisi — dihitung penuh di progres task bab">✅ DONE</span>':''}${tl.length?`<span class=badge title="Bagian ini bisa dibantu mesin hitung/simulasi: ${esc(tl.map(t=>t.label).join(', '))}">🧮 ${tl.length>2?tl.length+' alat terkait':esc(tl.map(t=>t.label).join(' · '))}</span>`:''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
+ if(b.kind==='note'&&(b.data||{}).source==='template_guide'){el.classList.add('guide');const k=el.querySelector('.meta span');if(k)k.textContent='💡 Petunjuk penulisan (tidak ikut ekspor)'}
  el.append(bodyOf(b));const a=document.createElement('div');a.className='acts';
  const btn=(t,f)=>{const x=document.createElement('button');x.textContent=t;x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
  if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
