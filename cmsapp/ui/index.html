@@ -221,6 +221,35 @@ header b{letter-spacing:.2px}
  .repmenu button{border:none;font-size:12px;padding:4px 2px;border-radius:8px}
  .repmenu button.cur{background:var(--acc);color:#fff;font-weight:600}
 }
+
+/* ===== tampilan HP/APK (<=640px): tema emas, menu ⋮ = bottom sheet, filter proyek = bar bawah menyatu =====
+   backdrop-filter DIMATIKAN di HP: di WebView Android ia merusak anak yang meluap/fixed (menu ⋮ & dialog jadi garis putih tipis). */
+:root{--gold:#d4a017;--gold2:#f4d36e;--gold3:#a87b0c;--goldglow:rgba(212,160,23,.5);--goldink:#2b1d00}
+.plbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+.plbar #npr{background:var(--acc);color:#fff;border-color:var(--acc)}
+#kscrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:39}#kscrim[hidden]{display:none}
+@media(max-width:640px){
+ header,.mask{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+ header{box-shadow:0 1px 0 var(--gold3)}
+ #bkeb{border:1px solid var(--gold);color:var(--gold);background:transparent;border-radius:10px;box-shadow:0 0 10px var(--goldglow)}
+ #kmenu{position:fixed;left:0;right:0;top:auto;bottom:0;min-width:0;max-height:72vh;overflow-y:auto;border:none;border-top:2px solid var(--gold);
+  border-radius:18px 18px 0 0;padding:10px 10px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -12px 32px rgba(0,0,0,.4);z-index:60;gap:2px}
+ #kmenu::before{content:'';display:block;flex:none;width:42px;height:4px;border-radius:2px;background:var(--gold3);margin:0 auto 8px}
+ #kmenu button,#kmenu a{flex:none;padding:14px 14px;font-size:15px;border-radius:10px}
+ #kmenu button:hover,#kmenu a:hover{background:transparent}
+ #kmenu button:active,#kmenu a:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink)}
+ .plbar{position:fixed;left:0;right:0;bottom:0;z-index:15;margin:0;flex-wrap:nowrap;gap:6px;padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+  background:var(--card);border-top:1px solid var(--gold);box-shadow:0 -8px 22px rgba(0,0,0,.22)}
+ .plbar .cattabs{flex:1;min-width:0!important;gap:4px;padding:0!important;overflow-x:auto;scrollbar-width:none}
+ .plbar .cattabs::-webkit-scrollbar{display:none}
+ .plbar button{flex:0 0 auto;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--mut);font-size:12.5px;font-weight:600;
+  padding:10px 12px;white-space:nowrap;box-shadow:none;transition:background .15s,box-shadow .15s}
+ .plbar button:hover{color:var(--mut);border-color:transparent}
+ .plbar button.cur,.plbar #npr{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink);border-color:var(--gold3);box-shadow:0 4px 14px var(--goldglow)}
+ .plbar #bwork{border-color:var(--gold3);color:var(--gold)}
+ #docs{padding-bottom:92px}
+ #bar{bottom:calc(84px + env(safe-area-inset-bottom))}
+}
 </style></head><body>
 <header><b style="display:flex;align-items:center;gap:7px"><img src="/app-icon.svg" style="height:22px;border-radius:5px" alt="">sdrive</b><span id="who"></span><span id="pres" title="online"></span>
 <span id="bnotif" class="badge" hidden style="cursor:pointer" title="Tugas yang menandai saya"></span>
@@ -231,7 +260,7 @@ header b{letter-spacing:.2px}
 </nav>
 <div id="kwrap"><button id="bkeb" title="Menu" hidden>⋮</button><div id="kmenu" hidden><button id="badm" hidden>Admin</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="bdocs" hidden>Dokumen</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button><button id="bpriv" hidden>🔐 Privilege</button><button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><a id="bhow" href="/howto">📘 Howto</a><button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bout" hidden>Keluar</button></div></div>
 </header>
-<div id="app"></div><div id="bar" hidden></div>
+<div id="kscrim" hidden></div><div id="app"></div><div id="bar" hidden></div>
 <script src="/offline.js?v=1"></script>
 <script src="/proj-site.js?v=3"></script>
 <script src="/act-ui.js?v=2"></script>
@@ -403,7 +432,7 @@ function placeNav(){const km=$('#kmenu'),nav=$('#navbtns');let sep=km.querySelec
  else{for(const b of NAVB)nav.append(b);if(sep)sep.remove()}}
 mqMob.addEventListener('change',placeNav);placeNav();
 /* header.kopen: saat menu terbuka header diangkat di atas panel tetap (#side/#ptabs/.repmenu z 14-19) yang kalau tidak menutupi menu & menelan ketukannya (APK) */
-const kSet=v=>{$('#kmenu').hidden=!v;document.querySelector('header').classList.toggle('kopen',v)};
+const kSet=v=>{$('#kmenu').hidden=!v;$('#kscrim').hidden=!v;document.querySelector('header').classList.toggle('kopen',v)};
 $('#bkeb').onclick=e=>{e.stopPropagation();kSet($('#kmenu').hidden)};
 $('#kmenu').addEventListener('click',()=>kSet(false));
 document.addEventListener('click',e=>{if(!e.target.closest('#kwrap'))kSet(false)});
@@ -429,9 +458,9 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
  const cnt=s=>projects.filter(p=>p.status===s).length;
  const shown=projects.filter(p=>projFilter==='semua'?true:projFilter==='aktif'?p.status!=='completed':p.status===projFilter);
  $('#app').innerHTML='<div id=docs>'
- +`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
+ +`<div class=plbar>
    <div class=cattabs style="padding:0;margin:0;flex:1;min-width:200px">
-    ${hasPerm('project_manage')?'<button id=npr class=p style="background:var(--acc);color:#fff;border-color:var(--acc)">+ Proyek baru</button>':''}
+    ${hasPerm('project_manage')?'<button id=npr class=p>+ Proyek baru</button>':''}
     <button data-pf=aktif class="${projFilter==='aktif'?'cur':''}" title="Semua yang belum Done">Aktif (${projects.filter(p=>p.status!=='completed').length})</button>
     ${PSTAT.map(([k,l])=>`<button data-pf="${k}" class="${projFilter===k?'cur':''}">${l} (${cnt(k)})</button>`).join('')}
     <button data-pf=semua class="${projFilter==='semua'?'cur':''}">Semua (${projects.length})</button>
