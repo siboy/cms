@@ -87,7 +87,7 @@ def tools():
     out = []
     for t in tpl_tools.public():
         mod = mods.TOOL_MODULE.get(t["id"])
-        out.append({**t, "module": mod, "module_label": mods.LABEL.get(mod, mod) if mod else None, "locked": bool(mod) and not mods.is_on(mod)})
+        out.append({**t, "module": mod, "module_label": mods.LABEL.get(mod, mod) if mod else None, "locked": bool(mod) and not mods.tool_on(t["id"])})
     return jsonify(tools=out, licensing=mods.licensing_on())
 
 
@@ -200,9 +200,11 @@ def _reject_locked_funcs(text: str):
             continue
         e = kfm.BY_ID.get(name)
         category = e["category"] if e else extra.get(name)
-        mod = mods.formula_module(category) if category else None
-        if mod and not mods.is_on(mod):
-            return mod
+        if not category:
+            continue
+        if not mods.formula_on(name, category):
+            ts = mods.formula_tools(name, category)
+            return "tool:" + (ts[0] if ts else "")
     return None
 
 
@@ -334,10 +336,12 @@ def formulas():
     items = []
     for it in kfm.public_catalog():
         mod = mods.formula_module(it["category"])
-        if mod and not mods.is_on(mod):
+        if mod and not mods.formula_on(it["id"], it["category"]):
+            ts = mods.formula_tools(it["id"], it["category"])
             items.append({"id": it["id"], "title": it["title"], "category": it["category"], "formula": "", "vars": [], "outs": [], "ref": "", "note": "",
                           "docs": it["docs"], "expr": None, "fn": False, "howto": {"use": "", "read": "", "steps": [], "data": []}, "example": None,
-                          "locked": True, "module": mod, "module_label": mods.LABEL[mod]})
+                          "locked": True, "module": mod, "module_label": mods.LABEL[mod], "buy_tool": ts[0] if ts else None,
+                          "buy_label": mods.tool_label(ts[0]) if ts else None})
         else:
             items.append({**it, "locked": False, "module": mod})
     return jsonify(categories=kfm.CATEGORIES, items=items)
@@ -349,8 +353,9 @@ def calc():
     b = request.get_json(silent=True) or {}
     e = kfm.BY_ID.get(str(b.get("id", "")))
     mod = mods.formula_module(e["category"]) if e else None
-    if mod and not mods.is_on(mod):
-        return locked_response(mod)
+    if mod and not mods.formula_on(e["id"], e["category"]):
+        ts = mods.formula_tools(e["id"], e["category"])
+        return locked_response("tool:" + (ts[0] if ts else ""))
     return jsonify(kfm.calc(str(b.get("id", "")), b.get("inputs") or {}))
 
 
@@ -365,8 +370,10 @@ def _sim_err(e):
 def sim_info():
     out, locked = {}, []
     for k, sch in ksc.SCHEMAS.items():
-        if not mods.is_on(mods.SIM_MODULE[k]):
-            locked.append({"id": k, "title": sch["title"], "module": mods.SIM_MODULE[k], "module_label": mods.LABEL[mods.SIM_MODULE[k]]})
+        if not mods.sim_on(k):
+            ts = mods.sim_tools(k)
+            locked.append({"id": k, "title": sch["title"], "module": mods.SIM_MODULE[k], "module_label": mods.LABEL[mods.SIM_MODULE[k]],
+                           "tool": ts[0] if ts else None, "tool_label": mods.tool_label(ts[0]) if ts else None})
             continue
         out[k] = {"id": k, "title": sch["title"], "unit": sch["unit"], "unit_long": sch["unit_long"], "groups": sch["groups"], "lists": sch["lists"],
                   "presets": ksc.PRESETS[k], "guide": ksc.GUIDES[k], "metrics": ksc.METRICS[k]}
@@ -380,7 +387,8 @@ def sim_run():
     if not isinstance(b, dict) or b.get("sim") not in ksc.SCHEMAS:
         return _fail("sim harus water | air | noise")
     sim = b["sim"]
-    if not mods.is_on(mods.SIM_MODULE[sim]):
-        return locked_response(mods.SIM_MODULE[sim])
+    if not mods.sim_on(sim):
+        ts = mods.sim_tools(sim)
+        return locked_response("tool:" + (ts[0] if ts else ""))
     scen = ksm.build_scenarios(sim, b.get("params") or {}, b.get("compare"), b.get("variation"))
     return jsonify(ksm.run(sim, scen, int(_num(b.get("frames"), 40))))

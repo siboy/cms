@@ -132,7 +132,9 @@ def store_view():
     for e in lic.engines():
         k = e["key"]
         p = pr.get(k, {})
-        en.append({**e, "prices": {m: p.get(m) for m in ("6", "12", "24", "report")}, "owned": mine.get(k), "operator": k in mods.enabled(),
+        disc = int(p.get("discount") or 0)
+        en.append({**e, "list_prices": {m: p.get(m) for m in ("6", "12", "24", "report")}, "discount_pct": disc,
+                   "prices": {m: lic.effective(p.get(m), disc) for m in ("6", "12", "24", "report")}, "owned": mine.get(k), "operator": e["module"] in mods.enabled(),
                    "pending_order": pending.get(k), "report_licenses": rep_own.get(k, []),
                    "owned_here": bool(ctx_doc) and k in lic.active_keys(s, g.user["id"], doc_id=ctx_doc)})
     out = {"licensing": lic.enabled(s), "engines": en, "periods": list(lic.PERIODS), "can_manage": can_manage(), "doc": ctx_doc,
@@ -236,7 +238,7 @@ def prices_set():
     """Body: {prices: {calc_bising: {"6":..,"12":..,"24":..}, ...}} -- kosong/null = belum diberi harga."""
     d = (body().get("prices") or {})
     for k, p in d.items():
-        lic.set_price(S(), k, p.get("6"), p.get("12"), p.get("24"), g.user["username"], p.get("report"))
+        lic.set_price(S(), k, p.get("6"), p.get("12"), p.get("24"), g.user["username"], p.get("report"), p.get("discount"))
     S().log_activity(g.user["username"], "license.prices", summary=f"harga {len(d)} engine diperbarui")
     return jsonify(ok=True)
 

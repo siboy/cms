@@ -797,7 +797,7 @@ function renderRfList(){
 $('#rfList').onclick=e=>{const c=e.target.closest('.fr');if(c){RFsel=c.dataset.id;renderRfList();renderRfBox()}};
 function renderRfBox(){
   const f=RF.items.find(x=>x.id===RFsel);if(!f)return;
-  if(f.locked){$('#rfBox').innerHTML=`<h3>🔒 ${esc(f.title)}</h3><div class="lockb">Kalkulator ini termasuk engine <b>“${esc(f.module_label||f.module)}”</b> yang belum Anda miliki. <a href="${storeUrl(f.module)}">🛒 Beli / lihat Toko Engine</a> (atau minta admin membelikan).</div>`;return}
+  if(f.locked){$('#rfBox').innerHTML=`<h3>🔒 ${esc(f.title)}</h3><div class="lockb">Rumus ini termasuk alat <b>“${esc(f.buy_label||f.module_label||f.module)}”</b> yang belum Anda miliki. <a href="${storeUrl(f.buy_tool||'')}">🛒 Beli alat ini</a> (atau minta admin membelikan).</div>`;return}
   const inp=f.vars.map(v=>{const d=v.default==null?'':v.default,id='rv_'+v.name;
     const ctl=v.type==='select'?`<select id="${id}">${v.options.map(o=>`<option value="${o[0]}" ${o[0]==d?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`
       :v.type==='list'?`<textarea id="${id}" rows="2">${esc(d)}</textarea>`:`<input type="number" step="any" id="${id}" value="${esc(d)}" placeholder="isi">`;
@@ -992,7 +992,7 @@ async function ctxInit(){
   try{window.TOOLS=(await api('/tools')).tools}catch(e){window.TOOLS=[]}
   ctxBar();ctxTargets();
   const t=window.TOOLS.find(x=>x.id===CTX.tool);if(!t)return;
-  if(t.locked){$('#ctxBar').insertAdjacentHTML('beforeend',`<div class="lockb" style="margin-top:8px">🔒 Alat ini termasuk engine <b>“${esc(t.module_label||t.module||'')}”</b> yang belum Anda miliki${CTX.doc?' untuk laporan ini':''}. <a href="${storeUrl(t.module)}">🛒 Beli / lihat Toko Engine</a> atau minta admin membelikan.</div>`);return}
+  if(t.locked){$('#ctxBar').insertAdjacentHTML('beforeend',`<div class="lockb" style="margin-top:8px">🔒 Alat <b>“${esc(t.label||'')}”</b> belum Anda miliki${CTX.doc?' untuk laporan ini':''}. <a href="${storeUrl(t.id)}">🛒 Beli alat ini</a> atau minta admin membelikan.</div>`);return}
   for(let i=0;i<60&&!META;i++)await new Promise(r=>setTimeout(r,100));
   if(t.tab==='sim'&&t.sim)SIM.cur=t.sim;
   if((t.tab==='proyeksi'||t.tab==='model')&&!regions.length){tab('pilih');

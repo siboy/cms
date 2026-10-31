@@ -1,7 +1,10 @@
 """Lisensi engine hitung/simulasi per pengguna / grup / seluruh tenant (konsep "toko": tiap engine dibeli terpisah, berjangka).
 
-Satu engine = satu modul `calc_*` di utils/modules.py (mis. calc_bising = kalkulator kebisingan + simulasi bunyi).
-Akses engine untuk seorang pengguna = ADA lisensi aktif yang berlaku untuknya:
+SKU yang dijual = satu ALAT hitung/simulasi (id di utils/tpl_tools, mis. 'bising' = kalkulator + simulasi kebisingan 2-D). Ada 19 alat,
+masing-masing berharga sendiri sesuai kesulitan hitung (jumlah rumus & parameter) dan ada/tidaknya simulator. Kolom `module_key` di tabel
+menyimpan ID ALAT. Membeli satu alat TIDAK membuka alat lain, walau satu kelompok modul.
+Harga disimpan sebagai harga DAFTAR (ORI) + persen diskon; yang ditagihkan = harga setelah diskon (label coret di UI).
+Akses alat untuk seorang pengguna = ADA lisensi aktif yang berlaku untuknya:
     holder_type='user'   -> hanya pengguna itu
     holder_type='group'  -> semua anggota grup (peran) itu, mis. tenaga ahli eksternal
     holder_type='tenant' -> semua pengguna tenant
@@ -56,14 +59,14 @@ def ensure(s) -> None:
         dt, big, vc = ("TEXT", "INTEGER", lambda n: "TEXT") if sq else ("DATETIME", "BIGINT", lambda n: f"VARCHAR({n})")
         ddl = [
             f"CREATE TABLE IF NOT EXISTS cms_engine_prices (module_key {vc(40)} PRIMARY KEY, price_6 {big} NULL, price_12 {big} NULL, "
-            f"price_24 {big} NULL, price_report {big} NULL, updated_by {vc(80)} NULL, updated_at {dt} NULL)",
+            f"price_24 {big} NULL, price_report {big} NULL, discount_pct {big} NOT NULL DEFAULT 0, updated_by {vc(80)} NULL, updated_at {dt} NULL)",
             f"CREATE TABLE IF NOT EXISTS cms_license_orders (id {pk}, buyer_id {big} NOT NULL, buyer_name {vc(80)} NULL, "
             f"holder_type {vc(10)} NOT NULL, holder_id {big} NULL, holder_label {vc(120)} NULL, status {vc(12)} NOT NULL, "
             f"total {big} NOT NULL DEFAULT 0, payment_ref {vc(120)} NULL, note {vc(255)} NULL, created_at {dt} NOT NULL, "
             f"paid_at {dt} NULL, confirmed_by {vc(80)} NULL)",
             f"CREATE TABLE IF NOT EXISTS cms_license_items (id {pk}, order_id {big} NOT NULL, module_key {vc(40)} NOT NULL, "
             f"months {big} NOT NULL, price {big} NOT NULL DEFAULT 0, scope {vc(10)} NOT NULL DEFAULT 'time', doc_id {big} NULL, "
-            f"doc_title {vc(200)} NULL)",
+            f"doc_title {vc(200)} NULL, list_price {big} NULL, discount_pct {big} NULL)",
             f"CREATE TABLE IF NOT EXISTS cms_licenses (id {pk}, module_key {vc(40)} NOT NULL, holder_type {vc(10)} NOT NULL, "
             f"holder_id {big} NULL, starts_at {dt} NOT NULL, ends_at {dt} NOT NULL, order_id {big} NULL, source {vc(12)} NOT NULL, "
             f"granted_by {vc(80)} NULL, note {vc(255)} NULL, revoked_at {dt} NULL, created_at {dt} NOT NULL, "
@@ -72,6 +75,15 @@ def ensure(s) -> None:
         with s._tx() as c:
             for q in ddl:
                 s._x(c, q)
+        # migrasi tabel lama (dibuat sebelum kolom ini ada): tambah kolom bila belum ada
+        for tbl, col, typ in [("cms_engine_prices", "discount_pct", f"{big} NOT NULL DEFAULT 0"), ("cms_license_items", "list_price", f"{big} NULL"),
+                              ("cms_license_items", "discount_pct", f"{big} NULL")]:
+            try:
+                with s._tx() as c:
+                    s._x(c, f"SELECT {col} FROM {tbl} LIMIT 1")
+            except Exception:                               # noqa: BLE001
+                with s._tx() as c:
+                    s._x(c, f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}")
         _ready_for.add(id(s))
 
 
@@ -88,17 +100,18 @@ def enabled(s) -> bool:
 
 # ------------------------------------------------------------------------------------------- katalog & harga
 def engines() -> list[dict]:
-    """Daftar engine yang bisa dijual = modul calc_* beserta alat/kalkulator/simulator yang dibukanya."""
-    from utils import modules as mods, tpl_tools
+    """Daftar SKU = alat hitung/simulasi (19), dikelompokkan per modul. Memuat jumlah rumus/parameter & simulator sebagai dasar harga."""
+    from utils import kd_formulas as kfm, modules as mods, tpl_tools
+    cat = {it["id"]: it for it in kfm.public_catalog()}
     out = []
-    for m in mods.MODULES:
-        k = m["key"]
-        if not k.startswith("calc_"):
+    for t in tpl_tools.TOOLS:
+        mod = mods.TOOL_MODULE.get(t["id"])
+        if not mod:
             continue
-        tools = [{"id": t["id"], "label": t["label"], "icon": t["icon"]} for t in tpl_tools.TOOLS if mods.TOOL_MODULE.get(t["id"]) == k]
-        sims = [sk for sk, mk in mods.SIM_MODULE.items() if mk == k]
-        cats = sorted({c for c, mk in mods.CATEGORY_MODULE.items() if mk == k})
-        out.append({"key": k, "label": m["label"], "desc": m["desc"], "tools": tools, "sims": sims, "categories": cats})
+        fs = [cat[i] for i in (t.get("calc") or []) if i in cat]
+        out.append({"key": t["id"], "label": t["label"], "icon": t["icon"], "desc": t["why"], "module": mod, "group": mods.LABEL.get(mod, mod),
+                    "n_formulas": len(fs), "n_params": sum(len(f.get("vars") or []) for f in fs), "sim": t.get("sim") or None,
+                    "tab": t.get("tab")})
     return out
 
 
@@ -106,14 +119,23 @@ def engine_keys() -> list[str]:
     return [e["key"] for e in engines()]
 
 
+def effective(list_price, discount_pct) -> int | None:
+    """Harga ditagihkan = harga daftar dikurangi diskon (dibulatkan ke Rp 100 terdekat)."""
+    if list_price is None:
+        return None
+    d = max(0, min(90, int(discount_pct or 0)))
+    return int(round(int(list_price) * (100 - d) / 100 / 100.0)) * 100
+
+
 def prices(s) -> dict[str, dict]:
     ensure(s)
     with s._tx() as c:
         rows = s._all(c, "SELECT * FROM cms_engine_prices")
-    return {r["module_key"]: {"6": r["price_6"], "12": r["price_12"], "24": r["price_24"], "report": r.get("price_report")} for r in rows}
+    return {r["module_key"]: {"6": r["price_6"], "12": r["price_12"], "24": r["price_24"], "report": r.get("price_report"),
+                              "discount": int(r.get("discount_pct") or 0)} for r in rows}
 
 
-def set_price(s, key: str, p6, p12, p24, by: str, p_report=None) -> None:
+def set_price(s, key: str, p6, p12, p24, by: str, p_report=None, discount=None) -> None:
     ensure(s)
     if key not in engine_keys():
         raise ValueError(f"engine {key} tidak dikenal")
@@ -126,13 +148,16 @@ def set_price(s, key: str, p6, p12, p24, by: str, p_report=None) -> None:
             raise ValueError("harga tidak boleh negatif")
         return v
     vals = (norm(p6), norm(p12), norm(p24), norm(p_report))
+    disc = 0 if discount in (None, "") else int(discount)
+    if disc < 0 or disc > 90:
+        raise ValueError("diskon 0-90 persen")
     with s._tx() as c:
         if s._one(c, "SELECT module_key FROM cms_engine_prices WHERE module_key=?", (key,)):
-            s._x(c, "UPDATE cms_engine_prices SET price_6=?, price_12=?, price_24=?, price_report=?, updated_by=?, updated_at=? WHERE module_key=?",
-                 (*vals, by, _s(_now()), key))
+            s._x(c, "UPDATE cms_engine_prices SET price_6=?, price_12=?, price_24=?, price_report=?, discount_pct=?, updated_by=?, updated_at=? WHERE module_key=?",
+                 (*vals, disc, by, _s(_now()), key))
         else:
-            s._x(c, "INSERT INTO cms_engine_prices(module_key, price_6, price_12, price_24, price_report, updated_by, updated_at) VALUES (?,?,?,?,?,?,?)",
-                 (key, *vals, by, _s(_now())))
+            s._x(c, "INSERT INTO cms_engine_prices(module_key, price_6, price_12, price_24, price_report, discount_pct, updated_by, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+                 (key, *vals, disc, by, _s(_now())))
 
 
 # ------------------------------------------------------------------------------------------- akses
@@ -201,41 +226,41 @@ def create_order(s, buyer: dict, items: list[dict], htype: str, hid=None, *, pai
     for it in items:
         k = it.get("module")
         if k not in valid:
-            raise ValueError(f"engine {k} tidak dikenal")
+            raise ValueError(f"alat {k} tidak dikenal")
         if it.get("scope") == "report":
             did = it.get("doc_id")
             if not did:
                 raise ValueError("pilih laporan untuk lisensi per-laporan")
             ident = (k, "report", int(did))
-            price = (pr.get(k) or {}).get("report")
-            if price is None:
-                raise ValueError(f"engine {k} belum diberi harga per-laporan -- hubungi admin")
-            lines.append((k, 0, int(price), "report", int(did)))
+            lp = (pr.get(k) or {}).get("report")
+            if lp is None:
+                raise ValueError(f"alat {k} belum diberi harga per-laporan -- hubungi admin")
+            lines.append((k, 0, effective(lp, (pr.get(k) or {}).get("discount")), "report", int(did), int(lp), (pr.get(k) or {}).get("discount", 0)))
         else:
             m = int(it.get("months") or 0)
             if m not in PERIODS:
                 raise ValueError(f"periode {m} bulan tidak tersedia (pilih {', '.join(map(str, PERIODS))})")
             ident = (k, "time", m)
-            price = (pr.get(k) or {}).get(str(m))
-            if price is None:
-                raise ValueError(f"engine {k} belum diberi harga untuk {m} bulan -- hubungi admin")
-            lines.append((k, m, int(price), "time", None))
+            lp = (pr.get(k) or {}).get(str(m))
+            if lp is None:
+                raise ValueError(f"alat {k} belum diberi harga untuk {m} bulan -- hubungi admin")
+            lines.append((k, m, effective(lp, (pr.get(k) or {}).get("discount")), "time", None, int(lp), (pr.get(k) or {}).get("discount", 0)))
         if ident in seen:
             lines.pop()
             continue
         seen.add(ident)
-    total = sum(p for _, _, p, _, _ in lines)
+    total = sum(l[2] for l in lines)
     with s._tx() as c:
         hid = _check_holder(s, c, htype, hid)
         label = _holder_label(s, c, htype, hid)
-        titles = {d: _doc_title(s, c, d) for _, _, _, sc, d in lines if sc == "report"}
+        titles = {l[4]: _doc_title(s, c, l[4]) for l in lines if l[3] == "report"}
         cur = s._x(c, "INSERT INTO cms_license_orders(buyer_id, buyer_name, holder_type, holder_id, holder_label, status, total, payment_ref, "
                       "note, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                    (buyer["id"], buyer.get("username"), htype, hid, label, "pending", total, payment_ref[:120] or None, note[:255] or None, _s(_now())))
         oid = cur.lastrowid
-        for k, m, p, sc, d in lines:
-            s._x(c, "INSERT INTO cms_license_items(order_id, module_key, months, price, scope, doc_id, doc_title) VALUES (?,?,?,?,?,?,?)",
-                 (oid, k, m, p, sc, d, titles.get(d)))
+        for k, m, p, sc, d, lp, dp in lines:
+            s._x(c, "INSERT INTO cms_license_items(order_id, module_key, months, price, scope, doc_id, doc_title, list_price, discount_pct) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)", (oid, k, m, p, sc, d, titles.get(d), lp, dp))
     if paid:
         fulfill(s, oid, buyer.get("username") or "?", payment_ref)
     return get_order(s, oid)
@@ -247,7 +272,7 @@ def get_order(s, oid: int) -> dict:
         o = s._one(c, "SELECT * FROM cms_license_orders WHERE id=?", (oid,))
         if not o:
             raise KeyError(f"pesanan {oid} tidak ada")
-        o["items"] = s._all(c, "SELECT module_key, months, price, COALESCE(scope,'time') AS scope, doc_id, doc_title FROM cms_license_items "
+        o["items"] = s._all(c, "SELECT module_key, months, price, list_price, discount_pct, COALESCE(scope,'time') AS scope, doc_id, doc_title FROM cms_license_items "
                                "WHERE order_id=? ORDER BY id", (oid,))
     return o
 
@@ -328,7 +353,7 @@ def grant(s, key: str, htype: str, hid, months: int, by: str, note: str = "", sc
     """Pemberian langsung admin (tanpa pesanan): untuk uji coba, kompensasi, atau lisensi yang dibayar di luar sistem."""
     ensure(s)
     if key not in engine_keys():
-        raise ValueError(f"engine {key} tidak dikenal")
+        raise ValueError(f"alat {key} tidak dikenal")
     with s._tx() as c:
         hid = _check_holder(s, c, htype, hid)
         if scope == "report":

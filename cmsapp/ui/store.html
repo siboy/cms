@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Toko Engine — sdrive</title>
+<title>Toko Alat Hitung — sdrive</title>
 <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
 <style>
 :root{--bg:#f6f7f9;--fg:#1F2937;--mut:#64748b;--line:#e2e7ef;--card:#fff;--acc:#7c3aed;--mint:#A8E6CF;--lilac:#D8B4F8;--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--warn-bg:#fef3c7;--soft:#f3ecfd}
@@ -23,7 +23,7 @@ button.d{color:var(--bad);border-color:var(--bad)}
 .card h3{margin:0 0 2px;font-size:15px}.card p{margin:2px 0 8px}
 .chip{display:inline-block;font-size:11px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin:2px 3px 0 0;background:var(--bg)}
 .badge{display:inline-block;font-size:11px;padding:1px 9px;border-radius:999px;background:var(--soft);color:var(--acc);font-weight:700;margin:2px 4px 2px 0}
-.badge.g{background:#15803d22;color:var(--ok)}.badge.l{background:var(--warn-bg);color:var(--warn)}
+.badge.g{background:#15803d22;color:var(--ok)}.badge.disc{background:linear-gradient(90deg,#fecaca,#fde68a);color:#7f1d1d}.pr s{color:var(--mut);font-weight:400;font-size:12px;margin-right:4px}.grp{font-size:11px;color:var(--mut);margin-bottom:2px}.badge.l{background:var(--warn-bg);color:var(--warn)}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.row>.fill{flex:1 1 160px}
 .opt{display:flex;gap:8px;align-items:center;padding:7px 9px;border:1px solid var(--line);border-radius:10px;margin:5px 0;cursor:pointer}
 .opt input{width:18px;height:18px;padding:0;flex:none}.opt .pr{margin-left:auto;font-weight:700;white-space:nowrap}
@@ -38,7 +38,7 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--li
 .dlg .row{display:flex}
 h4{margin:14px 0 6px}
 </style></head><body>
-<header><b>🛒 Toko Engine</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
+<header><b>🛒 Toko Alat Hitung &amp; Simulasi</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
 <main>
  <div id="msg"></div>
  <div class="tabs" id="tabs"></div>
@@ -93,19 +93,19 @@ function ownBadges(e){
 }
 function viewToko(){
   const d=S.d;let h='';S.hold={type:'user',id:d.me.id};
-  if(!d.licensing)h+=`<div class="note">Mode lisensi per-engine <b>belum aktif</b> di tenant ini, sehingga akses engine mengikuti pengaturan operator. ${d.can_manage?'<button type="button" id="modeOn" class="p">Nyalakan mode lisensi</button>':'Hubungi admin untuk mengaktifkannya.'}</div>`;
+  if(!d.licensing)h+=`<div class="note">Mode lisensi per-alat <b>belum aktif</b> di tenant ini, sehingga akses alat mengikuti pengaturan operator. ${d.can_manage?'<button type="button" id="modeOn" class="p">Nyalakan mode lisensi</button>':'Hubungi admin untuk mengaktifkannya.'}</div>`;
   h+=`<div class="card" style="margin-bottom:10px"><b>Cara kerja</b>
-   <div class="small mut">Tiap engine dibeli terpisah. Pilih <b>Paket waktu</b> (berlaku untuk semua laporan selama 6/12/24 bulan) atau <b>Sekali pakai per laporan</b> (hanya untuk satu laporan; laporan lain harus beli lagi).
+   <div class="small mut">Tiap alat hitung/simulasi dibeli terpisah dengan harga sendiri (sesuai kesulitan hitung dan hasil yang ditawarkan). Pilih <b>Paket waktu</b> (berlaku untuk semua laporan selama 6/12/24 bulan) atau <b>Sekali pakai per laporan</b> (hanya untuk satu laporan; laporan lain harus beli lagi).
    Admin dapat membelikan untuk Anda, grup, atau seluruh tenant. Judul bagian, petunjuk, dan penanda 🧮 di dokumen tetap terlihat; yang terkunci hanya pemakaian hitung/simulasinya.</div></div>`;
   h+=`<div class="row"><label class="fill small"><b>Beli untuk</b><br><select id="hType"><option value="user">Saya sendiri</option>${d.can_manage?'<option value="user2">Pengguna lain…</option><option value="group">Satu grup (peran)…</option><option value="tenant">Seluruh pengguna tenant</option>':''}</select></label>
    <label class="fill small hide" id="hWrap"><b id="hLbl"></b><br><select id="hId"></select></label>
    <label class="fill small"><b>Laporan (utk paket per-laporan)</b><br><select id="docSel">${d.docs.length?d.docs.map(x=>`<option value="${x.id}" ${x.id===S.docSel?'selected':''}>${esc(x.title)}</option>`).join(''):'<option value="">(belum ada laporan)</option>'}</select></label></div>`;
   h+='<div class="grid">'+d.engines.map(e=>{
-    const p=e.prices,has=['6','12','24','report'].some(k=>p[k]!=null);
+    const p=e.prices,lp=e.list_prices,has=['6','12','24','report'].some(k=>p[k]!=null);
     const opt=(k,l,val)=>p[k]==null?`<div class="opt na"><input type="radio" disabled><span>${l}</span><span class="pr mut">belum dihargai</span></div>`
-      :`<label class="opt"><input type="radio" name="o_${e.key}" value="${val}"><span>${l}</span><span class="pr">${rp(p[k])}</span></label>`;
-    return `<div class="card ${S.hl===e.key?'hl':''}" id="c_${e.key}"><h3>${esc(e.label)}</h3><div>${ownBadges(e)}</div><p class="small mut">${esc(e.desc)}</p>
-     <div>${e.tools.map(t=>`<span class="chip">${t.icon} ${esc(t.label)}</span>`).join('')}${e.sims.length?'<span class="chip">🎞 simulasi 2-D</span>':''}</div>
+      :`<label class="opt"><input type="radio" name="o_${e.key}" value="${val}"><span>${l}</span><span class="pr">${e.discount_pct&&lp[k]!=null&&lp[k]!==p[k]?`<s>${rp(lp[k])}</s>`:''}${rp(p[k])}</span></label>`;
+    return `<div class="card ${S.hl===e.key?'hl':''}" id="c_${e.key}"><div class="grp">${esc(e.group)}</div><h3>${e.icon} ${esc(e.label)}</h3><div>${e.discount_pct?`<span class="badge disc">🏷 Diskon ${e.discount_pct}%</span>`:''}${ownBadges(e)}</div><p class="small mut">${esc(e.desc)}</p>
+     <div><span class="chip">${e.n_formulas} rumus</span><span class="chip">${e.n_params} parameter</span>${e.sim?'<span class="chip">🎞 simulasi 2-D</span>':''}</div>
      ${has?opt('report','📄 Sekali pakai — 1 laporan','report')+opt('6','Paket 6 bulan (semua laporan)','6')+opt('12','Paket 12 bulan (semua laporan)','12')+opt('24','Paket 24 bulan (semua laporan)','24')
         +`<div class="row"><button type="button" class="p add" data-k="${e.key}">＋ Keranjang</button></div>`
        :`<div class="note">Harga belum ditetapkan.${d.can_manage?' Atur di tab Admin → Harga, atau beri lisensi langsung.':' Hubungi admin.'}</div>`}</div>`}).join('')+'</div>';
@@ -130,10 +130,10 @@ function addToCart(key){
     if(!S.docSel)return note('Pilih laporan dulu untuk paket sekali pakai.',1);
     const t=(S.d.docs.find(x=>x.id===S.docSel)||{}).title||'#'+S.docSel;
     if(S.cart.some(c=>c.module===key&&c.scope==='report'&&c.doc_id===S.docSel))return note('Sudah ada di keranjang.',1);
-    S.cart.push({module:key,scope:'report',doc_id:S.docSel,label:`${e.label} — sekali pakai: ${t}`,price:e.prices.report});
+    S.cart.push({module:key,scope:'report',doc_id:S.docSel,label:`${e.label} — sekali pakai: ${t}`,price:e.prices.report,list:e.list_prices.report});
   }else{
     const m=+r.value;if(S.cart.some(c=>c.module===key&&c.scope==='time'&&c.months===m))return note('Sudah ada di keranjang.',1);
-    S.cart.push({module:key,scope:'time',months:m,label:`${e.label} — paket ${m} bulan`,price:e.prices[r.value]});
+    S.cart.push({module:key,scope:'time',months:m,label:`${e.label} — paket ${m} bulan`,price:e.prices[r.value],list:e.list_prices[r.value]});
   }
   note('Ditambahkan ke keranjang.',0);cartBar();
 }
@@ -150,7 +150,7 @@ $('#cgo').onclick=()=>{
   const m=document.createElement('div');m.className='mask';
   m.innerHTML=`<form class="dlg"><b>Checkout — ${rp(tot)}</b>
    <div class="small mut">Untuk: <b>${esc(holdLabel())}</b></div>
-   ${S.cart.map((c,i)=>`<div class="row" style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:5px"><span>${esc(c.label)}</span><span><b>${rp(c.price)}</b> <button type="button" data-rm="${i}" class="d small">✕</button></span></div>`).join('')}
+   ${S.cart.map((c,i)=>`<div class="row" style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:5px"><span>${esc(c.label)}</span><span>${c.list&&c.list!==c.price?`<s class="mut small">${rp(c.list)}</s> `:''}<b>${rp(c.price)}</b> <button type="button" data-rm="${i}" class="d small">✕</button></span></div>`).join('')}
    <label>Referensi pembayaran / bukti transfer (opsional)<input name="ref" maxlength="120" placeholder="mis. TRF-2026-0012"></label>
    <label>Catatan (opsional)<input name="note" maxlength="255"></label>
    ${mgr?'<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" name="paid" style="width:18px;height:18px;margin:0"> Tandai LUNAS sekarang (lisensi langsung aktif)</label>':'<div class="small mut">Pesanan akan menunggu konfirmasi pembayaran oleh admin. Lisensi aktif setelah dikonfirmasi.</div>'}
@@ -175,7 +175,7 @@ async function viewSaya(){
   let h='<h4>Lisensi saya</h4>'+(S.lic.length?'<div class="grid">'+S.lic.map(l=>`<div class="card"><b>${esc(LBL(l.module_key))}</b> ${st(l)}<div class="small">${sc(l)}</div><div class="small mut">${esc(l.holder_label)} · ${l.source==='purchase'?'beli':'diberikan'}${l.order_id?' · pesanan #'+l.order_id:''}</div></div>`).join('')+'</div>':'<p class="mut">Belum ada lisensi.</p>');
   const ST={pending:'<span class="badge l">menunggu pembayaran</span>',paid:'<span class="badge g">lunas</span>',cancelled:'<span class="badge">dibatalkan</span>'};
   h+='<h4>Pesanan saya</h4>'+(S.ord.length?S.ord.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> ${ST[o.status]||o.status} <span class="mut small">${esc(dt(o.created_at))} · ${esc(o.holder_label||'')}</span>
-    <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${rp(i.price)})`).join('<br>')}</div>
+    <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>')}</div>
     <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref: ${esc(o.payment_ref)}</span>`:''}${o.status==='pending'?`<button type="button" class="d small" data-cancel="${o.id}">Batalkan</button>`:''}</div></div>`).join(''):'<p class="mut">Belum ada pesanan.</p>');
   $('#view').innerHTML=h;
   document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=async()=>{if(!confirm('Batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.cancel}/cancel`);viewSaya()}catch(e){note(e.message,1)}});
@@ -187,14 +187,14 @@ async function viewAdmin(){
   try{S.adm={orders:(await api('GET','/orders?scope=all')).orders,lic:(await api('GET','/licenses?scope=all')).licenses}}catch(e){return note(e.message,1)}
   const d=S.d,A=S.adm,pend=A.orders.filter(o=>o.status==='pending');
   let h=`<h4>Pesanan menunggu pembayaran (${pend.length})</h4>`+(pend.length?pend.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> oleh <b>${esc(o.buyer_name)}</b> · ${esc(o.holder_label)} · ${esc(dt(o.created_at))}
-     <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${rp(i.price)})`).join('<br>')}</div>
+     <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>')}</div>
      <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref pembeli: ${esc(o.payment_ref)}</span>`:''}</div>
      <div class="row"><input class="fill" placeholder="Referensi pembayaran yang diterima" data-ref="${o.id}"><button type="button" class="p" data-ok="${o.id}">✔ Konfirmasi lunas</button><button type="button" class="d" data-no="${o.id}">Tolak</button></div></div>`).join(''):'<p class="mut">Tidak ada.</p>');
-  h+=`<h4>Harga engine (Rupiah; kosong = belum dijual)</h4><div class="scroll"><table><tr><th>Engine</th><th>Per laporan</th><th>6 bln</th><th>12 bln</th><th>24 bln</th></tr>`
-    +d.engines.map(e=>`<tr><td>${esc(e.label)}</td>${['report','6','12','24'].map(k=>`<td><input type="number" min="0" step="1000" style="width:110px" data-pk="${e.key}|${k}" value="${e.prices[k]??''}"></td>`).join('')}</tr>`).join('')
+  h+=`<h4>Harga alat — HARGA DAFTAR (ORI) dalam Rupiah, kosong = belum dijual</h4><div class="small mut">Ditagihkan = harga daftar − diskon. Pembeli melihat harga ORI dicoret dan label diskon.</div><div class="scroll"><table><tr><th>Alat</th><th>Per laporan</th><th>6 bln</th><th>12 bln</th><th>24 bln</th><th>Diskon %</th></tr>`
+    +d.engines.map(e=>`<tr><td>${e.icon} ${esc(e.label)}</td>${['report','6','12','24'].map(k=>`<td><input type="number" min="0" step="100" style="width:104px" data-pk="${e.key}|${k}" value="${e.list_prices[k]??''}"></td>`).join('')}<td><input type="number" min="0" max="90" style="width:64px" data-pd="${e.key}" value="${e.discount_pct||0}"></td></tr>`).join('')
     +`</table></div><div class="row"><button type="button" class="p" id="savePrice">Simpan harga</button></div>`;
   h+=`<h4>Beri lisensi langsung (tanpa pesanan)</h4><form id="gForm" class="card"><div class="row">
-    <label class="fill small"><b>Engine</b><br><select name="module">${d.engines.map(e=>`<option value="${e.key}">${esc(e.label)}</option>`).join('')}</select></label>
+    <label class="fill small"><b>Alat</b><br><select name="module">${d.engines.map(e=>`<option value="${e.key}">${esc(e.label)}</option>`).join('')}</select></label>
     <label class="fill small"><b>Jenis</b><br><select name="scope"><option value="time">Paket waktu (semua laporan)</option><option value="report">Sekali pakai per laporan</option></select></label>
     <label class="fill small" id="gMon"><b>Bulan</b><br><input type="number" name="months" min="1" max="60" value="12"></label>
     <label class="fill small hide" id="gDoc"><b>Laporan</b><br><select name="doc_id">${d.docs.map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join('')}</select></label></div>
@@ -203,7 +203,7 @@ async function viewAdmin(){
     <label class="fill small"><b>Catatan</b><br><input name="note" maxlength="255" placeholder="mis. uji coba / kompensasi"></label></div>
     <button class="p">Terbitkan lisensi</button> <span id="gE" class="small err"></span></form>`;
   const sc=l=>l.scope==='report'?`📄 ${esc(l.doc_title||'#'+l.doc_id)}`:`s.d. ${esc(dt(l.ends_at))}`;
-  h+=`<h4>Semua lisensi (${A.lic.length})</h4><div class="scroll"><table><tr><th>Engine</th><th>Pemegang</th><th>Berlaku</th><th>Status</th><th></th></tr>`
+  h+=`<h4>Semua lisensi (${A.lic.length})</h4><div class="scroll"><table><tr><th>Alat</th><th>Pemegang</th><th>Berlaku</th><th>Status</th><th></th></tr>`
     +A.lic.map(l=>`<tr><td>${esc(LBL(l.module_key))}</td><td>${esc(l.holder_label)}</td><td>${sc(l)}</td><td>${l.revoked_at?'dicabut':l.expired?'kedaluwarsa':l.active?'aktif':'—'}</td><td>${l.revoked_at?'':`<button type="button" class="d small" data-rv="${l.id}">Cabut</button>`}</td></tr>`).join('')+'</table></div>';
   h+=`<h4>Mode</h4><div class="row"><span class="small mut">Mode lisensi: <b>${d.licensing?'AKTIF':'mati'}</b></span><button type="button" id="modeBtn">${d.licensing?'Matikan':'Nyalakan'}</button></div>`;
   $('#view').innerHTML=h;
@@ -212,6 +212,7 @@ async function viewAdmin(){
   document.querySelectorAll('[data-no]').forEach(b=>b.onclick=async()=>{if(!confirm('Tolak/batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.no}/cancel`);viewAdmin()}catch(e){note(e.message,1)}});
   document.querySelectorAll('[data-rv]').forEach(b=>b.onclick=async()=>{if(!confirm('Cabut lisensi ini? Pemegang langsung kehilangan akses.'))return;try{await api('POST',`/licenses/${b.dataset.rv}/revoke`);viewAdmin()}catch(e){note(e.message,1)}});
   $('#savePrice').onclick=async()=>{const pr={};document.querySelectorAll('[data-pk]').forEach(i=>{const[k,p]=i.dataset.pk.split('|');(pr[k]=pr[k]||{})[p]=i.value===''?null:+i.value});
+    document.querySelectorAll('[data-pd]').forEach(i=>{(pr[i.dataset.pd]=pr[i.dataset.pd]||{}).discount=+i.value||0});
     try{await api('PUT','/prices',{prices:pr});note('Harga disimpan.',0);await boot();S.tab='admin';tabs();viewAdmin()}catch(e){note(e.message,1)}};
   const f=$('#gForm'),fill=()=>{const t=f.ht.value;$('#gWho').classList.toggle('hide',t==='tenant');
     f.hid.innerHTML=(t==='group'?d.groups.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`):d.users.map(x=>`<option value="${x.id}">${esc((x.name||x.username)+' ('+x.username+')')}</option>`)).join('')};

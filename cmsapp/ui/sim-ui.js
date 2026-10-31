@@ -41,7 +41,7 @@ async function initSim() {
   }
   renderSim();
 }
-function lockedSims() { return (SIM.locked || []).map(l => `<button class="cat" title="Engine “${esc(l.module_label)}” belum Anda miliki — klik untuk membuka Toko Engine" style="opacity:.7" onclick="location.href='/store?engine=${encodeURIComponent(l.module)}${(+new URLSearchParams(location.search).get('doc')) ? '&doc=' + (+new URLSearchParams(location.search).get('doc')) : ''}'">🔒 ${esc(SIMNAME[l.id] || l.title)}</button>`).join(''); }
+function lockedSims() { return (SIM.locked || []).map(l => `<button class="cat" title="Alat “${esc(l.tool_label || l.module_label)}” belum Anda miliki — klik untuk membuka Toko" style="opacity:.7" onclick="location.href='/store?engine=${encodeURIComponent(l.tool || '')}${(+new URLSearchParams(location.search).get('doc')) ? '&doc=' + (+new URLSearchParams(location.search).get('doc')) : ''}'">🔒 ${esc(SIMNAME[l.id] || l.title)}</button>`).join(''); }
 function renderSim() {
   if (!SIM.info[SIM.cur]) { $('#simTabs').innerHTML = lockedSims(); $('#simGuide').innerHTML = ''; $('#simPresets').innerHTML = ''; $('#simRun').innerHTML = ''; $('#simForm').innerHTML = ''; $('#simOut').innerHTML = '<div class="lockb">🔒 <b>Simulator lingkungan belum diaktifkan.</b> Tersedia per modul (air sungai, udara cerobong, kebisingan) setelah pembelian dan diaktifkan oleh penyedia layanan/operator.</div>'; return; }
   const info = SIM.info[SIM.cur];

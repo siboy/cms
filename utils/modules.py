@@ -91,15 +91,94 @@ def licensing_on() -> bool:
         return False
 
 
-def is_on(key: str) -> bool:
-    if key in enabled():
+# ---- lisensi PER ALAT (SKU = id alat di utils/tpl_tools). Kunci lisensi = id alat, bukan modul.
+def _tools() -> list[dict]:
+    from utils import tpl_tools
+    return tpl_tools.TOOLS
+
+
+_idx: dict | None = None
+
+
+def _index() -> dict:
+    """Peta lazy: rumus -> alat yang membukanya, simulator -> alat, modul -> alat."""
+    global _idx
+    if _idx is None:
+        f2t: dict[str, list[str]] = {}
+        s2t: dict[str, list[str]] = {}
+        m2t: dict[str, list[str]] = {}
+        for t in _tools():
+            for fid in t.get("calc") or []:
+                f2t.setdefault(fid, []).append(t["id"])
+            if t.get("sim"):
+                s2t.setdefault(t["sim"], []).append(t["id"])
+            m = TOOL_MODULE.get(t["id"])
+            if m:
+                m2t.setdefault(m, []).append(t["id"])
+        _idx = {"f2t": f2t, "s2t": s2t, "m2t": m2t}
+    return _idx
+
+
+def tool_on(tool_id: str) -> bool:
+    """Alat boleh dipakai pengguna ini? Operator menyalakan modulnya (CMS_MODULES) = semua pengguna; selain itu butuh lisensi aktif
+    untuk alat ini (berjangka, atau per-laporan bila konteks laporan cocok) ketika mode lisensi menyala."""
+    m = TOOL_MODULE.get(tool_id)
+    if m is None:
+        return True                                         # alat tanpa modul (tak dijual) -> bebas
+    if m in enabled():
         return True
-    if key.startswith("calc_") and _resolver is not None:
+    if _resolver is not None:
         try:
-            return bool(_resolver.licensing() and _resolver.allowed(key))
+            return bool(_resolver.licensing() and _resolver.allowed(tool_id))
         except Exception:                                   # noqa: BLE001
             return False
     return False
+
+
+def module_any_on(key: str) -> bool:
+    """Modul calc_* dianggap terbuka bila operator menyalakannya, atau (mode lisensi) pengguna memegang SALAH SATU alat modul itu."""
+    if key in enabled():
+        return True
+    return any(tool_on(t) for t in _index()["m2t"].get(key, []))
+
+
+def formula_tools(formula_id: str, category: str | None = None) -> list[str]:
+    """Alat yang membuka rumus ini. Rumus yang tak tercantum di alat mana pun -> semua alat dalam modul kategorinya."""
+    ts = _index()["f2t"].get(formula_id)
+    if ts:
+        return ts
+    m = CATEGORY_MODULE.get(category or "")
+    return _index()["m2t"].get(m, []) if m else []
+
+
+def formula_on(formula_id: str, category: str | None = None) -> bool:
+    ts = formula_tools(formula_id, category)
+    return True if not ts else any(tool_on(t) for t in ts)
+
+
+def sim_tools(sim_id: str) -> list[str]:
+    return _index()["s2t"].get(sim_id, [])
+
+
+def sim_on(sim_id: str) -> bool:
+    ts = sim_tools(sim_id)
+    return any(tool_on(t) for t in ts) if ts else module_any_on(SIM_MODULE.get(sim_id, ""))
+
+
+def is_on(key: str) -> bool:
+    """Gerbang tingkat MODUL. Modul platform = env. Modul calc_* = env, atau (mode lisensi) pemegang salah satu alatnya."""
+    if key in enabled():
+        return True
+    if key.startswith("calc_"):
+        return module_any_on(key)
+    return False
+
+
+def tool_label(tool_id: str) -> str:
+    for t in _tools():
+        if t["id"] == tool_id:
+            return t["label"]
+    return tool_id
 
 
 def formula_module(category: str) -> str | None:
@@ -107,6 +186,10 @@ def formula_module(category: str) -> str | None:
 
 
 def locked_message(key: str) -> str:
+    if key.startswith("tool:"):
+        tid = key[5:]
+        return (f"Alat “{tool_label(tid)}” belum Anda miliki (belum dibeli/dilisensikan untuk akun atau laporan ini). "
+                f"Buka menu ⋮ → 🛒 Toko Engine untuk membeli, atau minta admin membelikan.")
     if key.startswith("calc_") and licensing_on():
         return (f"Engine “{LABEL.get(key, key)}” belum dilisensikan untuk akun Anda. Buka menu ⋮ → 🛒 Toko Engine untuk membeli, "
                 f"atau minta admin membelikan/memberi lisensinya.")

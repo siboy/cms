@@ -1757,8 +1757,8 @@ function toolDlg(b,tl){const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>🧮 Alat hitung / simulasi untuk “${esc((b.text||'').replace(/\\(.)/g,'$1').slice(0,70))}”</b>
   <small style="color:var(--mut)">Dibuka di tab baru. Hasilnya bisa disisipkan sebagai blok (tabel/paragraf/gambar) tepat setelah blok ini. Ini alat penapisan awal — parameter dan baku mutu tetap isian Anda. Alat bertanda 🔒 harus dibeli dulu (paket waktu, atau sekali pakai untuk laporan ini saja).</small>
   ${tl.map(t=>`<div style="border:1px solid var(--line);border-radius:6px;padding:8px;margin:6px 0"><b>${t.icon} ${esc(t.label)}</b><div style="font-size:.85em;color:var(--mut);margin:2px 0 6px">${esc(t.why)}</div>
-   ${t.locked?`<div style="font-size:12.5px;margin-bottom:6px">🔒 Engine <b>“${esc(t.module_label||t.module||'')}”</b> belum Anda miliki untuk laporan ini.</div>
-    <a class=btnlink href="/store?engine=${encodeURIComponent(t.module||'')}&doc=${doc}">🛒 Beli engine ini</a>`
+   ${t.locked?`<div style="font-size:12.5px;margin-bottom:6px">🔒 Alat ini belum Anda miliki untuk laporan ini (beli per laporan atau paket waktu).</div>
+    <a class=btnlink href="/store?engine=${encodeURIComponent(t.id)}&doc=${doc}">🛒 Beli alat ini</a>`
     :`<a class=btnlink target=_blank rel=noopener href="/data-desa?tool=${encodeURIComponent(t.id)}&doc=${doc}&after=${b.id}">Buka &amp; sisipkan ke dokumen ↗</a>`}</div>`).join('')}
   <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()}}

@@ -76,11 +76,11 @@ def main():
     def H(uid):
         return {"X-CMS": "1", "X-Test-User": str(uid)}
 
-    def on_for(uid, key="calc_bising"):
-        """mods.is_on di dalam request milik pengguna uid."""
+    def on_for(uid, key="bising"):
+        """mods.tool_on di dalam request milik pengguna uid."""
         with app.test_request_context("/", headers=H(uid)):
             g.user = USERS[uid]
-            return mods.is_on(key)
+            return mods.tool_on(key)
 
     def flag_reset():
         license_api._Resolver._flag = (0.0, False)
@@ -101,59 +101,59 @@ def main():
     # ---- katalog
     r = c.get("/api/license/store", headers=H(2)).get_json()
     keys = [e["key"] for e in r["engines"]]
-    check(len(keys) == 12 and "calc_bising" in keys and "calc_survei" in keys, f"12 engine di katalog ({len(keys)})")
-    eb = next(e for e in r["engines"] if e["key"] == "calc_bising")
-    check(eb["owned"] is None and eb["prices"]["12"] is None and any(t["id"] == "bising" for t in eb["tools"]), "engine bising: belum dimiliki, belum berharga, memuat alat 'bising'")
+    check(len(keys) == 19 and "bising" in keys and "survei" in keys, f"19 alat di katalog ({len(keys)})")
+    eb = next(e for e in r["engines"] if e["key"] == "bising")
+    check(eb["owned"] is None and eb["prices"]["12"] is None and eb["sim"] == "noise" and eb["n_formulas"] >= 1 and eb["group"], "alat bising: belum dimiliki, belum berharga, ada simulator noise & jumlah rumus")
     check(not r["can_manage"] and "groups" not in r, "pengguna biasa tak melihat daftar grup/pengguna")
 
     # ---- belum berharga -> tak bisa dibeli
-    o = c.post("/api/license/orders", json={"items": [{"module": "calc_bising", "months": 12}]}, headers=H(2))
+    o = c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12}]}, headers=H(2))
     check(o.status_code == 400 and "belum diberi harga" in o.get_json()["error"], "tanpa harga -> pesanan ditolak")
 
     # ---- hanya admin berizin boleh set harga
-    pj = {"prices": {"calc_bising": {"6": 600000, "12": 1000000, "24": 1800000}, "calc_udara": {"12": 1200000}}}
+    pj = {"prices": {"bising": {"6": 600000, "12": 1000000, "24": 1800000}, "udara": {"12": 1200000}}}
     check(c.put("/api/license/prices", json=pj, headers=H(2)).status_code == 403, "non-admin tak bisa set harga")
     check(c.put("/api/license/prices", json=pj, headers=H(1)).status_code == 200, "admin set harga")
     r = c.get("/api/license/store", headers=H(2)).get_json()
-    eb = next(e for e in r["engines"] if e["key"] == "calc_bising")
+    eb = next(e for e in r["engines"] if e["key"] == "bising")
     check(eb["prices"] == {"6": 600000, "12": 1000000, "24": 1800000, "report": None}, "harga tampil di katalog")
-    eu = next(e for e in r["engines"] if e["key"] == "calc_udara")
+    eu = next(e for e in r["engines"] if e["key"] == "udara")
     check(eu["prices"]["6"] is None and eu["prices"]["12"] == 1200000, "harga parsial: periode tanpa harga = None")
 
     # ---- validasi pesanan
     bad = lambda body, uid=2: c.post("/api/license/orders", json=body, headers=H(uid))
     check(bad({"items": []}).status_code == 400, "keranjang kosong ditolak")
-    check(bad({"items": [{"module": "calc_ngawur", "months": 12}]}).status_code == 400, "engine tak dikenal ditolak")
-    check(bad({"items": [{"module": "calc_bising", "months": 7}]}).status_code == 400, "periode tak tersedia ditolak")
-    check(bad({"items": [{"module": "calc_udara", "months": 6}]}).status_code == 400, "periode tanpa harga ditolak")
-    check(bad({"items": [{"module": "templates", "months": 12}]}).status_code == 400, "modul non-engine tak bisa dibeli")
+    check(bad({"items": [{"module": "calc_ngawur", "months": 12}]}).status_code == 400, "alat tak dikenal ditolak")
+    check(bad({"items": [{"module": "bising", "months": 7}]}).status_code == 400, "periode tak tersedia ditolak")
+    check(bad({"items": [{"module": "udara", "months": 6}]}).status_code == 400, "periode tanpa harga ditolak")
+    check(bad({"items": [{"module": "templates", "months": 12}]}).status_code == 400, "modul non-alat tak bisa dibeli")
 
     # ---- user beli sendiri -> PENDING, belum aktif
-    o = bad({"items": [{"module": "calc_bising", "months": 12}, {"module": "calc_udara", "months": 12}], "payment_ref": "TRF-001"})
+    o = bad({"items": [{"module": "bising", "months": 12}, {"module": "udara", "months": 12}], "payment_ref": "TRF-001"})
     check(o.status_code == 201, "pesanan dibuat")
     od = o.get_json()["order"]
     check(od["status"] == "pending" and od["total"] == 2200000 and len(od["items"]) == 2, "pending, total dihitung server (2.200.000)")
     check(not on_for(2), "belum dikonfirmasi -> engine tetap terkunci")
     # klien tak bisa memalsukan harga / status lunas
-    o2 = c.post("/api/license/orders", json={"items": [{"module": "calc_bising", "months": 12, "price": 1}], "paid": True}, headers=H(2)).get_json()["order"]
+    o2 = c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12, "price": 1}], "paid": True}, headers=H(2)).get_json()["order"]
     check(o2["total"] == 1000000 and o2["status"] == "pending", "harga & 'paid' dari klien non-admin diabaikan")
     check(c.post(f"/api/license/orders/{o2['id']}/cancel", headers=H(3)).status_code == 403, "pengguna lain tak bisa membatalkan pesanan orang")
     check(c.post(f"/api/license/orders/{o2['id']}/cancel", headers=H(2)).get_json()["order"]["status"] == "cancelled", "pembeli bisa membatalkan pesanannya")
     check(c.post(f"/api/license/orders/{od['id']}/confirm", json={}, headers=H(2)).status_code == 403, "pembeli tak bisa mengonfirmasi sendiri")
 
     # ---- pembatasan beli untuk orang lain
-    check(c.post("/api/license/orders", json={"items": [{"module": "calc_bising", "months": 12}], "for": {"type": "user", "id": 3}}, headers=H(2)).status_code == 403,
+    check(c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12}], "for": {"type": "user", "id": 3}}, headers=H(2)).status_code == 403,
           "non-admin tak bisa membeli untuk pengguna lain")
-    check(c.post("/api/license/orders", json={"items": [{"module": "calc_bising", "months": 12}], "for": {"type": "tenant"}}, headers=H(2)).status_code == 403,
+    check(c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12}], "for": {"type": "tenant"}}, headers=H(2)).status_code == 403,
           "non-admin tak bisa membeli untuk seluruh tenant")
 
     # ---- admin konfirmasi -> aktif untuk pembeli saja
     r = c.post(f"/api/license/orders/{od['id']}/confirm", json={"payment_ref": "TRF-001 OK"}, headers=H(1))
     check(r.status_code == 200 and r.get_json()["order"]["status"] == "paid", "admin konfirmasi lunas")
     flag_reset()
-    check(on_for(2, "calc_bising") and on_for(2, "calc_udara"), "pembeli kini memegang kedua engine")
-    check(not on_for(3, "calc_bising") and not on_for(4, "calc_bising"), "pengguna lain tetap terkunci (lisensi per pengguna)")
-    check(not on_for(2, "calc_tambang"), "engine yang tak dibeli tetap terkunci")
+    check(on_for(2, "bising") and on_for(2, "udara"), "pembeli kini memegang kedua engine")
+    check(not on_for(3, "bising") and not on_for(4, "bising"), "pengguna lain tetap terkunci (lisensi per pengguna)")
+    check(not on_for(2, "tambang"), "engine yang tak dibeli tetap terkunci")
     check(c.post(f"/api/license/orders/{od['id']}/confirm", json={}, headers=H(1)).status_code == 400, "konfirmasi ganda ditolak")
 
     # ---- enforcement di API nyata: /kd/tools & /modules per pengguna
@@ -162,48 +162,48 @@ def main():
     check(t2["bising"] is False and t2["udara"] is False and t2["tambang"] is True, "kd/tools: terbuka hanya yang dimiliki pemanggil")
     check(t3["bising"] is True, "kd/tools: pengguna lain melihat bising terkunci")
     m2 = {m["key"]: m["on"] for m in c.get("/api/modules", headers=H(2)).get_json()["modules"]}
-    check(m2["calc_bising"] and not m2["calc_tambang"], "/api/modules mencerminkan lisensi pemanggil")
+    check(m2["calc_bising"] and not m2["calc_tambang"], "/api/modules: modul terbuka bila pemanggil memegang salah satu alatnya")
 
     # ---- membelikan untuk GRUP (tenaga ahli eksternal langsung pakai)
-    r = c.post("/api/license/orders", json={"items": [{"module": "calc_bising", "months": 12}], "for": {"type": "group", "id": 2},
+    r = c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12}], "for": {"type": "group", "id": 2},
                                             "paid": True, "payment_ref": "dibayar tenant"}, headers=H(1))
     check(r.status_code == 201 and r.get_json()["order"]["status"] == "paid", "admin membelikan utk grup, langsung lunas")
     flag_reset()
-    check(on_for(3, "calc_bising"), "anggota grup (ahli_b) langsung bisa pakai")
-    check(not on_for(4, "calc_bising"), "grup lain (viewer) tidak ikut")
+    check(on_for(3, "bising"), "anggota grup (ahli_b) langsung bisa pakai")
+    check(not on_for(4, "bising"), "grup lain (viewer) tidak ikut")
 
     # ---- perpanjangan: lisensi aktif yang sama diperpanjang dari akhir masa lama
     with st._tx() as c_:
-        before = st._one(c_, "SELECT MAX(ends_at) AS e FROM cms_licenses WHERE module_key='calc_bising' AND holder_type='user' AND holder_id=2")["e"]
-    c.post("/api/license/orders", json={"items": [{"module": "calc_bising", "months": 6}], "for": {"type": "user", "id": 2}, "paid": True}, headers=H(1))
+        before = st._one(c_, "SELECT MAX(ends_at) AS e FROM cms_licenses WHERE module_key='bising' AND holder_type='user' AND holder_id=2")["e"]
+    c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 6}], "for": {"type": "user", "id": 2}, "paid": True}, headers=H(1))
     with st._tx() as c_:
-        after = st._one(c_, "SELECT MAX(ends_at) AS e FROM cms_licenses WHERE module_key='calc_bising' AND holder_type='user' AND holder_id=2")["e"]
+        after = st._one(c_, "SELECT MAX(ends_at) AS e FROM cms_licenses WHERE module_key='bising' AND holder_type='user' AND holder_id=2")["e"]
     check(after > before, f"perpanjangan memperpanjang masa berlaku ({before} -> {after})")
 
     # ---- tenant-wide + pemberian langsung
-    check(not on_for(4, "calc_hidrologi"), "sebelum pemberian: viewer tak punya hidrologi")
-    g_ = c.post("/api/license/licenses/grant", json={"module": "calc_hidrologi", "months": 3, "for": {"type": "tenant"}, "note": "uji coba"}, headers=H(1))
+    check(not on_for(4, "limpasan_erosi"), "sebelum pemberian: viewer tak punya hidrologi")
+    g_ = c.post("/api/license/licenses/grant", json={"module": "limpasan_erosi", "months": 3, "for": {"type": "tenant"}, "note": "uji coba"}, headers=H(1))
     check(g_.status_code == 201, "admin memberi lisensi tenant 3 bulan")
     flag_reset()
-    check(on_for(4, "calc_hidrologi") and on_for(2, "calc_hidrologi"), "lisensi tenant berlaku untuk semua pengguna")
-    check(c.post("/api/license/licenses/grant", json={"module": "calc_hidrologi", "months": 3, "for": {"type": "tenant"}}, headers=H(2)).status_code == 403,
+    check(on_for(4, "limpasan_erosi") and on_for(2, "limpasan_erosi"), "lisensi tenant berlaku untuk semua pengguna")
+    check(c.post("/api/license/licenses/grant", json={"module": "limpasan_erosi", "months": 3, "for": {"type": "tenant"}}, headers=H(2)).status_code == 403,
           "non-admin tak bisa memberi lisensi")
-    check(c.post("/api/license/licenses/grant", json={"module": "calc_hidrologi", "months": 0, "for": {"type": "tenant"}}, headers=H(1)).status_code == 400, "masa 0 bulan ditolak")
-    check(c.post("/api/license/licenses/grant", json={"module": "calc_hidrologi", "months": 3, "for": {"type": "user", "id": 999}}, headers=H(1)).status_code == 400, "pengguna tak ada ditolak")
+    check(c.post("/api/license/licenses/grant", json={"module": "limpasan_erosi", "months": 0, "for": {"type": "tenant"}}, headers=H(1)).status_code == 400, "masa 0 bulan ditolak")
+    check(c.post("/api/license/licenses/grant", json={"module": "limpasan_erosi", "months": 3, "for": {"type": "user", "id": 999}}, headers=H(1)).status_code == 400, "pengguna tak ada ditolak")
 
     # ---- pencabutan
     lid = g_.get_json()["license"]["id"]
     check(c.post(f"/api/license/licenses/{lid}/revoke", headers=H(2)).status_code == 403, "non-admin tak bisa mencabut")
     check(c.post(f"/api/license/licenses/{lid}/revoke", headers=H(1)).status_code == 200, "admin mencabut")
-    check(not on_for(4, "calc_hidrologi"), "setelah dicabut -> terkunci lagi")
+    check(not on_for(4, "limpasan_erosi"), "setelah dicabut -> terkunci lagi")
 
     # ---- kedaluwarsa otomatis
     with st._tx() as c_:
-        st._x(c_, "UPDATE cms_licenses SET ends_at=? WHERE module_key='calc_udara' AND holder_type='user' AND holder_id=2", ((lic._now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),))
-    check(not on_for(2, "calc_udara"), "lisensi lewat masa berlaku -> terkunci otomatis")
+        st._x(c_, "UPDATE cms_licenses SET ends_at=? WHERE module_key='udara' AND holder_type='user' AND holder_id=2", ((lic._now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),))
+    check(not on_for(2, "udara"), "lisensi lewat masa berlaku -> terkunci otomatis")
     mine = c.get("/api/license/licenses", headers=H(2)).get_json()["licenses"]
-    check(any(x["module_key"] == "calc_udara" and x["expired"] and not x["active"] for x in mine), "daftar lisensi saya menandai yang kedaluwarsa")
-    check(any(x["module_key"] == "calc_bising" and x["active"] for x in mine), "dan yang masih aktif")
+    check(any(x["module_key"] == "udara" and x["expired"] and not x["active"] for x in mine), "daftar lisensi saya menandai yang kedaluwarsa")
+    check(any(x["module_key"] == "bising" and x["active"] for x in mine), "dan yang masih aktif")
     allr = c.get("/api/license/licenses?scope=all", headers=H(2))
     check(allr.status_code == 403, "pengguna biasa tak bisa melihat semua lisensi")
     check(len(c.get("/api/license/licenses?scope=all", headers=H(1)).get_json()["licenses"]) >= 4, "admin melihat semua lisensi")
@@ -228,31 +228,31 @@ def main():
         for did, title, owner in [(10, "ANDAL ALE", "ahli_a"), (11, "UKL-UPL Lain", "ahli_a"), (12, "Laporan Rahasia", "orang_lain")]:
             st._x(c_, "INSERT INTO cms_documents(id, filename, orig_path, media_dir, manifest, status, uploaded_by, uploaded_at, updated_at) "
                       "VALUES (?,?,?,?,?,?,?,?,?)", (did, title, "", None, "{}", "split", owner, "2026-10-01 00:00:00", "2026-10-01 00:00:00"))
-    item = lambda doc, mod="calc_tambang": {"module": mod, "scope": "report", "doc_id": doc}
-    check(not on_for(2, "calc_tambang"), "awal: engine tambang belum dimiliki ahli_a")
+    item = lambda doc, mod="tambang": {"module": mod, "scope": "report", "doc_id": doc}
+    check(not on_for(2, "tambang"), "awal: engine tambang belum dimiliki ahli_a")
     r = c.post("/api/license/orders", json={"items": [item(10)]}, headers=H(2))
     check(r.status_code == 400 and "per-laporan" in r.get_json()["error"], "tanpa harga per-laporan -> ditolak")
-    c.put("/api/license/prices", json={"prices": {"calc_tambang": {"12": 5000000, "report": 750000}}}, headers=H(1))
+    c.put("/api/license/prices", json={"prices": {"tambang": {"12": 5000000, "report": 750000}}}, headers=H(1))
     st_ = c.get("/api/license/store?doc=10", headers=H(2)).get_json()
-    et = next(e for e in st_["engines"] if e["key"] == "calc_tambang")
+    et = next(e for e in st_["engines"] if e["key"] == "tambang")
     check(et["prices"]["report"] == 750000 and et["prices"]["12"] == 5000000 and et["owned_here"] is False, "katalog memuat harga per-laporan; belum dimiliki di laporan 10")
     check(any(d["id"] == 10 for d in st_["docs"]) and not any(d["id"] == 12 for d in st_["docs"]), "pilihan laporan hanya yang boleh dilihat pembeli")
     check(c.post("/api/license/orders", json={"items": [item(12)]}, headers=H(2)).status_code == 404, "tak bisa membeli untuk laporan yang tak terlihat")
     check(c.post("/api/license/orders", json={"items": [item(999)], "paid": True}, headers=H(1)).status_code == 400, "laporan tak ada ditolak (admin)")
-    check(c.post("/api/license/orders", json={"items": [{"module": "calc_tambang", "scope": "report"}]}, headers=H(2)).status_code == 400, "per-laporan tanpa doc_id ditolak")
+    check(c.post("/api/license/orders", json={"items": [{"module": "tambang", "scope": "report"}]}, headers=H(2)).status_code == 400, "per-laporan tanpa doc_id ditolak")
     o = c.post("/api/license/orders", json={"items": [item(10), item(10)]}, headers=H(2)).get_json()["order"]
     check(o["total"] == 750000 and len(o["items"]) == 1 and o["items"][0]["scope"] == "report" and o["items"][0]["doc_title"] == "ANDAL ALE", "pesanan per-laporan: 1 baris, harga server, judul laporan tercatat")
     c.post(f"/api/license/orders/{o['id']}/confirm", json={"payment_ref": "TRF-RPT"}, headers=H(1)); flag_reset()
 
-    def on_doc(uid, doc, key="calc_tambang"):
+    def on_doc(uid, doc, key="tambang"):
         with app.test_request_context("/", headers={**H(uid), "X-Doc": str(doc)}):
             g.user = USERS[uid]
-            return mods.is_on(key)
+            return mods.tool_on(key)
     check(on_doc(2, 10), "lisensi per-laporan: aktif DI laporan yang dibeli (X-Doc=10)")
     check(not on_doc(2, 11), "…tetapi TIDAK di laporan lain (11) -> harus beli lagi")
-    check(not on_for(2, "calc_tambang"), "…dan tidak berlaku tanpa konteks laporan")
+    check(not on_for(2, "tambang"), "…dan tidak berlaku tanpa konteks laporan")
     check(not on_doc(3, 10) and not on_doc(4, 10), "pengguna lain tidak ikut mendapat akses")
-    check(on_doc(2, 10, "calc_tambang") and not on_doc(2, 10, "calc_bising") is False, "engine lain yang dimiliki tetap berlaku di laporan itu")
+    check(on_doc(2, 10, "tambang") and not on_doc(2, 10, "bising") is False, "engine lain yang dimiliki tetap berlaku di laporan itu")
     # rute nyata dengan konteks laporan
     tl = lambda uid, doc=None: {t["id"]: t["locked"] for t in c.get("/api/kd/tools" + (f"?doc={doc}" if doc else ""), headers=H(uid)).get_json()["tools"]}
     check(tl(2, 10)["tambang"] is False and tl(2, 11)["tambang"] is True and tl(2)["tambang"] is True, "kd/tools?doc=: terbuka hanya di laporan yang dibeli")
@@ -267,27 +267,53 @@ def main():
     o3 = c.post("/api/license/orders", json={"items": [item(10)]}, headers=H(2)).get_json()["order"]
     c.post(f"/api/license/orders/{o3['id']}/confirm", json={}, headers=H(1))
     with st._tx() as c_:
-        n_ = st._one(c_, "SELECT COUNT(*) AS n FROM cms_licenses WHERE scope='report' AND doc_id=10 AND module_key='calc_tambang' AND holder_id=2")["n"]
+        n_ = st._one(c_, "SELECT COUNT(*) AS n FROM cms_licenses WHERE scope='report' AND doc_id=10 AND module_key='tambang' AND holder_id=2")["n"]
     check(n_ == 1, "beli ulang laporan yang sama tidak menggandakan lisensi")
     mine = c.get("/api/license/licenses", headers=H(2)).get_json()["licenses"]
-    rl = [x for x in mine if x["scope"] == "report" and x["module_key"] == "calc_tambang"]
+    rl = [x for x in mine if x["scope"] == "report" and x["module_key"] == "tambang"]
     check(len(rl) == 2 and all(x["active"] and not x["expired"] for x in rl), "daftar lisensi saya memuat 2 lisensi per-laporan yang aktif")
     # admin memberi per-laporan langsung & mencabut
-    gr = c.post("/api/license/licenses/grant", json={"module": "calc_ekonomi", "scope": "report", "doc_id": 10, "for": {"type": "user", "id": 3}}, headers=H(1))
+    gr = c.post("/api/license/licenses/grant", json={"module": "biaya_manfaat", "scope": "report", "doc_id": 10, "for": {"type": "user", "id": 3}}, headers=H(1))
     check(gr.status_code == 201, "admin memberi lisensi per-laporan"); flag_reset()
-    check(on_doc(3, 10, "calc_ekonomi") and not on_doc(3, 11, "calc_ekonomi"), "pemberian per-laporan hanya di laporan itu")
+    check(on_doc(3, 10, "biaya_manfaat") and not on_doc(3, 11, "biaya_manfaat"), "pemberian per-laporan hanya di laporan itu")
     c.post(f"/api/license/licenses/{gr.get_json()['license']['id']}/revoke", headers=H(1))
-    check(not on_doc(3, 10, "calc_ekonomi"), "dicabut -> terkunci lagi")
+    check(not on_doc(3, 10, "biaya_manfaat"), "dicabut -> terkunci lagi")
     # lisensi berjangka mengalahkan: berlaku di semua laporan
-    check(on_doc(2, 11, "calc_bising") and on_doc(2, 999, "calc_bising"), "lisensi berjangka berlaku di laporan mana pun")
+    check(on_doc(2, 11, "bising") and on_doc(2, 999, "bising"), "lisensi berjangka berlaku di laporan mana pun")
+
+    # ================= GRANULARITAS PER ALAT & DISKON =================
+    check(c.post("/api/license/licenses/grant", json={"module": "penduduk", "months": 3, "for": {"type": "user", "id": 4}}, headers=H(1)).status_code == 201, "admin memberi alat 'penduduk' ke viewer1"); flag_reset()
+    check(on_for(4, "penduduk"), "alat yang dibeli terbuka")
+    check(not on_for(4, "tenaga_kerja"), "alat LAIN satu modul (calc_sosial) tetap terkunci -- lisensi per alat")
+    fv = {it["id"]: it for it in c.get("/api/kd/formulas", headers=H(4)).get_json()["items"]}
+    check(fv["pop_geometrik"]["locked"] is False, "rumus milik alat 'penduduk' terbuka")
+    check(fv["tenaga_kerja_tahunan"]["locked"] is True and fv["tenaga_kerja_tahunan"]["buy_tool"] == "tenaga_kerja", "rumus milik alat 'tenaga_kerja' terkunci & menunjuk alat yang harus dibeli")
+    check(fv["laju_geometrik"]["locked"] is False, "rumus yang tak masuk alat mana pun: terbuka bila pemegang salah satu alat di modulnya")
+    f3_ = {it["id"]: it for it in c.get("/api/kd/formulas", headers=H(3)).get_json()["items"]}
+    check(f3_["laju_geometrik"]["locked"] is True, "…dan terkunci bagi yang tak punya alat apa pun di modul itu")
+    cr = c.post("/api/kd/calc", json={"id": "tenaga_kerja_tahunan", "inputs": {}}, headers=H(4))
+    check(cr.status_code == 403 and cr.get_json().get("tool") == "tenaga_kerja", "kd/calc menolak & menyebut alat yang perlu dibeli")
+    ck = c.post("/api/kd/formula/check", json={"formula": "tenaga_kerja_tahunan(1,2,3)"}, headers=H(4))
+    check(ck.status_code in (400, 403), "rumus buatan sendiri tak bisa memanggil fungsi alat yang terkunci") if False else None
+
+    # diskon: harga daftar -> harga ditagihkan
+    c.put("/api/license/prices", json={"prices": {"tambang": {"6": 60000, "12": 100000, "24": 180000, "report": 20000, "discount": 40}}}, headers=H(1))
+    st2 = c.get("/api/license/store", headers=H(2)).get_json()
+    et = next(e for e in st2["engines"] if e["key"] == "tambang")
+    check(et["list_prices"]["12"] == 100000 and et["prices"]["12"] == 60000 and et["discount_pct"] == 40 and et["prices"]["report"] == 12000, "katalog: harga daftar, diskon 40%, harga ditagihkan 60%")
+    od = c.post("/api/license/orders", json={"items": [{"module": "tambang", "months": 12}]}, headers=H(3)).get_json()["order"]
+    it0 = od["items"][0]
+    check(od["total"] == 60000 and it0["price"] == 60000 and it0["list_price"] == 100000 and it0["discount_pct"] == 40, "pesanan menagih harga setelah diskon & menyimpan harga daftar + persen diskon")
+    check(c.put("/api/license/prices", json={"prices": {"tambang": {"12": 1, "discount": 95}}}, headers=H(1)).status_code == 400, "diskon > 90% ditolak")
+    check(lic.effective(42500, 40) == 25500 and lic.effective(535900, 40) == 321500 and lic.effective(None, 40) is None and lic.effective(10000, 0) == 10000, "hitungan diskon (dibulatkan Rp100)")
 
     # ---- env operator tetap menang (override)
     os.environ["CMS_MODULES"] = "calc_hayati"
-    check(on_for(4, "calc_hayati"), "engine yang dinyalakan operator (env) berlaku untuk semua pengguna")
+    check(on_for(4, "keanekaragaman"), "engine yang dinyalakan operator (env) berlaku untuk semua pengguna")
     os.environ["CMS_MODULES"] = "none"
 
     # ---- pesan terkunci
-    check("Toko Engine" in mods.locked_message("calc_bising"), "pesan terkunci mengarahkan ke Toko Engine saat lisensi nyala")
+    check("Toko Engine" in mods.locked_message("tool:bising") and "Toko Engine" in mods.locked_message("calc_bising"), "pesan terkunci mengarahkan ke Toko Engine saat lisensi nyala")
     print(f"LULUS {OK} pemeriksaan")
 
 

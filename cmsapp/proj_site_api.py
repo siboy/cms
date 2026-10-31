@@ -402,7 +402,7 @@ def sims(pid):
 @guard("proyek_simulasi")
 def sims_suggest(pid):
     _manage(pid)
-    return jsonify(items=[x for x in pst.suggest_sims(S(), pid) if mods.is_on(mods.TOOL_MODULE.get(x["tool_id"], ""))])
+    return jsonify(items=[x for x in pst.suggest_sims(S(), pid) if mods.tool_on(x["tool_id"])])
 
 
 @bp.post("/projects/<int:pid>/sims")
@@ -415,12 +415,12 @@ def sims_add(pid):
     items = d.get("items") or [d]
     ids, skipped = [], 0
     for it in items:
-        lk = mods.TOOL_MODULE.get(it.get("tool_id", ""))
-        if lk:
+        tid = it.get("tool_id", "")
+        if mods.TOOL_MODULE.get(tid):
             from cmsapp.license_api import set_doc_context      # lisensi per-laporan: konteks = laporan tugas simulasi ini
             set_doc_context(it.get("doc_id"))
-        if lk and not mods.is_on(lk):
-            return locked_response(lk)
+            if not mods.tool_on(tid):
+                return locked_response("tool:" + tid)
         try:
             ids.append(pst.add_sim(S(), pid, it.get("tool_id", ""), it.get("title", ""), it.get("doc_id"), it.get("block_id"),
                                    it.get("assignee_id"), it.get("note", ""), user=g.user["username"]))
