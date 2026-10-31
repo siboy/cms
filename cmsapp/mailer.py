@@ -21,8 +21,11 @@ def send_mail(to: str, subject: str, html: str) -> bool:
     msg["From"] = cfg.get("SMTP_FROM") or cfg.get("SMTP_USER") or "cms@localhost"
     msg["To"] = to
     try:
-        with smtplib.SMTP(host, cfg.get("SMTP_PORT", 587), timeout=10) as s:
-            if cfg.get("SMTP_TLS", True):
+        port = int(cfg.get("SMTP_PORT", 587))
+        cls = smtplib.SMTP_SSL if port == 465 else smtplib.SMTP          # port 465 = SSL langsung; selain itu STARTTLS bila SMTP_TLS
+        kw = {"context": ssl.create_default_context()} if port == 465 else {}
+        with cls(host, port, timeout=10, **kw) as s:
+            if port != 465 and cfg.get("SMTP_TLS", True):
                 s.starttls(context=ssl.create_default_context())
             if cfg.get("SMTP_USER"):
                 s.login(cfg["SMTP_USER"], cfg.get("SMTP_PASS", ""))
