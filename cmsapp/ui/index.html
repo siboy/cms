@@ -503,11 +503,11 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
  $('#app').innerHTML='<div id=docs>'
  +`<div class=plbar>
    <div class=cattabs>
+    ${hasPerm('project_view_all')||hasPerm('user_manage')?'<button id=bwork title="Profil beban kerja tiap orang"><span class=ti>📊</span><span class=tl>Beban Tim</span></button>':''}
     ${hasPerm('project_manage')?'<button id=npr class=p><span class=ti>＋</span><span class=tl>Proyek baru</span></button>':''}
     <button data-pf=aktif class="${projFilter==='aktif'?'cur':''}" title="Semua yang belum Done"><span class=ti>🗂</span><span class=tl>Aktif (${projects.filter(p=>p.status!=='completed').length})</span></button>
     ${PSTAT.map(([k,l])=>`<button data-pf="${k}" class="${projFilter===k?'cur':''}"><span class=ti>${PICO[k]||'•'}</span><span class=tl>${l} (${cnt(k)})</span></button>`).join('')}
     <button data-pf=semua class="${projFilter==='semua'?'cur':''}"><span class=ti>📚</span><span class=tl>Semua (${projects.length})</span></button>
-    ${hasPerm('project_view_all')||hasPerm('user_manage')?'<button id=bwork title="Profil beban kerja tiap orang"><span class=ti>📊</span><span class=tl>Beban Tim</span></button>':''}
    </div>
   </div>`
  +'<div class=rg>'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
