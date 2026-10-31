@@ -225,6 +225,10 @@ header b{letter-spacing:.2px}
 /* ===== tampilan HP/APK (<=640px): tema emas, menu ⋮ = bottom sheet, filter proyek = bar bawah gaya tab Task/Gantt =====
    backdrop-filter DIMATIKAN di HP: di WebView Android ia merusak anak yang meluap/fixed. */
 :root{--gold:#d4a017;--gold2:#f4d36e;--gold3:#a87b0c;--goldglow:rgba(212,160,23,.5);--goldsoft:rgba(212,160,23,.16);--goldink:#2b1d00}
+.rc{position:relative}
+/* ⋮ kartu proyek: SELALU di pojok kanan atas kartu (tidak ikut bergeser oleh panjang nama/lencana) */
+.rc .rhm{padding-right:44px}
+.rc .rmenu{position:absolute;top:6px;right:6px;margin:0;min-width:36px;height:34px;padding:0 8px;font-size:20px;line-height:1;display:grid;place-items:center;border-radius:10px}
 .plbar{margin:0 0 12px}
 .plbar .cattabs{display:flex;gap:6px;flex-wrap:wrap;padding:0;margin:0;overflow:visible}
 .plbar .ti{display:none}
@@ -489,7 +493,7 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
  +'<div class=rg>'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
   const unread=(p.unread_chat||0)+(p.unread_tasks||0);
   const final100=p.progress_override===100;
-  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class=rh><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${final100?`<span class=badge style="background:#2da44e" title="Dinyatakan FINAL oleh ${esc(p.progress_final_by||'?')} pada ${esc((p.progress_final_at||'').slice(0,10))}">✔ 100% Final</span>`:''}${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}${hasPerm('project_manage')?`<button type=button data-menu="${p.id}" style="margin-left:6px;padding:1px 7px" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
+  return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class="rh rhm"><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${final100?`<span class=badge style="background:#2da44e" title="Dinyatakan FINAL oleh ${esc(p.progress_final_by||'?')} pada ${esc((p.progress_final_at||'').slice(0,10))}">✔ 100% Final</span>`:''}${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}${hasPerm('project_manage')?`<button type=button class=rmenu data-menu="${p.id}" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
   <div style="color:var(--mut);font-size:12px">${esc(p.client||'')}</div>
   <div style="display:flex;align-items:center;gap:6px;margin:6px 0"><div class=pbar style="flex:1"><i style="width:${pct}%"></i></div><small>${pct}%</small></div>
   <div style="font-size:11px;color:var(--mut)">${idDate(p.start_date)} → ${idDate(p.end_date)}</div>
