@@ -18,12 +18,18 @@ def _key(t: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (t or "").lower()).strip()
 
 
-def N(level: int, title: str, guide: str, tools: list[str] | None = None, tables: list[tuple[str, list[str]]] | None = None) -> dict:
+def N(level: int, title: str, guide: str, tools: list[str] | None = None, tables: list[tuple[str, list[str]]] | None = None,
+      kv: list[str] | None = None) -> dict:
+    """kv = kartu isian (label : isi) -- dipakai RKL/RPL/UKL-UPL per dampak; tables = kerangka tabel berkolom."""
     n = {"l": level, "t": title, "s": 100, "khusus": True, "g": guide}
     if tools:
         n["tools"] = tools
-    if tables:
-        n["b"] = [{"k": "t", "h": [cols], "cap": cap, "s": 100} for cap, cols in tables]
+    b = []
+    if kv:
+        b.append({"k": "kv", "labels": list(kv), "s": 100})
+    b += [{"k": "t", "h": [cols], "cap": cap, "s": 100} for cap, cols in (tables or [])]
+    if b:
+        n["b"] = b
     return n
 
 
@@ -158,7 +164,131 @@ ANDAL_TAMBANG = [
     ]),
 ]
 
-EXTRA: dict[str, list] = {"andal-pertambangan": ANDAL_TAMBANG}
+# ----------------------------------------------------------------------------------------------- RKL-RPL pertambangan
+# Kartu isian per dampak: bahan baris matriks RKL / RPL yang sudah ada di bagian induk. Contoh upaya = khas tambang, BUKAN baku;
+# penyusun menetapkan sesuai dampak penting hasil ANDAL, baku mutu, dan persetujuan teknis yang berlaku.
+RKL_KV = ["Dampak lingkungan yang dikelola", "Sumber dampak", "Indikator/tolok ukur keberhasilan", "Bentuk pengelolaan — teknologi",
+          "Bentuk pengelolaan — sosial ekonomi", "Bentuk pengelolaan — institusi", "Lokasi pengelolaan", "Periode pengelolaan", "Institusi pengelola dan pengawas"]
+RPL_KV = ["Dampak lingkungan yang dipantau", "Parameter/indikator", "Metode pengumpulan dan analisis data", "Lokasi pemantauan",
+          "Waktu dan frekuensi pemantauan", "Pelaksana pemantauan", "Pengawas pemantauan", "Penerima laporan"]
+
+RKL_TAMBANG = [
+    (["Rencana Pengelolaan Lingkungan Hidup"], [
+        N(2, "Pengelolaan Kualitas Udara (Debu dan Emisi)",
+          "Isi satu kartu per dampak penting. Contoh upaya khas tambang: penyiraman jalan angkut dan area bukaan (water truck), penutup bak kendaraan, pembatasan kecepatan, pencucian roda (wheel wash), "
+          "penutup/pelindung angin stockpile, sabuk hijau, serta perawatan alat berat. Indikator: konsentrasi debu/gas di permukiman terdekat tidak melampaui baku mutu. Dasarkan besaran upaya pada prakiraan di ANDAL.",
+          ["udara"], kv=RKL_KV),
+        N(2, "Pengelolaan Kebisingan dan Getaran (termasuk Peledakan)",
+          "Contoh upaya: pengaturan jam dan jadwal peledakan, rancangan peledakan (isian bahan peledak per tunda, pola, penundaan) agar getaran di bangunan terdekat di bawah baku, jarak aman, peredam/penghalang, "
+          "pemilihan dan perawatan alat. Cantumkan jarak ke permukiman dan sosialisasi jadwal peledakan kepada warga.",
+          ["bising", "tambang"], kv=RKL_KV),
+        N(2, "Pengelolaan Erosi, Sedimentasi, dan Bentang Lahan",
+          "Contoh upaya: penanganan tanah pucuk, drainase dan terasering, penutupan lahan terbuka bertahap, penanaman penutup tanah (hidroseeding), perangkap sedimen. Indikator: besaran erosi/kekeruhan di badan air hilir sesuai prakiraan.",
+          ["limpasan_erosi"], kv=RKL_KV),
+        N(2, "Pengelolaan Air Tambang dan Kualitas Air (termasuk Air Asam Tambang)",
+          "Contoh upaya: sistem penyaliran dan kolam pengendap bertahap berdimensi cukup, penetralan pH, pemisahan air bersih dan air kotor, pengelolaan material berpotensi asam (identifikasi, penimbunan, penutupan), "
+          "oil trap bengkel, dan pengolahan air limbah domestik. Pastikan debit dan dimensi dihitung (alat tambang, hidrologi, air limbah) dan titik penaatan ditetapkan.",
+          ["tambang", "air_sungai", "air_limbah"], kv=RKL_KV),
+        N(2, "Pengelolaan Limpasan dan Pengendalian Banjir",
+          "Contoh upaya: saluran keliling dan gorong-gorong sesuai debit rencana, kolam retensi, perawatan alur alami, dan penanganan limpasan dari timbunan. Rujuk debit puncak sebelum-sesudah kegiatan dari ANDAL.",
+          ["limpasan_erosi"], kv=RKL_KV),
+        N(2, "Pengelolaan Lalu Lintas Angkutan Tambang",
+          "Contoh upaya: jalan angkut khusus/pengaturan rute dan jam, batas muatan dan kecepatan, rambu dan petugas pengatur, perawatan dan pelebaran jalan, koordinasi dengan pemerintah daerah dan masyarakat. Indikator: V/C dan tingkat pelayanan ruas terjaga.",
+          ["lalu_lintas"], kv=RKL_KV),
+        N(2, "Pengelolaan Flora, Fauna, dan Keanekaragaman Hayati",
+          "Contoh upaya: pembukaan lahan bertahap, perlindungan spesies dilindungi dan koridor satwa, penyelamatan tanah pucuk dan bibit, penanaman kembali dengan jenis lokal, perlindungan sempadan sungai.",
+          ["keanekaragaman"], kv=RKL_KV),
+        N(2, "Pengelolaan Tenaga Kerja, Sosial Ekonomi, dan Hubungan Masyarakat",
+          "Contoh upaya: prioritas tenaga kerja lokal dan pelatihan, kemitraan usaha lokal, program pemberdayaan masyarakat, mekanisme pengaduan, penyelesaian ganti rugi lahan secara transparan, penanganan pendatang.",
+          ["tenaga_kerja", "penduduk"], kv=RKL_KV),
+        N(2, "Pengelolaan Kesehatan dan Keselamatan Masyarakat",
+          "Contoh upaya: pengendalian debu dan kebisingan di permukiman, pos kesehatan/kerja sama puskesmas, pemantauan keluhan ISPA, pengamanan area tambang dari akses warga, penanganan lubang bekas tambang berbahaya.",
+          ["udara", "bising"], kv=RKL_KV),
+        N(2, "Pengelolaan Limbah Padat dan Limbah B3",
+          "Contoh upaya: tempat penyimpanan sementara limbah B3 berizin, pencatatan dan manifes, pengangkutan dan pengolahan oleh pihak berizin, pemilahan sampah domestik. Cantumkan jenis, sumber, dan volume limbah.",
+          ["sampah"], kv=RKL_KV),
+        N(2, "Pengelolaan Emisi Gas Rumah Kaca dan Efisiensi Energi",
+          "Contoh upaya: efisiensi bahan bakar dan perawatan alat berat, optimasi jarak angkut, penggunaan energi terbarukan bila memungkinkan, penanaman pada area reklamasi sebagai penyerap karbon.",
+          ["grk", "energi_bbm"], kv=RKL_KV),
+        N(2, "Reklamasi, Revegetasi, dan Pengelolaan Lubang Bekas Tambang",
+          "Uraikan tahapan reklamasi (penataan lahan, tanah pucuk, revegetasi, pemeliharaan), peruntukan akhir lahan, penanganan lubang bekas tambang, dan jaminan sesuai ketentuan. Indikator: persentase lahan tereklamasi dan keberhasilan tumbuh.",
+          ["keanekaragaman", "tambang"], kv=RKL_KV),
+    ]),
+    (["Rencana Pemantauan Lingkungan Hidup"], [
+        N(2, "Pemantauan Kualitas Udara Ambien dan Emisi",
+          "Contoh parameter: debu (TSP/PM10/PM2.5), gas (SO2, NO2, CO) sesuai sumber. Tetapkan titik di permukiman terdekat dan arah angin dominan; sebutkan metode baku, laboratorium terakreditasi, serta frekuensi sesuai ketentuan dan persetujuan.",
+          ["udara"], kv=RPL_KV),
+        N(2, "Pemantauan Kebisingan dan Getaran Peledakan",
+          "Parameter: tingkat kebisingan (Leq, dBA) siang/malam dan getaran (PPV, frekuensi) di bangunan terdekat saat peledakan. Cantumkan alat ukur, titik, dan baku yang dipakai.",
+          ["bising", "tambang"], kv=RPL_KV),
+        N(2, "Pemantauan Kualitas Air Permukaan, Air Tanah, dan Air Tambang",
+          "Contoh parameter: pH, TSS, Fe, Mn, logam terlarut lain, COD/BOD sesuai sumber; titik hulu-hilir, di keluaran kolam pengendap (titik penaatan), dan sumur warga. Tentukan baku mutu sesuai peruntukan dan persetujuan teknis.",
+          ["air_sungai", "air_limbah"], kv=RPL_KV),
+        N(2, "Pemantauan Erosi, Sedimentasi, dan Stabilitas Lereng/Timbunan",
+          "Pantau kekeruhan dan sedimentasi di badan air hilir, kondisi saluran dan kolam, serta stabilitas lereng dan timbunan. Sebutkan indikator visual dan pengukuran serta frekuensinya (lebih rapat saat musim hujan).",
+          ["limpasan_erosi"], kv=RPL_KV),
+        N(2, "Pemantauan Debit dan Tinggi Muka Air",
+          "Pantau debit air sungai penerima dan air tambang yang dibuang, serta tinggi muka air tanah/sumur pantau, untuk membandingkan dengan prakiraan.",
+          ["limpasan_erosi"], kv=RPL_KV),
+        N(2, "Pemantauan Lalu Lintas Angkutan Tambang",
+          "Parameter: volume dan komposisi kendaraan, rit angkut, kinerja ruas (V/C), kondisi jalan, dan pengaduan/kecelakaan. Cantumkan lokasi hitung dan jam puncak.",
+          ["lalu_lintas"], kv=RPL_KV),
+        N(2, "Pemantauan Flora, Fauna, dan Keberhasilan Revegetasi",
+          "Parameter: persentase hidup tanaman, penutupan tajuk, keanekaragaman (indeks) flora/fauna di area reklamasi dan area pembanding, serta perjumpaan satwa dilindungi.",
+          ["keanekaragaman"], kv=RPL_KV),
+        N(2, "Pemantauan Sosial Ekonomi dan Persepsi Masyarakat",
+          "Parameter: komposisi tenaga kerja lokal, jumlah pendatang, pendapatan/mata pencaharian, pengaduan dan penyelesaiannya, serta persepsi masyarakat melalui survei berkala.",
+          ["tenaga_kerja", "survei"], kv=RPL_KV),
+        N(2, "Pemantauan Kesehatan Masyarakat",
+          "Parameter: pola penyakit terkait debu dan air (mis. ISPA, diare) dari data fasilitas kesehatan setempat, serta keluhan warga.",
+          kv=RPL_KV),
+        N(2, "Pemantauan Limbah Padat dan Limbah B3",
+          "Parameter: jenis dan volume timbulan, kondisi tempat penyimpanan, kelengkapan manifes, dan pihak pengelola berizin.",
+          ["sampah"], kv=RPL_KV),
+        N(2, "Pemantauan Emisi Gas Rumah Kaca dan Konsumsi Energi",
+          "Parameter: konsumsi bahan bakar dan listrik, emisi hasil perhitungan, serta luas penanaman sebagai penyerap karbon.",
+          ["grk", "energi_bbm"], kv=RPL_KV),
+        N(2, "Pemantauan Reklamasi dan Pengelolaan Lubang Bekas Tambang",
+          "Parameter: luas lahan tereklamasi dibanding rencana, mutu tanah dan penutupan lahan, serta kualitas air dan kestabilan lereng lubang bekas tambang.",
+          ["keanekaragaman", "tambang"], kv=RPL_KV),
+    ]),
+]
+
+# ----------------------------------------------------------------------------------------------- UKL-UPL pertambangan
+UKL_KV = ["Sumber dampak", "Jenis dan besaran dampak", "Upaya pengelolaan lingkungan hidup", "Upaya pemantauan (parameter, lokasi, frekuensi)", "Institusi pengelola dan pemantau"]
+
+UKL_TAMBANG = [
+    (["Skala Besaran"], [
+        N(3, "Kebutuhan Tenaga Kerja",
+          "Tabelkan jumlah tenaga kerja per tahap dan porsi lokal/pendatang. Gunakan alat tenaga kerja bila perlu menghitung pendatang.",
+          ["tenaga_kerja"], [("Kebutuhan tenaga kerja", ["Tahap", "Jumlah (orang)", "Lokal", "Pendatang"])]),
+        N(3, "Kebutuhan Air, Energi, dan Bahan Bakar",
+          "Rinci kebutuhan air dan sumbernya, listrik/genset, dan bahan bakar alat berat; angka ini menjadi dasar timbulan air limbah dan emisi.",
+          ["air_bersih", "energi_bbm"], [("Kebutuhan air dan energi", ["Kebutuhan", "Satuan", "Jumlah", "Sumber"])]),
+        N(3, "Timbulan Limbah Padat dan Limbah B3",
+          "Identifikasi jenis, sumber, dan volume sampah domestik dan limbah B3 serta pihak pengelolanya.",
+          ["sampah"], [("Timbulan limbah", ["Jenis Limbah", "Sumber", "Volume/Bulan", "Pengelola"])]),
+    ]),
+    (["Dampak Lingkungan yang Ditimbulkan dan Upaya", "Dampak Lingkungan yang Ditimbulkan Rencana"], [
+        N(3, "Dampak Penurunan Kualitas Udara dan Peningkatan Kebisingan",
+          "Satu kartu untuk debu/emisi dari pengupasan, pengangkutan, dan stockpile serta kebisingan dan getaran (bila ada peledakan). Upaya khas: penyiraman jalan, penutup bak, pembatasan kecepatan, jadwal kerja/peledakan, jarak aman; pemantauan: debu dan kebisingan di permukiman terdekat.",
+          ["udara", "bising"], kv=UKL_KV),
+        N(3, "Dampak Erosi dan Perubahan Kualitas Air",
+          "Satu kartu untuk erosi lahan terbuka, sedimentasi, dan air tambang/limpasan. Upaya khas: drainase, kolam pengendap, penutupan lahan, penetralan pH; pemantauan: pH, TSS, dan logam di titik penaatan serta hilir.",
+          ["limpasan_erosi", "air_sungai", "tambang"], kv=UKL_KV),
+        N(3, "Dampak Lalu Lintas Angkutan",
+          "Upaya khas: pengaturan rute dan jam angkut, batas muatan dan kecepatan, rambu, perawatan jalan; pemantauan: volume kendaraan dan kondisi jalan.",
+          ["lalu_lintas"], kv=UKL_KV),
+        N(3, "Dampak Sosial Ekonomi dan Ketenagakerjaan",
+          "Upaya khas: prioritas tenaga kerja lokal, mekanisme pengaduan, program masyarakat; pemantauan: komposisi tenaga kerja, pengaduan, dan persepsi.",
+          ["tenaga_kerja"], kv=UKL_KV),
+        N(3, "Dampak Limbah Padat dan Limbah B3",
+          "Upaya khas: pemilahan, tempat penyimpanan sementara berizin, pengangkutan oleh pihak berizin; pemantauan: volume dan manifes.",
+          ["sampah"], kv=UKL_KV),
+    ]),
+]
+
+EXTRA: dict[str, list] = {"andal-pertambangan": ANDAL_TAMBANG, "rkl_rpl-pertambangan": RKL_TAMBANG, "ukl_upl-pertambangan": UKL_TAMBANG}
 
 
 def _subtree_end(nodes: list[dict], i: int) -> int:
