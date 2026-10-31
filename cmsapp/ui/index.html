@@ -1695,12 +1695,18 @@ async function loadSection(headingId){section=headingId;const r=await api('GET',
  $('#ed').append(sectionBar(headingId));
  for(const b of r.blocks)$('#ed').append(view(b));
  if(!r.blocks.length){const p=document.createElement('div');p.style.color='var(--mut)';p.textContent='(bagian ini tak punya isi langsung, mungkin cuma berisi sub-bagian di bawahnya)';$('#ed').append(p)}}
-function sectionBar(headingId){const idx=outline.findIndex(h=>h.id===headingId),nxt=outline[idx+1];
+function sectionBar(headingId){const idx=outline.findIndex(h=>h.id===headingId),nxt=outline[idx+1],prv=idx>0?outline[idx-1]:null;
  const bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:6px 8px;background:var(--card);border:1px solid var(--line);border-radius:6px';
  const info=document.createElement('span');info.style.cssText='color:var(--mut);font-size:12px';info.textContent='Tampilan sebagian — hanya bagian ini';bar.append(info);
  const full=document.createElement('button');full.textContent='◀ Muat bab penuh';full.onclick=async()=>{await loadChapter();await loadOutline()};bar.append(full);
- if(nxt){const nb=document.createElement('button');nb.textContent='Lanjut: '+(nxt.text||'(tanpa judul)').slice(0,40)+' →';
-  nb.onclick=async()=>{chapter=nxt.chapId;await loadOutline();nxt.level===1?await loadChapter():await loadSection(nxt.id)};bar.append(nb)}
+ /* navigasi sebelumnya (kiri) / lanjut (kanan): dua tombol selebar separuh baris, judul maks 2 baris agar muat tanpa membesarkan bar */
+ const nav=document.createElement('div');nav.style.cssText='flex:1 1 100%;display:grid;grid-template-columns:1fr 1fr;gap:8px';
+ const go=(h,label,left)=>{const b=document.createElement('button');b.type='button';const t=(h.text||'(tanpa judul)').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,'');b.title=t;
+  b.style.cssText='min-width:0;padding:5px 8px;line-height:1.25;text-align:'+(left?'left':'right')+';grid-column:'+(left?1:2);
+  b.innerHTML='<span style="display:block;font-size:10px;color:var(--mut)">'+(left?'◀ ':'')+label+(left?'':' ▶')+'</span><span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;font-weight:600;overflow-wrap:anywhere">'+esc(t)+'</span>';
+  b.onclick=async()=>{chapter=h.chapId;await loadOutline();h.level===1?await loadChapter():await loadSection(h.id)};nav.append(b)};
+ if(prv)go(prv,'Sebelumnya',true);if(nxt)go(nxt,'Lanjut',false);
+ if(prv||nxt)bar.append(nav);
  return bar}
 async function loadCmts(){try{const {comments}=await api('GET',`/docs/${doc}/comments?chapter=${chapter}`);cmts={};
  for(const c of comments)(cmts[c.block_id]=cmts[c.block_id]||[]).push(c)}catch(e){}}
