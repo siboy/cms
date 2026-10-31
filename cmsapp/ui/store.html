@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Toko Engine — sdrive</title>
+<link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#f6f7f9;--fg:#1F2937;--mut:#64748b;--line:#e2e7ef;--card:#fff;--acc:#7c3aed;--mint:#A8E6CF;--lilac:#D8B4F8;--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--warn-bg:#fef3c7;--soft:#f3ecfd}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--fg:#e6e9ee;--mut:#8d97a9;--line:#2a3140;--card:#1a1f29;--acc:#b794f6;--ok:#4ade80;--bad:#f87171;--warn:#f0a35e;--warn-bg:#3a2a12;--soft:#2a2340}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
+header{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:3px solid var(--mint);background:var(--card);position:sticky;top:0;z-index:5}
+header b{flex:1;font-size:16px}a{color:var(--acc)}
+main{max-width:1000px;margin:0 auto;padding:12px 12px 120px}
+button,select,input,textarea{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+button{cursor:pointer}button:disabled{opacity:.5;cursor:default}
+button.p{background:linear-gradient(90deg,var(--lilac),var(--mint));color:#1F2937;border:none;font-weight:700}
+button.d{color:var(--bad);border-color:var(--bad)}
+.tabs{display:flex;gap:6px;margin:4px 0 12px;overflow-x:auto}.tabs button{border-radius:999px;white-space:nowrap}.tabs button.cur{background:var(--soft);border-color:var(--acc);color:var(--acc);font-weight:700}
+.note{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:9px 12px;margin:8px 0;font-size:13px}
+.ok{color:var(--ok)}.err{color:var(--bad)}.mut{color:var(--mut)}.small{font-size:12px}
+.grid{display:grid;grid-template-columns:1fr;gap:10px}@media(min-width:720px){.grid{grid-template-columns:1fr 1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 13px;border-top:4px solid var(--mint)}
+.card.hl{border-color:var(--acc);box-shadow:0 0 0 2px var(--soft)}
+.card h3{margin:0 0 2px;font-size:15px}.card p{margin:2px 0 8px}
+.chip{display:inline-block;font-size:11px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin:2px 3px 0 0;background:var(--bg)}
+.badge{display:inline-block;font-size:11px;padding:1px 9px;border-radius:999px;background:var(--soft);color:var(--acc);font-weight:700;margin:2px 4px 2px 0}
+.badge.g{background:#15803d22;color:var(--ok)}.badge.l{background:var(--warn-bg);color:var(--warn)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.row>.fill{flex:1 1 160px}
+.opt{display:flex;gap:8px;align-items:center;padding:7px 9px;border:1px solid var(--line);border-radius:10px;margin:5px 0;cursor:pointer}
+.opt input{width:18px;height:18px;padding:0;flex:none}.opt .pr{margin-left:auto;font-weight:700;white-space:nowrap}
+.opt.na{opacity:.5;cursor:default}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:3px solid var(--mint);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;z-index:6;box-shadow:0 -8px 22px rgba(0,0,0,.15)}
+.bar .tot{flex:1}.hide{display:none!important}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:6px 6px;text-align:left;vertical-align:top;font-size:13px}th{color:var(--mut);font-weight:600}
+.scroll{overflow-x:auto}
+.mask{position:fixed;top:0;left:0;right:0;bottom:0;background:#0009;z-index:30;display:flex;align-items:flex-end;justify-content:center}
+.dlg{background:var(--card);width:min(560px,100%);max-height:88%;overflow-y:auto;border-radius:18px 18px 0 0;border-top:3px solid var(--mint);padding:14px 14px calc(14px + env(safe-area-inset-bottom));display:block}
+.dlg>*{display:block;margin:0 0 9px}.dlg label{font-weight:700;font-size:13px}.dlg label>input,.dlg label>select,.dlg label>textarea{width:100%;font-weight:400;margin-top:3px}
+.dlg .row{display:flex}
+h4{margin:14px 0 6px}
+</style></head><body>
+<header><b>🛒 Toko Engine</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
+<main>
+ <div id="msg"></div>
+ <div class="tabs" id="tabs"></div>
+ <div id="view"></div>
+</main>
+<div class="bar hide" id="cartbar"><div class="tot"><b id="ccount"></b><div class="small mut" id="ctotal"></div></div><button type="button" id="cclear">Kosongkan</button><button type="button" class="p" id="cgo">Checkout</button></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rp=n=>n==null?'—':'Rp '+Number(n).toLocaleString('id-ID');
+const dt=s=>(s||'').slice(0,10);
+const QS=new URLSearchParams(location.search);
+async function api(method,path,body){
+  const o={method,credentials:'same-origin',headers:{}};
+  if(body!==undefined){o.body=JSON.stringify(body);o.headers={'Content-Type':'application/json'}}
+  if(method!=='GET')o.headers['X-CMS']='1';
+  const r=await fetch('/api/license'+path,o);
+  if(r.status===401){location.href='/';throw new Error('belum login')}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+const S={d:null,tab:'toko',cart:[],hold:{type:'user',id:null},doc:+QS.get('doc')||0,hl:QS.get('engine')||'',lic:[],ord:[],adm:null};
+const LBL=k=>(S.d.engines.find(e=>e.key===k)||{label:k}).label;
+const note=(t,bad)=>{$('#msg').innerHTML=t?`<div class="note" style="${bad?'':'background:#15803d22;color:var(--ok)'}">${esc(t)}</div>`:'';if(t)window.scrollTo({top:0,behavior:'smooth'})};
+
+async function boot(){
+  try{S.d=await api('GET','/store'+(S.doc?'?doc='+S.doc:''))}catch(e){return note(e.message,1)}
+  $('#who').textContent=S.d.me.username;
+  if(!S.doc&&S.d.docs[0])S.docSel=S.d.docs[0].id;S.docSel=S.doc||S.docSel||0;
+  S.hold={type:'user',id:S.d.me.id};
+  tabs();draw();cartBar();
+}
+function tabs(){
+  const T=[['toko','🛒 Toko'],['saya','📄 Lisensi & Pesanan'],...(S.d.can_manage?[['admin','⚙ Admin']]:[])];
+  $('#tabs').innerHTML=T.map(([k,l])=>`<button data-t="${k}" class="${S.tab===k?'cur':''}">${l}</button>`).join('');
+  $('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.tab=b.dataset.t;tabs();draw()};
+}
+function draw(){({toko:viewToko,saya:viewSaya,admin:viewAdmin})[S.tab]();cartBar()}
+
+// ------------------------------------------------------------------------------- TOKO
+function ownBadges(e){
+  let h='';
+  if(e.operator)h+='<span class="badge g">✅ Dibuka operator (semua pengguna)</span>';
+  if(e.owned)h+=`<span class="badge g">✅ Aktif s.d. ${esc(dt(e.owned.ends_at))}${e.owned.holder_type!=='user'?' ('+(e.owned.holder_type==='group'?'lewat grup':'seluruh tenant')+')':''}</span>`;
+  if(e.owned_here)h+='<span class="badge g">✅ Dapat dipakai di laporan ini</span>';
+  (e.report_licenses||[]).slice(0,3).forEach(r=>{h+=`<span class="badge g" title="${esc(r.doc_title||'')}">📄 Laporan: ${esc((r.doc_title||'#'+r.doc_id).slice(0,28))}</span>`});
+  if((e.report_licenses||[]).length>3)h+=`<span class="badge g">+${e.report_licenses.length-3} laporan lain</span>`;
+  if(e.pending_order)h+=`<span class="badge l">⏳ Pesanan #${e.pending_order} menunggu pembayaran</span>`;
+  if(!h)h='<span class="badge l">🔒 Terkunci</span>';
+  return h;
+}
+function viewToko(){
+  const d=S.d;let h='';S.hold={type:'user',id:d.me.id};
+  if(!d.licensing)h+=`<div class="note">Mode lisensi per-engine <b>belum aktif</b> di tenant ini, sehingga akses engine mengikuti pengaturan operator. ${d.can_manage?'<button type="button" id="modeOn" class="p">Nyalakan mode lisensi</button>':'Hubungi admin untuk mengaktifkannya.'}</div>`;
+  h+=`<div class="card" style="margin-bottom:10px"><b>Cara kerja</b>
+   <div class="small mut">Tiap engine dibeli terpisah. Pilih <b>Paket waktu</b> (berlaku untuk semua laporan selama 6/12/24 bulan) atau <b>Sekali pakai per laporan</b> (hanya untuk satu laporan; laporan lain harus beli lagi).
+   Admin dapat membelikan untuk Anda, grup, atau seluruh tenant. Judul bagian, petunjuk, dan penanda 🧮 di dokumen tetap terlihat; yang terkunci hanya pemakaian hitung/simulasinya.</div></div>`;
+  h+=`<div class="row"><label class="fill small"><b>Beli untuk</b><br><select id="hType"><option value="user">Saya sendiri</option>${d.can_manage?'<option value="user2">Pengguna lain…</option><option value="group">Satu grup (peran)…</option><option value="tenant">Seluruh pengguna tenant</option>':''}</select></label>
+   <label class="fill small hide" id="hWrap"><b id="hLbl"></b><br><select id="hId"></select></label>
+   <label class="fill small"><b>Laporan (utk paket per-laporan)</b><br><select id="docSel">${d.docs.length?d.docs.map(x=>`<option value="${x.id}" ${x.id===S.docSel?'selected':''}>${esc(x.title)}</option>`).join(''):'<option value="">(belum ada laporan)</option>'}</select></label></div>`;
+  h+='<div class="grid">'+d.engines.map(e=>{
+    const p=e.prices,has=['6','12','24','report'].some(k=>p[k]!=null);
+    const opt=(k,l,val)=>p[k]==null?`<div class="opt na"><input type="radio" disabled><span>${l}</span><span class="pr mut">belum dihargai</span></div>`
+      :`<label class="opt"><input type="radio" name="o_${e.key}" value="${val}"><span>${l}</span><span class="pr">${rp(p[k])}</span></label>`;
+    return `<div class="card ${S.hl===e.key?'hl':''}" id="c_${e.key}"><h3>${esc(e.label)}</h3><div>${ownBadges(e)}</div><p class="small mut">${esc(e.desc)}</p>
+     <div>${e.tools.map(t=>`<span class="chip">${t.icon} ${esc(t.label)}</span>`).join('')}${e.sims.length?'<span class="chip">🎞 simulasi 2-D</span>':''}</div>
+     ${has?opt('report','📄 Sekali pakai — 1 laporan','report')+opt('6','Paket 6 bulan (semua laporan)','6')+opt('12','Paket 12 bulan (semua laporan)','12')+opt('24','Paket 24 bulan (semua laporan)','24')
+        +`<div class="row"><button type="button" class="p add" data-k="${e.key}">＋ Keranjang</button></div>`
+       :`<div class="note">Harga belum ditetapkan.${d.can_manage?' Atur di tab Admin → Harga, atau beri lisensi langsung.':' Hubungi admin.'}</div>`}</div>`}).join('')+'</div>';
+  $('#view').innerHTML=h;
+  if($('#modeOn'))$('#modeOn').onclick=async()=>{try{await api('PUT','/mode',{on:true});note('Mode lisensi dinyalakan',0);await boot()}catch(e){note(e.message,1)}};
+  const hT=$('#hType'),hW=$('#hWrap'),hI=$('#hId');
+  const setHold=()=>{const v=hT.value;hW.classList.toggle('hide',!(v==='user2'||v==='group'));
+    if(v==='user'){S.hold={type:'user',id:d.me.id}}else if(v==='tenant'){S.hold={type:'tenant',id:null}}
+    else{const L=v==='group'?d.groups:d.users;$('#hLbl').textContent=v==='group'?'Pilih grup':'Pilih pengguna';
+      hI.innerHTML=L.map(x=>`<option value="${x.id}">${esc(v==='group'?x.name:(x.name||x.username)+' ('+x.username+')')}</option>`).join('');
+      S.hold={type:v==='group'?'group':'user',id:+hI.value}}};
+  hT.onchange=()=>{setHold();cartBar()};hI.onchange=()=>{S.hold.id=+hI.value;cartBar()};
+  $('#docSel').onchange=e=>{S.docSel=+e.target.value||0};
+  document.querySelectorAll('.add').forEach(b=>b.onclick=()=>addToCart(b.dataset.k));
+  if(S.hl){$('#c_'+S.hl)?.scrollIntoView({block:'center'});}
+}
+function addToCart(key){
+  const r=document.querySelector(`input[name="o_${key}"]:checked`);
+  if(!r)return note('Pilih paket dulu (sekali pakai per laporan, atau 6/12/24 bulan).',1);
+  const e=S.d.engines.find(x=>x.key===key);
+  if(r.value==='report'){
+    if(!S.docSel)return note('Pilih laporan dulu untuk paket sekali pakai.',1);
+    const t=(S.d.docs.find(x=>x.id===S.docSel)||{}).title||'#'+S.docSel;
+    if(S.cart.some(c=>c.module===key&&c.scope==='report'&&c.doc_id===S.docSel))return note('Sudah ada di keranjang.',1);
+    S.cart.push({module:key,scope:'report',doc_id:S.docSel,label:`${e.label} — sekali pakai: ${t}`,price:e.prices.report});
+  }else{
+    const m=+r.value;if(S.cart.some(c=>c.module===key&&c.scope==='time'&&c.months===m))return note('Sudah ada di keranjang.',1);
+    S.cart.push({module:key,scope:'time',months:m,label:`${e.label} — paket ${m} bulan`,price:e.prices[r.value]});
+  }
+  note('Ditambahkan ke keranjang.',0);cartBar();
+}
+function cartBar(){
+  const b=$('#cartbar');b.classList.toggle('hide',!S.cart.length||S.tab!=='toko');
+  $('#ccount').textContent=S.cart.length+' item';$('#ctotal').textContent='Total '+rp(S.cart.reduce((a,c)=>a+(c.price||0),0))+' · untuk '+holdLabel();
+}
+function holdLabel(){const d=S.d,h=S.hold;if(h.type==='tenant')return 'seluruh tenant';
+  if(h.type==='group')return 'grup '+((d.groups||[]).find(g=>g.id===h.id)||{}).name;
+  if(h.id===d.me.id)return 'saya sendiri';const u=(d.users||[]).find(x=>x.id===h.id);return 'pengguna '+(u?u.username:h.id)}
+$('#cclear').onclick=()=>{S.cart=[];cartBar()};
+$('#cgo').onclick=()=>{
+  const d=S.d,mgr=d.can_manage,tot=S.cart.reduce((a,c)=>a+(c.price||0),0);
+  const m=document.createElement('div');m.className='mask';
+  m.innerHTML=`<form class="dlg"><b>Checkout — ${rp(tot)}</b>
+   <div class="small mut">Untuk: <b>${esc(holdLabel())}</b></div>
+   ${S.cart.map((c,i)=>`<div class="row" style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:5px"><span>${esc(c.label)}</span><span><b>${rp(c.price)}</b> <button type="button" data-rm="${i}" class="d small">✕</button></span></div>`).join('')}
+   <label>Referensi pembayaran / bukti transfer (opsional)<input name="ref" maxlength="120" placeholder="mis. TRF-2026-0012"></label>
+   <label>Catatan (opsional)<input name="note" maxlength="255"></label>
+   ${mgr?'<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" name="paid" style="width:18px;height:18px;margin:0"> Tandai LUNAS sekarang (lisensi langsung aktif)</label>':'<div class="small mut">Pesanan akan menunggu konfirmasi pembayaran oleh admin. Lisensi aktif setelah dikonfirmasi.</div>'}
+   <div class="row" style="justify-content:flex-end"><button type="button" id="x">Batal</button><button class="p">Pesan</button></div><span class="err small" id="e"></span></form>`;
+  document.body.append(m);const f=m.querySelector('form');
+  m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
+  m.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{S.cart.splice(+b.dataset.rm,1);m.remove();cartBar();if(S.cart.length)$('#cgo').click()});
+  f.onsubmit=async e=>{e.preventDefault();const btn=f.querySelector('button.p');btn.disabled=true;
+    try{const r=await api('POST','/orders',{items:S.cart.map(c=>c.scope==='report'?{module:c.module,scope:'report',doc_id:c.doc_id}:{module:c.module,months:c.months}),
+        for:S.hold.type==='tenant'?{type:'tenant'}:{type:S.hold.type,id:S.hold.id},paid:mgr&&f.paid&&f.paid.checked,payment_ref:f.ref.value,note:f.note.value});
+      S.cart=[];m.remove();await boot();
+      note(r.order.status==='paid'?`Pesanan #${r.order.id} lunas — lisensi aktif.`:`Pesanan #${r.order.id} dibuat (${rp(r.order.total)}). Menunggu konfirmasi pembayaran admin.`,0)}
+    catch(x){f.querySelector('#e').textContent=x.message;btn.disabled=false}};
+};
+
+// ------------------------------------------------------------------------------- LISENSI & PESANAN SAYA
+async function viewSaya(){
+  $('#view').innerHTML='<p class="mut">memuat…</p>';
+  try{S.lic=(await api('GET','/licenses')).licenses;S.ord=(await api('GET','/orders')).orders}catch(e){return note(e.message,1)}
+  const sc=l=>l.scope==='report'?`📄 Hanya laporan: <b>${esc(l.doc_title||'#'+l.doc_id)}</b>`:`Semua laporan, s.d. <b>${esc(dt(l.ends_at))}</b>`;
+  const st=l=>l.revoked_at?'<span class="badge l">dicabut</span>':l.expired?'<span class="badge l">kedaluwarsa</span>':l.active?'<span class="badge g">aktif</span>':'<span class="badge l">belum mulai</span>';
+  let h='<h4>Lisensi saya</h4>'+(S.lic.length?'<div class="grid">'+S.lic.map(l=>`<div class="card"><b>${esc(LBL(l.module_key))}</b> ${st(l)}<div class="small">${sc(l)}</div><div class="small mut">${esc(l.holder_label)} · ${l.source==='purchase'?'beli':'diberikan'}${l.order_id?' · pesanan #'+l.order_id:''}</div></div>`).join('')+'</div>':'<p class="mut">Belum ada lisensi.</p>');
+  const ST={pending:'<span class="badge l">menunggu pembayaran</span>',paid:'<span class="badge g">lunas</span>',cancelled:'<span class="badge">dibatalkan</span>'};
+  h+='<h4>Pesanan saya</h4>'+(S.ord.length?S.ord.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> ${ST[o.status]||o.status} <span class="mut small">${esc(dt(o.created_at))} · ${esc(o.holder_label||'')}</span>
+    <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${rp(i.price)})`).join('<br>')}</div>
+    <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref: ${esc(o.payment_ref)}</span>`:''}${o.status==='pending'?`<button type="button" class="d small" data-cancel="${o.id}">Batalkan</button>`:''}</div></div>`).join(''):'<p class="mut">Belum ada pesanan.</p>');
+  $('#view').innerHTML=h;
+  document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=async()=>{if(!confirm('Batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.cancel}/cancel`);viewSaya()}catch(e){note(e.message,1)}});
+}
+
+// ------------------------------------------------------------------------------- ADMIN
+async function viewAdmin(){
+  $('#view').innerHTML='<p class="mut">memuat…</p>';
+  try{S.adm={orders:(await api('GET','/orders?scope=all')).orders,lic:(await api('GET','/licenses?scope=all')).licenses}}catch(e){return note(e.message,1)}
+  const d=S.d,A=S.adm,pend=A.orders.filter(o=>o.status==='pending');
+  let h=`<h4>Pesanan menunggu pembayaran (${pend.length})</h4>`+(pend.length?pend.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> oleh <b>${esc(o.buyer_name)}</b> · ${esc(o.holder_label)} · ${esc(dt(o.created_at))}
+     <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${rp(i.price)})`).join('<br>')}</div>
+     <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref pembeli: ${esc(o.payment_ref)}</span>`:''}</div>
+     <div class="row"><input class="fill" placeholder="Referensi pembayaran yang diterima" data-ref="${o.id}"><button type="button" class="p" data-ok="${o.id}">✔ Konfirmasi lunas</button><button type="button" class="d" data-no="${o.id}">Tolak</button></div></div>`).join(''):'<p class="mut">Tidak ada.</p>');
+  h+=`<h4>Harga engine (Rupiah; kosong = belum dijual)</h4><div class="scroll"><table><tr><th>Engine</th><th>Per laporan</th><th>6 bln</th><th>12 bln</th><th>24 bln</th></tr>`
+    +d.engines.map(e=>`<tr><td>${esc(e.label)}</td>${['report','6','12','24'].map(k=>`<td><input type="number" min="0" step="1000" style="width:110px" data-pk="${e.key}|${k}" value="${e.prices[k]??''}"></td>`).join('')}</tr>`).join('')
+    +`</table></div><div class="row"><button type="button" class="p" id="savePrice">Simpan harga</button></div>`;
+  h+=`<h4>Beri lisensi langsung (tanpa pesanan)</h4><form id="gForm" class="card"><div class="row">
+    <label class="fill small"><b>Engine</b><br><select name="module">${d.engines.map(e=>`<option value="${e.key}">${esc(e.label)}</option>`).join('')}</select></label>
+    <label class="fill small"><b>Jenis</b><br><select name="scope"><option value="time">Paket waktu (semua laporan)</option><option value="report">Sekali pakai per laporan</option></select></label>
+    <label class="fill small" id="gMon"><b>Bulan</b><br><input type="number" name="months" min="1" max="60" value="12"></label>
+    <label class="fill small hide" id="gDoc"><b>Laporan</b><br><select name="doc_id">${d.docs.map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join('')}</select></label></div>
+    <div class="row"><label class="fill small"><b>Untuk</b><br><select name="ht"><option value="user">Pengguna</option><option value="group">Grup</option><option value="tenant">Seluruh tenant</option></select></label>
+    <label class="fill small" id="gWho"><b>Pilih</b><br><select name="hid"></select></label>
+    <label class="fill small"><b>Catatan</b><br><input name="note" maxlength="255" placeholder="mis. uji coba / kompensasi"></label></div>
+    <button class="p">Terbitkan lisensi</button> <span id="gE" class="small err"></span></form>`;
+  const sc=l=>l.scope==='report'?`📄 ${esc(l.doc_title||'#'+l.doc_id)}`:`s.d. ${esc(dt(l.ends_at))}`;
+  h+=`<h4>Semua lisensi (${A.lic.length})</h4><div class="scroll"><table><tr><th>Engine</th><th>Pemegang</th><th>Berlaku</th><th>Status</th><th></th></tr>`
+    +A.lic.map(l=>`<tr><td>${esc(LBL(l.module_key))}</td><td>${esc(l.holder_label)}</td><td>${sc(l)}</td><td>${l.revoked_at?'dicabut':l.expired?'kedaluwarsa':l.active?'aktif':'—'}</td><td>${l.revoked_at?'':`<button type="button" class="d small" data-rv="${l.id}">Cabut</button>`}</td></tr>`).join('')+'</table></div>';
+  h+=`<h4>Mode</h4><div class="row"><span class="small mut">Mode lisensi: <b>${d.licensing?'AKTIF':'mati'}</b></span><button type="button" id="modeBtn">${d.licensing?'Matikan':'Nyalakan'}</button></div>`;
+  $('#view').innerHTML=h;
+  document.querySelectorAll('[data-ok]').forEach(b=>b.onclick=async()=>{const ref=document.querySelector(`[data-ref="${b.dataset.ok}"]`).value;
+    try{await api('POST',`/orders/${b.dataset.ok}/confirm`,{payment_ref:ref});note('Pesanan dikonfirmasi, lisensi aktif.',0);viewAdmin()}catch(e){note(e.message,1)}});
+  document.querySelectorAll('[data-no]').forEach(b=>b.onclick=async()=>{if(!confirm('Tolak/batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.no}/cancel`);viewAdmin()}catch(e){note(e.message,1)}});
+  document.querySelectorAll('[data-rv]').forEach(b=>b.onclick=async()=>{if(!confirm('Cabut lisensi ini? Pemegang langsung kehilangan akses.'))return;try{await api('POST',`/licenses/${b.dataset.rv}/revoke`);viewAdmin()}catch(e){note(e.message,1)}});
+  $('#savePrice').onclick=async()=>{const pr={};document.querySelectorAll('[data-pk]').forEach(i=>{const[k,p]=i.dataset.pk.split('|');(pr[k]=pr[k]||{})[p]=i.value===''?null:+i.value});
+    try{await api('PUT','/prices',{prices:pr});note('Harga disimpan.',0);await boot();S.tab='admin';tabs();viewAdmin()}catch(e){note(e.message,1)}};
+  const f=$('#gForm'),fill=()=>{const t=f.ht.value;$('#gWho').classList.toggle('hide',t==='tenant');
+    f.hid.innerHTML=(t==='group'?d.groups.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`):d.users.map(x=>`<option value="${x.id}">${esc((x.name||x.username)+' ('+x.username+')')}</option>`)).join('')};
+  f.ht.onchange=fill;fill();
+  f.scope.onchange=()=>{$('#gMon').classList.toggle('hide',f.scope.value==='report');$('#gDoc').classList.toggle('hide',f.scope.value!=='report')};
+  f.onsubmit=async e=>{e.preventDefault();$('#gE').textContent='';
+    try{await api('POST','/licenses/grant',{module:f.module.value,scope:f.scope.value,months:+f.months.value,doc_id:f.scope.value==='report'?+f.doc_id.value:undefined,
+        for:f.ht.value==='tenant'?{type:'tenant'}:{type:f.ht.value,id:+f.hid.value},note:f.note.value});note('Lisensi diterbitkan.',0);viewAdmin()}catch(x){$('#gE').textContent=x.message}};
+  $('#modeBtn').onclick=async()=>{try{await api('PUT','/mode',{on:!d.licensing});await boot();S.tab='admin';tabs();viewAdmin()}catch(e){note(e.message,1)}};
+}
+boot();
+</script></body></html>

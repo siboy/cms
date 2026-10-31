@@ -87,8 +87,8 @@ def tools():
     out = []
     for t in tpl_tools.public():
         mod = mods.TOOL_MODULE.get(t["id"])
-        out.append({**t, "module": mod, "locked": bool(mod) and not mods.is_on(mod)})
-    return jsonify(tools=out)
+        out.append({**t, "module": mod, "module_label": mods.LABEL.get(mod, mod) if mod else None, "locked": bool(mod) and not mods.is_on(mod)})
+    return jsonify(tools=out, licensing=mods.licensing_on())
 
 
 # ---------------------------------------------------------------- meta

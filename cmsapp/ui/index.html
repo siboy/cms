@@ -320,7 +320,7 @@ header b{letter-spacing:.2px}
 <button id="bproj" hidden>Proyek</button>
 <button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button>
 </nav>
-<div id="kwrap"><button id="bkeb" title="Menu" hidden>⋮</button><div id="kmenu" hidden><button id="badm" hidden>Admin</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="bdocs" hidden>Dokumen</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button><button id="bpriv" hidden>🔐 Privilege</button><button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><a id="bhow" href="/howto">📘 Howto</a><button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bout" hidden>Keluar</button></div></div>
+<div id="kwrap"><button id="bkeb" title="Menu" hidden>⋮</button><div id="kmenu" hidden><button id="badm" hidden>Admin</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="bdocs" hidden>Dokumen</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button><button id="bpriv" hidden>🔐 Privilege</button><button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bstore" hidden title="Beli / lihat lisensi engine hitung & simulasi (per paket waktu atau per laporan)">🛒 Toko Engine</button><a id="bhow" href="/howto">📘 Howto</a><button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bout" hidden>Keluar</button></div></div>
 </header>
 <div id="kscrim" hidden></div><div id="app"></div><div id="bar" hidden></div>
 <script src="/offline.js?v=1"></script>
@@ -416,7 +416,7 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  const stok=qp.get('share');if(stok)return shareView(stok);
  try{me=(await api('GET','/me')).user;if(window.OFF)OFF.setUser(me.username)}catch(e){return loginView()}
  pruneDrafts();
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;$('#bapk').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;api('GET','/modules').then(r=>{$('#bstore').hidden=!r.licensing}).catch(()=>{});$('#bapk').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));
  const dq=qp.get('doc');
  if(dq){await openDoc(+dq);const bq=qp.get('block');
@@ -480,6 +480,7 @@ $('#bdocs').onclick=()=>docsView();
 $('#bproj').onclick=()=>projectsView();
 $('#bdata').onclick=()=>{location.href='/data-desa'};
 $('#btpl').onclick=()=>{location.href='/templates'};
+$('#bstore').onclick=()=>{location.href='/store'+(typeof doc!=='undefined'&&doc?'?doc='+doc:'')};
 $('#bfiles').onclick=()=>meFilesView();
 $('#bnotif').onclick=notifPanel;
 $('#bapk').onclick=async()=>{try{const r=await fetch('/cms.apk',{method:'HEAD'});
@@ -1681,7 +1682,8 @@ async function loadOutline(){const r=await api('GET',`/docs/${doc}/outline?max_l
   const picBadge=(h.pic||[]).length?` <span class=badge data-pic="${h.id}" style="background:${done?'#2da44e':'var(--mut)'}${h.pic_direct?'':';opacity:.7'}" title="${h.pic_direct?'':'warisan — '}${h.pic.map(p=>p.username).join(', ')}">${h.pic.length}${done?' ✓':''}</span>`:'';
   /* ikon penanda dari template: ▦ bagian ini butuh/punya tabel, 🧮 terkait alat hitung/simulasi (sama dg pratinjau template) */
   const tlo=toolsFor({kind:'heading',text:h.text,data:{tools:h.tools}});
-  const ic=(h.tbl?'<span class=oic title="Bagian ini memerlukan tabel">▦</span>':'')+(tlo.length?`<span class=oic title="Terkait alat hitung/simulasi: ${esc(tlo.map(t=>t.label).join(', '))}">🧮</span>`:'');
+  const lk=tlo.length&&tlo.every(t=>t.locked);
+  const ic=(h.tbl?'<span class=oic title="Bagian ini memerlukan tabel">▦</span>':'')+(tlo.length?`<span class=oic title="Terkait alat hitung/simulasi: ${esc(tlo.map(t=>t.label).join(', '))}${lk?' — belum dibeli':''}">${lk?'🔒':''}🧮</span>`:'');
   return `<a data-id="${h.id}" data-level="${h.level}" data-chapter="${h.chapId}" style="padding-left:${(h.level-1)*2}ch" class="lv${h.level} ${h.mine?'mine':''} ${h.id===(section||chapter)?'cur':''}">${esc((h.text||'(tanpa judul)').slice(0,60))}${ic}${picBadge}</a>`}).join('');
  document.querySelectorAll('#side [data-pic]').forEach(s=>s.onclick=e=>{e.preventDefault();e.stopPropagation();
   const h=outline.find(x=>x.id===+s.dataset.pic);picDlg(doc,h.id,h.text||'H'+h.level,()=>loadOutline())});
@@ -1746,16 +1748,18 @@ function bodyOf(b){
   d.style.color='var(--mut)';return d}
  const d=document.createElement('div');d.className='txt';d.append(mk2dom(b.text));return d}
 let KDTOOLS=null;
-async function loadTools(){if(KDTOOLS)return KDTOOLS;try{KDTOOLS=(await api('GET','/kd/tools')).tools.filter(t=>!t.locked).map(t=>({...t,re:t.patterns.map(p=>new RegExp(p,'i'))}))}catch(e){KDTOOLS=[]}return KDTOOLS}
+async function loadTools(){const dk=(typeof doc!=='undefined'&&doc)||0;if(KDTOOLS&&KDTOOLS._doc===dk)return KDTOOLS;try{/* alat terkunci TETAP ditampilkan (heading & petunjuk terlihat); status kunci dihitung server per pengguna + per laporan */KDTOOLS=(await api('GET','/kd/tools'+(dk?'?doc='+dk:''))).tools.map(t=>({...t,re:t.patterns.map(p=>new RegExp(p,'i'))}));KDTOOLS._doc=dk}catch(e){KDTOOLS=[]}return KDTOOLS}
 // heading/caption yang judulnya terkait mesin hitung/simulasi (pola dari server: utils/tpl_tools.py)
 function toolsFor(b){if(!KDTOOLS||!['heading','caption'].includes(b.kind))return[];
  const t=(b.text||'').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,''),ex=(b.data&&b.data.tools)||[];   // data.tools = bagian yang di dokumen contoh memuat perhitungan (dari template)
  return KDTOOLS.filter(x=>ex.includes(x.id)||x.re.some(r=>r.test(t)))}
 function toolDlg(b,tl){const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>🧮 Alat hitung / simulasi untuk “${esc((b.text||'').replace(/\\(.)/g,'$1').slice(0,70))}”</b>
-  <small style="color:var(--mut)">Dibuka di tab baru. Hasilnya bisa disisipkan sebagai blok (tabel/paragraf/gambar) tepat setelah blok ini. Ini alat penapisan awal — parameter dan baku mutu tetap isian Anda.</small>
+  <small style="color:var(--mut)">Dibuka di tab baru. Hasilnya bisa disisipkan sebagai blok (tabel/paragraf/gambar) tepat setelah blok ini. Ini alat penapisan awal — parameter dan baku mutu tetap isian Anda. Alat bertanda 🔒 harus dibeli dulu (paket waktu, atau sekali pakai untuk laporan ini saja).</small>
   ${tl.map(t=>`<div style="border:1px solid var(--line);border-radius:6px;padding:8px;margin:6px 0"><b>${t.icon} ${esc(t.label)}</b><div style="font-size:.85em;color:var(--mut);margin:2px 0 6px">${esc(t.why)}</div>
-   <a class=btnlink target=_blank rel=noopener href="/data-desa?tool=${encodeURIComponent(t.id)}&doc=${doc}&after=${b.id}">Buka &amp; sisipkan ke dokumen ↗</a></div>`).join('')}
+   ${t.locked?`<div style="font-size:12.5px;margin-bottom:6px">🔒 Engine <b>“${esc(t.module_label||t.module||'')}”</b> belum Anda miliki untuk laporan ini.</div>
+    <a class=btnlink href="/store?engine=${encodeURIComponent(t.module||'')}&doc=${doc}">🛒 Beli engine ini</a>`
+    :`<a class=btnlink target=_blank rel=noopener href="/data-desa?tool=${encodeURIComponent(t.id)}&doc=${doc}&after=${b.id}">Buka &amp; sisipkan ke dokumen ↗</a>`}</div>`).join('')}
   <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()}}
 const GENLIST_LABELS={toc:'Daftar Isi',tof_tabel:'Daftar Tabel',tof_gambar:'Daftar Gambar'};
@@ -1782,7 +1786,7 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
  const sdone=b.kind==='heading'&&!!(b.data||{}).section_done;
  const canOutline=hasPerm('outline_manage');
  const tl=toolsFor(b);   // alat hitung/simulasi terkait heading/caption ini (tanpa baris ini view() melempar ReferenceError utk SETIAP blok -> editor kosong)
- el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${sdone?'<span class=badge style="background:#2da44e" title="Heading ditandai selesai diisi — dihitung penuh di progres task bab">✅ DONE</span>':''}${tl.length?`<span class=badge title="Bagian ini bisa dibantu mesin hitung/simulasi: ${esc(tl.map(t=>t.label).join(', '))}">🧮 ${tl.length>2?tl.length+' alat terkait':esc(tl.map(t=>t.label).join(' · '))}</span>`:''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
+ el.innerHTML=`<div class=meta><span>${b.kind}${b.level?' H'+b.level:''}</span><span>v${b.version}</span><span>${b.status}</span>${gen?`<span class=badge title="Heading ini jadi marker daftar otomatis, bukan bab biasa">📑 ${esc(GENLIST_LABELS[gen]||gen)}</span>`:''}${hidden?`<span class=badge style="background:var(--warn)" title="Disembunyikan — tak ikut diekspor DOCX">🙈 Hidden${b.kind==='heading'?' (+isi di bawahnya)':''}</span>`:''}${sdone?'<span class=badge style="background:#2da44e" title="Heading ditandai selesai diisi — dihitung penuh di progres task bab">✅ DONE</span>':''}${tl.length?`<span class=badge title="Bagian ini bisa dibantu mesin hitung/simulasi: ${esc(tl.map(t=>t.label).join(', '))}">${tl.every(t=>t.locked)?'🔒':'🧮'} ${tl.length>2?tl.length+' alat terkait':esc(tl.map(t=>t.label).join(' · '))}${tl.every(t=>t.locked)?' (belum dibeli)':''}</span>`:''}${b.locked_by?`<span class=err>🔒 ${esc(b.locked_by)}</span>`:''}${(cmts[b.id]||[]).some(c=>!c.resolved_at)?`<span class=badge style="cursor:pointer" onclick="toggleCm(${b.id})">💬 ${(cmts[b.id]||[]).filter(c=>!c.resolved_at).length}</span>`:''}</div>`;
  if(b.kind==='note'&&(b.data||{}).source==='template_guide'){el.classList.add('guide');const k=el.querySelector('.meta span');if(k)k.textContent='💡 Petunjuk penulisan (tidak ikut ekspor)'}
  el.append(bodyOf(b));
  if(el.classList.contains('guide')&&canEdit){const q=document.createElement('div');q.className='gq';   // pintasan selalu terlihat (tombol aksi biasa baru muncul saat blok disentuh)
@@ -1794,7 +1798,7 @@ function view(b){const el=document.createElement('div');el.className='blk'+(b.ki
   if(t==='Hapus')x.style.color='#d1242f';x.onclick=()=>f().catch(e=>note(e.message,1));a.append(x)};
  if(['heading','caption','table','image'].includes(b.kind)){const done=(b.pic||[]).length&&(b.pic||[]).every(p=>p.status==='done');
   btn('👤 PIC'+((b.pic||[]).length?` ${(b.pic||[]).length}${done?' ✓':''}`:''),async()=>picDlg(doc,b.id,(b.text||b.kind).slice(0,60),()=>refreshBlock(b.id)))}
- if(tl.length&&canEdit)btn('🧮 Hitung / simulasikan…',async()=>toolDlg(b,tl));
+ if(tl.length&&canEdit)btn(tl.every(t=>t.locked)?'🔒 Hitung / simulasikan (belum dibeli)…':'🧮 Hitung / simulasikan…',async()=>toolDlg(b,tl));
  if(b.kind==='heading'&&canEdit)btn(sdone?'✅ DONE (klik utk batalkan)':'☐ Tandai heading DONE',
   ()=>api('POST',`/blocks/${b.id}/section-done`,{done:!sdone,version:b.version}).then(()=>refreshBlock(b.id)));
  if(canOutline&&HIDEABLE_KINDS.includes(b.kind))btn(hidden?'👁 Tampilkan lagi':'🙈 Sembunyikan dari ekspor',()=>api('POST',`/blocks/${b.id}/hidden`,{hidden:!hidden,version:b.version}));

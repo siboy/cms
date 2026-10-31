@@ -45,6 +45,9 @@ def create_app(cfg=Config) -> Flask:
     from cmsapp.act_api import bp as act_bp
     app.register_blueprint(act_bp)
 
+    from cmsapp.license_api import bp as lic_bp
+    app.register_blueprint(lic_bp)
+
     @app.after_request
     def _security_headers(resp):
         h = resp.headers
@@ -130,6 +133,13 @@ def create_app(cfg=Config) -> Flask:
     def templates_page():
         """Halaman template outline laporan AMDAL/UKL-UPL. Login & izin template_use dicek oleh /api/templates/*."""
         resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "templates.html")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.get("/store")
+    def store_page():
+        """Toko Engine hitung/simulasi (lisensi per engine, berjangka). Login dicek oleh /api/license/*."""
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "store.html")
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 

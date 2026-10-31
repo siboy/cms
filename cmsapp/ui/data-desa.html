@@ -245,10 +245,13 @@ const fmt=(v,d=0)=>v==null||!isFinite(v)?'–':new Intl.NumberFormat('id-ID',{ma
 const cmp=v=>v==null?'–':new Intl.NumberFormat('id-ID',{notation:'compact',maximumFractionDigits:1}).format(v);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const PAL=()=>[0,1,2,3,4,5,6,7,8,9].map(i=>css('--s'+i));
+function storeUrl(mod){const d=+new URLSearchParams(location.search).get('doc')||0;return '/store?engine='+encodeURIComponent(mod||'')+(d?'&doc='+d:'')}
 async function api(path,opt){
   const o={credentials:'same-origin',...(opt||{})};
   if(o.body&&typeof o.body!=='string'){o.body=JSON.stringify(o.body);}
-  if(o.body)o.headers={'Content-Type':'application/json','X-CMS':'1'};
+  const h={...(o.headers||{})};if(o.body){h['Content-Type']='application/json';h['X-CMS']='1'}
+  const dq=new URLSearchParams(location.search).get('doc');if(dq&&+dq)h['X-Doc']=String(+dq);   // konteks laporan -> lisensi engine "per laporan"
+  o.headers=h;
   const r=await fetch('/api/kd'+path,o);
   if(r.status===401){location.href='/';throw new Error('belum login');}
   const j=await r.json().catch(()=>({}));
@@ -794,7 +797,7 @@ function renderRfList(){
 $('#rfList').onclick=e=>{const c=e.target.closest('.fr');if(c){RFsel=c.dataset.id;renderRfList();renderRfBox()}};
 function renderRfBox(){
   const f=RF.items.find(x=>x.id===RFsel);if(!f)return;
-  if(f.locked){$('#rfBox').innerHTML=`<h3>🔒 ${esc(f.title)}</h3><div class="lockb">Kalkulator ini termasuk modul <b>“${esc(f.module_label||f.module)}”</b> yang belum diaktifkan. Tersedia setelah pembelian (pembayaran) dan diaktifkan oleh penyedia layanan/operator.</div>`;return}
+  if(f.locked){$('#rfBox').innerHTML=`<h3>🔒 ${esc(f.title)}</h3><div class="lockb">Kalkulator ini termasuk engine <b>“${esc(f.module_label||f.module)}”</b> yang belum Anda miliki. <a href="${storeUrl(f.module)}">🛒 Beli / lihat Toko Engine</a> (atau minta admin membelikan).</div>`;return}
   const inp=f.vars.map(v=>{const d=v.default==null?'':v.default,id='rv_'+v.name;
     const ctl=v.type==='select'?`<select id="${id}">${v.options.map(o=>`<option value="${o[0]}" ${o[0]==d?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`
       :v.type==='list'?`<textarea id="${id}" rows="2">${esc(d)}</textarea>`:`<input type="number" step="any" id="${id}" value="${esc(d)}" placeholder="isi">`;
@@ -989,7 +992,7 @@ async function ctxInit(){
   try{window.TOOLS=(await api('/tools')).tools}catch(e){window.TOOLS=[]}
   ctxBar();ctxTargets();
   const t=window.TOOLS.find(x=>x.id===CTX.tool);if(!t)return;
-  if(t.locked){$('#ctxBar').insertAdjacentHTML('beforeend',`<div class="lockb" style="margin-top:8px">🔒 Alat ini termasuk modul yang belum diaktifkan untuk perusahaan Anda. Hubungi penyedia layanan/operator.</div>`);return}
+  if(t.locked){$('#ctxBar').insertAdjacentHTML('beforeend',`<div class="lockb" style="margin-top:8px">🔒 Alat ini termasuk engine <b>“${esc(t.module_label||t.module||'')}”</b> yang belum Anda miliki${CTX.doc?' untuk laporan ini':''}. <a href="${storeUrl(t.module)}">🛒 Beli / lihat Toko Engine</a> atau minta admin membelikan.</div>`);return}
   for(let i=0;i<60&&!META;i++)await new Promise(r=>setTimeout(r,100));
   if(t.tab==='sim'&&t.sim)SIM.cur=t.sim;
   if((t.tab==='proyeksi'||t.tab==='model')&&!regions.length){tab('pilih');

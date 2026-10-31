@@ -73,8 +73,33 @@ def enabled() -> set[str]:
     return parse(os.environ.get("CMS_MODULES"))
 
 
+# ---- lisensi per pengguna (utils/licensing.py + cmsapp/license_api.py): modul calc_* (engine hitung/simulasi) dianggap AKTIF bila
+# operator menyalakannya di CMS_MODULES (berlaku utk seluruh tenant) ATAU pengguna yang sedang login memegang lisensi aktif.
+# Resolver dipasang oleh cmsapp.license_api; di luar request / tanpa resolver -> perilaku lama (hanya env).
+_resolver = None
+
+
+def set_resolver(r) -> None:
+    global _resolver
+    _resolver = r
+
+
+def licensing_on() -> bool:
+    try:
+        return bool(_resolver and _resolver.licensing())
+    except Exception:                                       # noqa: BLE001
+        return False
+
+
 def is_on(key: str) -> bool:
-    return key in enabled()
+    if key in enabled():
+        return True
+    if key.startswith("calc_") and _resolver is not None:
+        try:
+            return bool(_resolver.licensing() and _resolver.allowed(key))
+        except Exception:                                   # noqa: BLE001
+            return False
+    return False
 
 
 def formula_module(category: str) -> str | None:
@@ -82,4 +107,7 @@ def formula_module(category: str) -> str | None:
 
 
 def locked_message(key: str) -> str:
+    if key.startswith("calc_") and licensing_on():
+        return (f"Engine “{LABEL.get(key, key)}” belum dilisensikan untuk akun Anda. Buka menu ⋮ → 🛒 Toko Engine untuk membeli, "
+                f"atau minta admin membelikan/memberi lisensinya.")
     return f"Modul “{LABEL.get(key, key)}” belum diaktifkan untuk perusahaan Anda. Pembelian (pembayaran) dan aktivasi dilakukan oleh penyedia layanan."

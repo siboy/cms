@@ -416,6 +416,9 @@ def sims_add(pid):
     ids, skipped = [], 0
     for it in items:
         lk = mods.TOOL_MODULE.get(it.get("tool_id", ""))
+        if lk:
+            from cmsapp.license_api import set_doc_context      # lisensi per-laporan: konteks = laporan tugas simulasi ini
+            set_doc_context(it.get("doc_id"))
         if lk and not mods.is_on(lk):
             return locked_response(lk)
         try:

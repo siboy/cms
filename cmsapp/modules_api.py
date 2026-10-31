@@ -31,6 +31,7 @@ def guard(key: str):
 @bp.get("/modules")
 @auth.require()
 def modules_state():
-    on = mods.enabled()
-    return jsonify(modules=[{"key": m["key"], "label": m["label"], "group": m["group"], "on": m["key"] in on} for m in mods.MODULES],
+    # "on" per pengguna: engine calc_* aktif juga bila pengguna ini memegang lisensi (mods.is_on memeriksa lisensi)
+    return jsonify(licensing=mods.licensing_on(),
+                   modules=[{"key": m["key"], "label": m["label"], "group": m["group"], "on": mods.is_on(m["key"])} for m in mods.MODULES],
                    category_module=mods.CATEGORY_MODULE, sim_module=mods.SIM_MODULE, tool_module=mods.TOOL_MODULE)
