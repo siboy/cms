@@ -271,6 +271,24 @@ header b{letter-spacing:.2px}
  .dlg>b:first-child{font-size:15px}
  .dlg>button{width:100%;text-align:left;padding:13px 12px;border-radius:10px}
  .dlg>button:active{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink)}
+ /* daftar proyek: 2 kartu per baris, kartu biru dengan aksen emas */
+ .rgp{grid-template-columns:1fr 1fr!important;gap:10px;padding:0 8px}
+ .rgp .rc{margin:0;padding:10px 10px 9px;color:#fff;border:1px solid rgba(244,211,110,.5);border-top:3px solid var(--gold);border-radius:14px;
+  background:linear-gradient(160deg,#2563eb 0%,#1746b8 45%,#0b2a6f 100%);
+  box-shadow:0 8px 18px rgba(11,42,111,.38),0 0 14px rgba(212,160,23,.18);min-width:0}
+ .rgp .rc:active{filter:brightness(1.08)}
+ .rgp .rc .rh{margin-bottom:4px;gap:4px}
+ .rgp .rc .rhm{padding-right:38px}
+ .rgp .rc .rh b{flex:1 1 100%;margin:0;font-size:13.5px;line-height:1.25;color:#fff;overflow-wrap:anywhere}
+ .rgp .rc .rmenu{top:5px;right:5px;min-width:34px;height:34px;padding:0;font-size:18px;color:var(--gold2);background:rgba(255,255,255,.12);
+  border:1px solid rgba(244,211,110,.55);box-shadow:0 0 8px var(--goldglow)}
+ .rgp .rc [style*="--mut"]{color:#c9d8ff!important}
+ .rgp .rc .badge{font-size:10px;padding:1px 7px}
+ .rgp .rc .badge:not([style]){background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--goldink);font-weight:700}
+ .rgp .rc .badge[style*="--mut"]{background:rgba(255,255,255,.18)!important;color:#fff}
+ .rgp .rc .pbar{background:rgba(255,255,255,.2)}
+ .rgp .rc .pbar i{background:linear-gradient(90deg,var(--gold3),var(--gold2));box-shadow:0 0 8px var(--goldglow)}
+ .rgp .rc small{color:var(--gold2);font-weight:700}
 }
 </style></head><body>
 <header><b style="display:flex;align-items:center;gap:7px"><img src="/app-icon.svg" style="height:22px;border-radius:5px" alt="">sdrive</b><span id="who"></span><span id="pres" title="online"></span>
@@ -510,7 +528,7 @@ async function projectsView(){closeDoc();const {projects}=await api('GET','/proj
     <button data-pf=semua class="${projFilter==='semua'?'cur':''}"><span class=ti>📚</span><span class=tl>Semua (${projects.length})</span></button>
    </div>
   </div>`
- +'<div class=rg>'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
+ +'<div class="rg rgp">'+(shown.map(p=>{const pct=p.progress_effective||0,rc=p.report_counts||{};
   const unread=(p.unread_chat||0)+(p.unread_tasks||0);
   const final100=p.progress_override===100;
   return `<div class=rc data-id="${p.id}" style="cursor:pointer"><div class="rh rhm"><b>${esc(p.name)}</b><span class=badge>${esc(p.status)}</span>${final100?`<span class=badge style="background:#2da44e" title="Dinyatakan FINAL oleh ${esc(p.progress_final_by||'?')} pada ${esc((p.progress_final_at||'').slice(0,10))}">✔ 100% Final</span>`:''}${unread?`<span class=badge style="background:#d1242f" title="${p.unread_chat||0} pesan Diskusi + ${p.unread_tasks||0} task belum dibaca">🔔 ${unread}</span>`:''}${hasPerm('project_manage')?`<button type=button class=rmenu data-menu="${p.id}" title="Menu proyek" onclick="event.stopPropagation()">⋮</button>`:''}</div>
