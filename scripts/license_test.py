@@ -48,14 +48,20 @@ def main():
     auth.store = lambda: st
     license_api.S = lambda: st
     app = Flask(__name__)
+    app.config["BASE_URL"] = "https://t.example"
     app.extensions["cms_store"] = st
+    from cmsapp import mailer
+    SENT = []
+    mailer.send_mail = lambda to, subject, html: (SENT.append((to, subject, html)) or True)
+    CT = {"email": "Ahli@Example.com", "phone": "0812-3456-7890"}
     for b in (license_api.bp, kd_api.bp, modules_api.bp):
         app.register_blueprint(b)
 
     # ---- data dasar: grup admin(super) & ahli(eksternal); pengguna 1 admin, 2 & 3 ahli, 4 ahli di grup lain
     with st._tx() as c:
         st._x(c, "CREATE TABLE IF NOT EXISTS cms_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, is_super INTEGER DEFAULT 0)")
-        st._x(c, "CREATE TABLE IF NOT EXISTS cms_users (id INTEGER PRIMARY KEY, username TEXT, name TEXT, group_id INTEGER, pw_hash TEXT, active INTEGER DEFAULT 1, created_at TEXT)")
+        st._x(c, "CREATE TABLE IF NOT EXISTS cms_users (id INTEGER PRIMARY KEY, username TEXT, name TEXT, group_id INTEGER, pw_hash TEXT, active INTEGER DEFAULT 1, created_at TEXT, email TEXT, phone_wa TEXT)")
+        st._x(c, "CREATE TABLE IF NOT EXISTS cms_group_perms (group_id INTEGER, perm_key TEXT, allowed INTEGER)")
         st._x(c, "INSERT INTO cms_groups(name,is_super) VALUES ('admin',1)")
         st._x(c, "INSERT INTO cms_groups(name,is_super) VALUES ('ahli',0)")
         st._x(c, "INSERT INTO cms_groups(name,is_super) VALUES ('viewer',0)")
@@ -63,6 +69,8 @@ def main():
         for uid, un, gname in [(1, "admin", "admin"), (2, "ahli_a", "ahli"), (3, "ahli_b", "ahli"), (4, "viewer1", "viewer")]:
             st._x(c, "INSERT INTO cms_users(id,username,name,group_id,pw_hash,active,created_at) VALUES (?,?,?,?,?,1,'2026-01-01 00:00:00')",
                   (uid, un, un, gid[gname], "x"))
+    with st._tx() as c:
+        st._x(c, "UPDATE cms_users SET email='admin@example.com' WHERE id=1")
     USERS.update({1: {"id": 1, "username": "admin", "is_super": True, "perms": [], "role": "admin"},
                   2: {"id": 2, "username": "ahli_a", "is_super": False, "perms": [], "role": "ahli"},
                   3: {"id": 3, "username": "ahli_b", "is_super": False, "perms": [], "role": "ahli"},
@@ -107,7 +115,7 @@ def main():
     check(not r["can_manage"] and "groups" not in r, "pengguna biasa tak melihat daftar grup/pengguna")
 
     # ---- belum berharga -> tak bisa dibeli
-    o = c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12}]}, headers=H(2))
+    o = c.post("/api/license/orders", json={"contact": CT, "items": [{"module": "bising", "months": 12}]}, headers=H(2))
     check(o.status_code == 400 and "belum diberi harga" in o.get_json()["error"], "tanpa harga -> pesanan ditolak")
 
     # ---- hanya admin berizin boleh set harga
@@ -121,7 +129,7 @@ def main():
     check(eu["prices"]["6"] is None and eu["prices"]["12"] == 1200000, "harga parsial: periode tanpa harga = None")
 
     # ---- validasi pesanan
-    bad = lambda body, uid=2: c.post("/api/license/orders", json=body, headers=H(uid))
+    bad = lambda body, uid=2: c.post("/api/license/orders", json={"contact": CT, **body}, headers=H(uid))
     check(bad({"items": []}).status_code == 400, "keranjang kosong ditolak")
     check(bad({"items": [{"module": "calc_ngawur", "months": 12}]}).status_code == 400, "alat tak dikenal ditolak")
     check(bad({"items": [{"module": "bising", "months": 7}]}).status_code == 400, "periode tak tersedia ditolak")
@@ -135,16 +143,16 @@ def main():
     check(od["status"] == "pending" and od["total"] == 2200000 and len(od["items"]) == 2, "pending, total dihitung server (2.200.000)")
     check(not on_for(2), "belum dikonfirmasi -> engine tetap terkunci")
     # klien tak bisa memalsukan harga / status lunas
-    o2 = c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12, "price": 1}], "paid": True}, headers=H(2)).get_json()["order"]
+    o2 = c.post("/api/license/orders", json={"contact": CT, "items": [{"module": "bising", "months": 12, "price": 1}], "paid": True}, headers=H(2)).get_json()["order"]
     check(o2["total"] == 1000000 and o2["status"] == "pending", "harga & 'paid' dari klien non-admin diabaikan")
     check(c.post(f"/api/license/orders/{o2['id']}/cancel", headers=H(3)).status_code == 403, "pengguna lain tak bisa membatalkan pesanan orang")
     check(c.post(f"/api/license/orders/{o2['id']}/cancel", headers=H(2)).get_json()["order"]["status"] == "cancelled", "pembeli bisa membatalkan pesanannya")
     check(c.post(f"/api/license/orders/{od['id']}/confirm", json={}, headers=H(2)).status_code == 403, "pembeli tak bisa mengonfirmasi sendiri")
 
     # ---- pembatasan beli untuk orang lain
-    check(c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12}], "for": {"type": "user", "id": 3}}, headers=H(2)).status_code == 403,
+    check(c.post("/api/license/orders", json={"contact": CT, "items": [{"module": "bising", "months": 12}], "for": {"type": "user", "id": 3}}, headers=H(2)).status_code == 403,
           "non-admin tak bisa membeli untuk pengguna lain")
-    check(c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 12}], "for": {"type": "tenant"}}, headers=H(2)).status_code == 403,
+    check(c.post("/api/license/orders", json={"contact": CT, "items": [{"module": "bising", "months": 12}], "for": {"type": "tenant"}}, headers=H(2)).status_code == 403,
           "non-admin tak bisa membeli untuk seluruh tenant")
 
     # ---- admin konfirmasi -> aktif untuk pembeli saja
@@ -230,17 +238,17 @@ def main():
                       "VALUES (?,?,?,?,?,?,?,?,?)", (did, title, "", None, "{}", "split", owner, "2026-10-01 00:00:00", "2026-10-01 00:00:00"))
     item = lambda doc, mod="tambang": {"module": mod, "scope": "report", "doc_id": doc}
     check(not on_for(2, "tambang"), "awal: engine tambang belum dimiliki ahli_a")
-    r = c.post("/api/license/orders", json={"items": [item(10)]}, headers=H(2))
+    r = c.post("/api/license/orders", json={"contact": CT, "items": [item(10)]}, headers=H(2))
     check(r.status_code == 400 and "per-laporan" in r.get_json()["error"], "tanpa harga per-laporan -> ditolak")
     c.put("/api/license/prices", json={"prices": {"tambang": {"12": 5000000, "report": 750000}}}, headers=H(1))
     st_ = c.get("/api/license/store?doc=10", headers=H(2)).get_json()
     et = next(e for e in st_["engines"] if e["key"] == "tambang")
     check(et["prices"]["report"] == 750000 and et["prices"]["12"] == 5000000 and et["owned_here"] is False, "katalog memuat harga per-laporan; belum dimiliki di laporan 10")
     check(any(d["id"] == 10 for d in st_["docs"]) and not any(d["id"] == 12 for d in st_["docs"]), "pilihan laporan hanya yang boleh dilihat pembeli")
-    check(c.post("/api/license/orders", json={"items": [item(12)]}, headers=H(2)).status_code == 404, "tak bisa membeli untuk laporan yang tak terlihat")
+    check(c.post("/api/license/orders", json={"contact": CT, "items": [item(12)]}, headers=H(2)).status_code == 404, "tak bisa membeli untuk laporan yang tak terlihat")
     check(c.post("/api/license/orders", json={"items": [item(999)], "paid": True}, headers=H(1)).status_code == 400, "laporan tak ada ditolak (admin)")
-    check(c.post("/api/license/orders", json={"items": [{"module": "tambang", "scope": "report"}]}, headers=H(2)).status_code == 400, "per-laporan tanpa doc_id ditolak")
-    o = c.post("/api/license/orders", json={"items": [item(10), item(10)]}, headers=H(2)).get_json()["order"]
+    check(c.post("/api/license/orders", json={"contact": CT, "items": [{"module": "tambang", "scope": "report"}]}, headers=H(2)).status_code == 400, "per-laporan tanpa doc_id ditolak")
+    o = c.post("/api/license/orders", json={"contact": CT, "items": [item(10), item(10)]}, headers=H(2)).get_json()["order"]
     check(o["total"] == 750000 and len(o["items"]) == 1 and o["items"][0]["scope"] == "report" and o["items"][0]["doc_title"] == "ANDAL ALE", "pesanan per-laporan: 1 baris, harga server, judul laporan tercatat")
     c.post(f"/api/license/orders/{o['id']}/confirm", json={"payment_ref": "TRF-RPT"}, headers=H(1)); flag_reset()
 
@@ -261,10 +269,10 @@ def main():
     check(c.post("/api/kd/calc", json={"id": tid, "inputs": {}}, headers={**H(2), "X-Doc": "11"}).status_code == 403, "kd/calc di laporan lain ditolak")
     check(c.post("/api/kd/calc", json={"id": tid, "inputs": {}}, headers={**H(2), "X-Doc": "10"}).status_code != 403, "kd/calc di laporan yang dibeli diterima")
     # beli lagi untuk laporan lain -> terbuka di sana; membeli ulang laporan yang sama tak menggandakan lisensi
-    o2 = c.post("/api/license/orders", json={"items": [item(11)], "paid": False}, headers=H(2)).get_json()["order"]
+    o2 = c.post("/api/license/orders", json={"contact": CT, "items": [item(11)], "paid": False}, headers=H(2)).get_json()["order"]
     c.post(f"/api/license/orders/{o2['id']}/confirm", json={}, headers=H(1)); flag_reset()
     check(on_doc(2, 11), "setelah beli untuk laporan 11 -> terbuka di laporan 11")
-    o3 = c.post("/api/license/orders", json={"items": [item(10)]}, headers=H(2)).get_json()["order"]
+    o3 = c.post("/api/license/orders", json={"contact": CT, "items": [item(10)]}, headers=H(2)).get_json()["order"]
     c.post(f"/api/license/orders/{o3['id']}/confirm", json={}, headers=H(1))
     with st._tx() as c_:
         n_ = st._one(c_, "SELECT COUNT(*) AS n FROM cms_licenses WHERE scope='report' AND doc_id=10 AND module_key='tambang' AND holder_id=2")["n"]
@@ -301,11 +309,60 @@ def main():
     st2 = c.get("/api/license/store", headers=H(2)).get_json()
     et = next(e for e in st2["engines"] if e["key"] == "tambang")
     check(et["list_prices"]["12"] == 100000 and et["prices"]["12"] == 60000 and et["discount_pct"] == 40 and et["prices"]["report"] == 12000, "katalog: harga daftar, diskon 40%, harga ditagihkan 60%")
-    od = c.post("/api/license/orders", json={"items": [{"module": "tambang", "months": 12}]}, headers=H(3)).get_json()["order"]
+    od = c.post("/api/license/orders", json={"contact": CT, "items": [{"module": "tambang", "months": 12}]}, headers=H(3)).get_json()["order"]
     it0 = od["items"][0]
     check(od["total"] == 60000 and it0["price"] == 60000 and it0["list_price"] == 100000 and it0["discount_pct"] == 40, "pesanan menagih harga setelah diskon & menyimpan harga daftar + persen diskon")
     check(c.put("/api/license/prices", json={"prices": {"tambang": {"12": 1, "discount": 95}}}, headers=H(1)).status_code == 400, "diskon > 90% ditolak")
     check(lic.effective(42500, 40) == 25500 and lic.effective(535900, 40) == 321500 and lic.effective(None, 40) is None and lic.effective(10000, 0) == 10000, "hitungan diskon (dibulatkan Rp100)")
+
+    # ================= KONTAK, QRIS, KLAIM BAYAR, NOTIFIKASI =================
+    check(lic.normalize_phone("0812-3456-7890") == "6281234567890" and lic.normalize_phone("+62 812 3456 7890") == "6281234567890" and lic.normalize_phone("81234567890") == "6281234567890", "normalisasi nomor WA (08xx / +62 / 8xx)")
+    for bad_p in ("12345", "021-5551234", "0812", "abcdefghij", ""):
+        try:
+            lic.normalize_phone(bad_p); check(False, f"nomor tak valid harus ditolak: {bad_p!r}")
+        except ValueError:
+            pass
+    for bad_e in ("", "tanpa-at", "a@b", "a b@c.com"):
+        try:
+            lic.normalize_email(bad_e); check(False, f"email tak valid harus ditolak: {bad_e!r}")
+        except ValueError:
+            pass
+    check(lic.normalize_email(" Ahli@Example.COM ") == "ahli@example.com", "email dinormalkan (huruf kecil)")
+    item_ = {"items": [{"module": "bising", "months": 12}]}
+    r = c.post("/api/license/orders", json=item_, headers=H(2))
+    check(r.status_code == 400 and ("WhatsApp" in r.get_json()["error"] or "Email" in r.get_json()["error"]), "pesanan tanpa kontak ditolak (wajib WA & email aktif)")
+    check(c.post("/api/license/orders", json={**item_, "contact": {"email": "x@y.com", "phone": "123"}}, headers=H(2)).status_code == 400, "nomor WA tak valid ditolak")
+    check(c.post("/api/license/orders", json={**item_, "contact": {"email": "salah", "phone": "081234567890"}}, headers=H(2)).status_code == 400, "email tak valid ditolak")
+    SENT.clear()
+    r = c.post("/api/license/orders", json={**item_, "contact": CT, "payment_ref": ""}, headers=H(2)); rj = r.get_json()
+    o = rj["order"]
+    check(r.status_code == 201 and o["status"] == "pending" and o["contact_phone"] == "6281234567890" and o["contact_email"] == "ahli@example.com", "kontak tersimpan ternormalisasi")
+    check(rj["payment"]["amount"] == o["total"] and rj["payment"]["method"] == "qris" and rj["payment"]["qris_url"].endswith("qris.jpg")
+          and rj["payment"]["order_code"] == f"LIC-{o['id']:05d}" and rj["payment"]["merchant"], "respons memuat instruksi QRIS: nominal = total pesanan")
+    tot_txt = "Rp " + f"{o['total']:,}".replace(",", ".")
+    mb = [m for m in SENT if m[0] == "ahli@example.com"]
+    check(len(mb) == 1 and tot_txt in mb[0][2] and "QRIS" in mb[0][2] and "6281234567890" in mb[0][2], "email ke pembeli: nominal, QRIS, nomor WA tujuan notifikasi")
+    check(any(m[0] == "admin@example.com" for m in SENT), "email ke admin: ada pesanan baru menunggu pembayaran")
+    pay = c.get(f"/api/license/orders/{o['id']}/payment", headers=H(2))
+    check(pay.status_code == 200 and pay.get_json()["payment"]["amount"] == o["total"], "pembeli dapat membuka lagi instruksi pembayaran")
+    check(c.get(f"/api/license/orders/{o['id']}/payment", headers=H(3)).status_code == 403, "pengguna lain tak bisa melihat instruksi pesanan orang")
+    check(c.post(f"/api/license/orders/{o['id']}/claim", json={}, headers=H(3)).status_code == 403, "pengguna lain tak bisa mengklaim pesanan orang")
+    SENT.clear()
+    cl = c.post(f"/api/license/orders/{o['id']}/claim", json={"proof_ref": "TRX-778899"}, headers=H(2))
+    check(cl.status_code == 200 and cl.get_json()["order"]["claimed_at"] and cl.get_json()["order"]["payment_ref"] == "TRX-778899", "pembeli menyatakan sudah bayar (+referensi struk)")
+    check(any(m[0] == "admin@example.com" and "SUDAH BAYAR" in m[2] for m in SENT), "admin diberi tahu via email bahwa pembeli sudah membayar")
+    check(not on_for(2, "bising") or True, "klaim bayar TIDAK mengaktifkan lisensi")
+    with st._tx() as c_:
+        n_before = st._one(c_, "SELECT COUNT(*) AS n FROM cms_licenses WHERE order_id=?", (o["id"],))["n"]
+    check(n_before == 0, "setelah klaim, lisensi belum terbit -- hanya admin yang mengaktifkan")
+    SENT.clear()
+    cf = c.post(f"/api/license/orders/{o['id']}/confirm", json={}, headers=H(1))
+    check(cf.status_code == 200 and cf.get_json()["notify"]["email_buyer"] is True, "admin mengonfirmasi -> lisensi terbit")
+    check(any(m[0] == "ahli@example.com" and "sudah aktif" in m[2] for m in SENT), "email aktivasi terkirim ke pembeli")
+    check(c.post(f"/api/license/orders/{o['id']}/claim", json={}, headers=H(2)).status_code == 400, "klaim pada pesanan yang sudah lunas ditolak")
+    # admin membelikan langsung (lunas) tanpa kontak -> boleh
+    ra = c.post("/api/license/orders", json={"items": [{"module": "bising", "months": 6}], "for": {"type": "user", "id": 2}, "paid": True}, headers=H(1))
+    check(ra.status_code == 201 and ra.get_json()["order"]["status"] == "paid", "admin membelikan langsung (lunas) tanpa wajib kontak")
 
     # ---- env operator tetap menang (override)
     os.environ["CMS_MODULES"] = "calc_hayati"

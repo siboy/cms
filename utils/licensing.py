@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import calendar
 import os
+import re
 import threading
 from datetime import datetime
 
@@ -63,7 +64,8 @@ def ensure(s) -> None:
             f"CREATE TABLE IF NOT EXISTS cms_license_orders (id {pk}, buyer_id {big} NOT NULL, buyer_name {vc(80)} NULL, "
             f"holder_type {vc(10)} NOT NULL, holder_id {big} NULL, holder_label {vc(120)} NULL, status {vc(12)} NOT NULL, "
             f"total {big} NOT NULL DEFAULT 0, payment_ref {vc(120)} NULL, note {vc(255)} NULL, created_at {dt} NOT NULL, "
-            f"paid_at {dt} NULL, confirmed_by {vc(80)} NULL)",
+            f"paid_at {dt} NULL, confirmed_by {vc(80)} NULL, contact_email {vc(120)} NULL, contact_phone {vc(30)} NULL, "
+            f"claimed_at {dt} NULL, pay_method {vc(12)} NULL)",
             f"CREATE TABLE IF NOT EXISTS cms_license_items (id {pk}, order_id {big} NOT NULL, module_key {vc(40)} NOT NULL, "
             f"months {big} NOT NULL, price {big} NOT NULL DEFAULT 0, scope {vc(10)} NOT NULL DEFAULT 'time', doc_id {big} NULL, "
             f"doc_title {vc(200)} NULL, list_price {big} NULL, discount_pct {big} NULL)",
@@ -77,7 +79,10 @@ def ensure(s) -> None:
                 s._x(c, q)
         # migrasi tabel lama (dibuat sebelum kolom ini ada): tambah kolom bila belum ada
         for tbl, col, typ in [("cms_engine_prices", "discount_pct", f"{big} NOT NULL DEFAULT 0"), ("cms_license_items", "list_price", f"{big} NULL"),
-                              ("cms_license_items", "discount_pct", f"{big} NULL")]:
+                              ("cms_license_items", "discount_pct", f"{big} NULL"),
+                              ("cms_license_orders", "contact_email", "VARCHAR(120) NULL" if not sq else "TEXT"),
+                              ("cms_license_orders", "contact_phone", "VARCHAR(30) NULL" if not sq else "TEXT"),
+                              ("cms_license_orders", "claimed_at", f"{dt} NULL"), ("cms_license_orders", "pay_method", "VARCHAR(12) NULL" if not sq else "TEXT")]:
             try:
                 with s._tx() as c:
                     s._x(c, f"SELECT {col} FROM {tbl} LIMIT 1")
@@ -208,6 +213,67 @@ def _check_holder(s, c, htype: str, hid):
     return hid
 
 
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+
+
+def normalize_phone(raw: str) -> str:
+    """Nomor WhatsApp Indonesia -> format internasional tanpa '+' (6281234567890). 08xx / +62 8xx / 628xx diterima; selain itu ditolak."""
+    d = re.sub(r"[\s().\-]", "", str(raw or ""))
+    if d.startswith("+"):
+        d = d[1:]
+    if d.startswith("0"):
+        d = "62" + d[1:]
+    elif d.startswith("8"):
+        d = "62" + d
+    if not re.fullmatch(r"628\d{8,12}", d):
+        raise ValueError("Nomor WhatsApp tidak valid. Gunakan nomor seluler Indonesia aktif, mis. 081234567890")
+    return d
+
+
+def normalize_email(raw: str) -> str:
+    e = str(raw or "").strip().lower()
+    if len(e) > 120 or not _EMAIL_RE.match(e):
+        raise ValueError("Email tidak valid. Gunakan alamat email aktif, mis. nama@perusahaan.com")
+    return e
+
+
+def validate_contact(contact: dict | None) -> dict:
+    c = contact or {}
+    return {"email": normalize_email(c.get("email")), "phone": normalize_phone(c.get("phone"))}
+
+
+QRIS_MERCHANT = os.environ.get("CMS_QRIS_MERCHANT") or "SIPON LATIHAN SOAL"
+QRIS_NMID = os.environ.get("CMS_QRIS_NMID") or "ID1026529503546"
+
+
+def order_code(oid: int) -> str:
+    return f"LIC-{int(oid):05d}"
+
+
+def payment_info(order: dict) -> dict:
+    """Instruksi pembayaran. Saat ini QRIS statis (gambar yang sama dengan mobilegames); pay_method disiapkan agar kelak
+    bisa diganti pembayaran otomatis (Midtrans / BRIAPI) tanpa mengubah alur pesanan."""
+    return {"method": order.get("pay_method") or "qris", "amount": order["total"], "order_code": order_code(order["id"]),
+            "qris_url": "/store-assets/qris.jpg", "merchant": QRIS_MERCHANT, "nmid": QRIS_NMID,
+            "steps": ["Buka aplikasi mobile banking / e-wallet yang mendukung QRIS.", "Pilih Scan / Bayar dan pindai kode QRIS di bawah.",
+                      f"Masukkan nominal PERSIS Rp {order['total']:,}".replace(",", ".") + " lalu bayar.",
+                      "Simpan bukti/struk, lalu tekan “Saya sudah bayar”.",
+                      "Admin memverifikasi dan mengaktifkan lisensi; pemberitahuan dikirim lewat email dan WhatsApp."]}
+
+
+def claim(s, oid: int, by: str, proof_ref: str = "") -> dict:
+    """Pembeli menyatakan sudah membayar (admin tetap yang memverifikasi & mengaktifkan)."""
+    ensure(s)
+    with s._tx() as c:
+        o = s._one(c, "SELECT status FROM cms_license_orders WHERE id=?", (oid,))
+        if not o:
+            raise KeyError(f"pesanan {oid} tidak ada")
+        if o["status"] != "pending":
+            raise ValueError("pesanan ini sudah tidak menunggu pembayaran")
+        s._x(c, "UPDATE cms_license_orders SET claimed_at=?, payment_ref=COALESCE(?, payment_ref) WHERE id=?", (_s(_now()), proof_ref[:120] or None, oid))
+    return get_order(s, oid)
+
+
 def _doc_title(s, c, doc_id: int) -> str:
     r = s._one(c, "SELECT filename FROM cms_documents WHERE id=?", (doc_id,))
     if not r:
@@ -215,12 +281,14 @@ def _doc_title(s, c, doc_id: int) -> str:
     return (r["filename"] or f"Laporan #{doc_id}")[:200]
 
 
-def create_order(s, buyer: dict, items: list[dict], htype: str, hid=None, *, paid: bool = False, payment_ref: str = "", note: str = "") -> dict:
+def create_order(s, buyer: dict, items: list[dict], htype: str, hid=None, *, paid: bool = False, payment_ref: str = "", note: str = "",
+                 contact: dict | None = None) -> dict:
     """items: [{module, months}] (paket berjangka) atau [{module, scope:'report', doc_id}] (sekali pakai per laporan).
     paid=True (hanya admin) -> langsung terbit lisensi. Harga diambil dari katalog server, bukan dari klien."""
     ensure(s)
     if not items:
         raise ValueError("keranjang kosong")
+    ct = validate_contact(contact) if (contact or not paid) else {"email": None, "phone": None}   # lunas langsung oleh admin: kontak opsional
     pr, valid = prices(s), set(engine_keys())
     lines, seen = [], set()
     for it in items:
@@ -255,8 +323,9 @@ def create_order(s, buyer: dict, items: list[dict], htype: str, hid=None, *, pai
         label = _holder_label(s, c, htype, hid)
         titles = {l[4]: _doc_title(s, c, l[4]) for l in lines if l[3] == "report"}
         cur = s._x(c, "INSERT INTO cms_license_orders(buyer_id, buyer_name, holder_type, holder_id, holder_label, status, total, payment_ref, "
-                      "note, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                   (buyer["id"], buyer.get("username"), htype, hid, label, "pending", total, payment_ref[:120] or None, note[:255] or None, _s(_now())))
+                      "note, created_at, contact_email, contact_phone, pay_method) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (buyer["id"], buyer.get("username"), htype, hid, label, "pending", total, payment_ref[:120] or None, note[:255] or None, _s(_now()),
+                    ct["email"], ct["phone"], "qris"))
         oid = cur.lastrowid
         for k, m, p, sc, d, lp, dp in lines:
             s._x(c, "INSERT INTO cms_license_items(order_id, module_key, months, price, scope, doc_id, doc_title, list_price, discount_pct) "

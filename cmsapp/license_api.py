@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import time
 
-from flask import Blueprint, g, has_request_context, jsonify, request
+from flask import Blueprint, current_app, g, has_request_context, jsonify, request
 
-from cmsapp import auth
+from cmsapp import auth, mailer
 from utils import licensing as lic
 from utils import modules as mods
 
@@ -93,6 +93,56 @@ class _Resolver:
 mods.set_resolver(_Resolver())
 
 
+def _rp(n) -> str:
+    return "Rp " + f"{int(n):,}".replace(",", ".")
+
+
+def _items_html(o: dict) -> str:
+    from html import escape
+    rows = []
+    for i in o["items"]:
+        what = f"sekali pakai: {escape(i.get('doc_title') or '#' + str(i.get('doc_id')))}" if i["scope"] == "report" else f"paket {i['months']} bulan"
+        lp = f" <s>{_rp(i['list_price'])}</s>" if i.get("list_price") and i["list_price"] != i["price"] else ""
+        rows.append(f"<li>{escape(mods.tool_label(i['module_key']))} — {what} ({lp} <b>{_rp(i['price'])}</b>)</li>")
+    return "<ul>" + "".join(rows) + "</ul>"
+
+
+def _mail_buyer_instructions(o: dict) -> bool:
+    """Email ke pembeli: rincian pesanan + nominal yang harus ditransfer + cara bayar QRIS."""
+    base = current_app.config.get("BASE_URL", "")
+    pay = lic.payment_info(o)
+    html = (f"<p>Halo,</p><p>Pesanan lisensi alat hitung <b>{lic.order_code(o['id'])}</b> sudah kami terima.</p>{_items_html(o)}"
+            f"<p><b>Total yang harus dibayar: {_rp(o['total'])}</b></p>"
+            f"<p>Bayar lewat <b>QRIS</b> ({pay['merchant']}, NMID {pay['nmid']}) dengan nominal PERSIS di atas. "
+            f"Kode QRIS ada di <a href=\"{base}/store\">halaman Toko</a> (tab Lisensi &amp; Pesanan → Bayar).</p>"
+            f"<p>Setelah membayar, tekan <i>Saya sudah bayar</i> di Toko. Admin akan memverifikasi dan mengaktifkan lisensi; "
+            f"pemberitahuan aktivasi dikirim lewat email ini dan WhatsApp ke nomor {o.get('contact_phone') or '-'}.</p>")
+    return mailer.send_mail(o.get("contact_email") or "", f"Pesanan {lic.order_code(o['id'])} — bayar {_rp(o['total'])}", html)
+
+
+def _mail_buyer_active(o: dict) -> bool:
+    base = current_app.config.get("BASE_URL", "")
+    html = (f"<p>Halo,</p><p>Pembayaran pesanan <b>{lic.order_code(o['id'])}</b> sudah dikonfirmasi dan lisensi Anda <b>sudah aktif</b>.</p>{_items_html(o)}"
+            f"<p><a href=\"{base}/store\">Buka Toko</a> untuk melihat masa berlaku lisensi.</p>")
+    return mailer.send_mail(o.get("contact_email") or "", f"Lisensi aktif — pesanan {lic.order_code(o['id'])}", html)
+
+
+def _admin_emails(s) -> list[str]:
+    with s._tx() as c:
+        rows = s._all(c, "SELECT u.email FROM cms_users u JOIN cms_groups g ON g.id=u.group_id WHERE u.active=1 AND u.email IS NOT NULL AND u.email<>'' AND "
+                         "(g.is_super=1 OR EXISTS (SELECT 1 FROM cms_group_perms p WHERE p.group_id=g.id AND p.perm_key='license_manage' AND p.allowed=1))")
+    return sorted({r["email"] for r in rows})
+
+
+def _mail_admins(s, o: dict, claimed: bool) -> int:
+    base = current_app.config.get("BASE_URL", "")
+    ttl = "Pembeli menyatakan SUDAH BAYAR" if claimed else "Pesanan lisensi baru menunggu pembayaran"
+    html = (f"<p><b>{ttl}</b>: {lic.order_code(o['id'])} oleh {o.get('buyer_name')} untuk {o.get('holder_label')}</p>{_items_html(o)}"
+            f"<p>Total <b>{_rp(o['total'])}</b>. Kontak: {o.get('contact_email') or '-'} / WA {o.get('contact_phone') or '-'}</p>"
+            f"<p>Cek mutasi QRIS, lalu konfirmasi di <a href=\"{base}/store\">Toko → Admin</a>.</p>")
+    return sum(1 for e in _admin_emails(s) if mailer.send_mail(e, f"[Lisensi] {ttl} — {lic.order_code(o['id'])}", html))
+
+
 def _my_docs(s) -> list[dict]:
     """Laporan (dokumen) yang boleh dilihat pengguna -- pilihan "beli untuk laporan ini"."""
     with s._tx() as c:
@@ -138,7 +188,9 @@ def store_view():
                    "pending_order": pending.get(k), "report_licenses": rep_own.get(k, []),
                    "owned_here": bool(ctx_doc) and k in lic.active_keys(s, g.user["id"], doc_id=ctx_doc)})
     out = {"licensing": lic.enabled(s), "engines": en, "periods": list(lic.PERIODS), "can_manage": can_manage(), "doc": ctx_doc,
-           "docs": _my_docs(s), "me": {"id": g.user["id"], "username": g.user["username"], "role": g.user.get("role")}}
+           "docs": _my_docs(s), "me": {"id": g.user["id"], "username": g.user["username"], "role": g.user.get("role"),
+                                       "email": g.user.get("email") or "", "phone_wa": g.user.get("phone_wa") or ""},
+           "payment": {"method": "qris", "merchant": lic.QRIS_MERCHANT, "nmid": lic.QRIS_NMID}}
     if can_manage():
         with s._tx() as c:
             out["groups"] = s._all(c, "SELECT id, name FROM cms_groups ORDER BY name")
@@ -166,10 +218,15 @@ def order_create():
         if it.get("scope") == "report" and it.get("doc_id") and not mgr and not auth.can_view_doc(int(it["doc_id"])):
             return jsonify(error=f"laporan #{it['doc_id']} tidak ditemukan"), 404
     o = lic.create_order(S(), g.user, d.get("items") or [], htype, hid, paid=paid, payment_ref=str(d.get("payment_ref") or ""),
-                         note=str(d.get("note") or ""))
+                         note=str(d.get("note") or ""), contact=d.get("contact"))
     S().log_activity(g.user["username"], "license.order", target_type="license_order", target_id=o["id"],
                      summary=f'pesanan #{o["id"]} {o["holder_label"]} total {o["total"]} {"LUNAS" if paid else "menunggu"}')
-    return jsonify(order=o), 201
+    notify = {}
+    if o["status"] == "pending":
+        notify = {"email_buyer": _mail_buyer_instructions(o), "email_admins": _mail_admins(S(), o, False)}
+    elif o.get("contact_email"):
+        notify = {"email_buyer": _mail_buyer_active(o)}
+    return jsonify(order=o, payment=lic.payment_info(o) if o["status"] == "pending" else None, notify=notify), 201
 
 
 @bp.get("/orders")
@@ -183,13 +240,34 @@ def orders_list():
     return jsonify(orders=lic.list_orders(S(), buyer_id=g.user["id"]))
 
 
+@bp.get("/orders/<int:oid>/payment")
+@auth.require()
+def order_payment(oid):
+    o = lic.get_order(S(), oid)
+    if o["buyer_id"] != g.user["id"] and not can_manage():
+        return jsonify(error="bukan pesanan Anda"), 403
+    return jsonify(order=o, payment=lic.payment_info(o))
+
+
+@bp.post("/orders/<int:oid>/claim")
+@auth.require()
+def order_claim(oid):
+    """Pembeli menyatakan sudah membayar. Admin diberi tahu lewat email; aktivasi tetap oleh admin setelah cek mutasi QRIS."""
+    o = lic.get_order(S(), oid)
+    if o["buyer_id"] != g.user["id"] and not can_manage():
+        return jsonify(error="bukan pesanan Anda"), 403
+    o = lic.claim(S(), oid, g.user["username"], str(body().get("proof_ref") or ""))
+    S().log_activity(g.user["username"], "license.claim", target_type="license_order", target_id=oid, summary=f"pesanan #{oid}: pembeli menyatakan sudah bayar")
+    return jsonify(order=o, notify={"email_admins": _mail_admins(S(), o, True)})
+
+
 @bp.post("/orders/<int:oid>/confirm")
 @auth.require(PERM)
 def order_confirm(oid):
     d = body()
     o = lic.fulfill(S(), oid, g.user["username"], str(d.get("payment_ref") or ""))
     S().log_activity(g.user["username"], "license.confirm", target_type="license_order", target_id=oid, summary=f"pesanan #{oid} dikonfirmasi lunas")
-    return jsonify(order=o)
+    return jsonify(order=o, notify={"email_buyer": _mail_buyer_active(o) if o.get("contact_email") else False})
 
 
 @bp.post("/orders/<int:oid>/cancel")

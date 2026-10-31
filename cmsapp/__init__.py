@@ -136,6 +136,16 @@ def create_app(cfg=Config) -> Flask:
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
+    @app.get("/store-assets/qris.jpg")
+    def store_qris():
+        """Gambar QRIS pembayaran lisensi (sama dengan QRIS di mobilegames). Hanya untuk pengguna yang sudah login."""
+        from flask import session
+        if not session.get("uid"):
+            return jsonify(error="belum login"), 401
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui", "img"), "qris.jpg", mimetype="image/jpeg")
+        resp.headers["Cache-Control"] = "private, max-age=3600"
+        return resp
+
     @app.get("/store")
     def store_page():
         """Toko Engine hitung/simulasi (lisensi per engine, berjangka). Login dicek oleh /api/license/*."""

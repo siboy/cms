@@ -145,26 +145,62 @@ function holdLabel(){const d=S.d,h=S.hold;if(h.type==='tenant')return 'seluruh t
   if(h.type==='group')return 'grup '+((d.groups||[]).find(g=>g.id===h.id)||{}).name;
   if(h.id===d.me.id)return 'saya sendiri';const u=(d.users||[]).find(x=>x.id===h.id);return 'pengguna '+(u?u.username:h.id)}
 $('#cclear').onclick=()=>{S.cart=[];cartBar()};
+const PHONE_RE=/^(\+?62|0)8\d{8,12}$/,MAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
+function itemsHtml(items){return items.map(i=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0"><span>${esc(LBL(i.module_key||i.module))} — ${i.scope==='report'?'sekali pakai'+(i.doc_title?': '+esc(i.doc_title):''):i.months+' bln'}</span><span>${i.list_price&&i.list_price!==i.price?`<s class="mut">${rp(i.list_price)}</s> `:''}<b>${rp(i.price)}</b></span></div>`).join('')}
 $('#cgo').onclick=()=>{
   const d=S.d,mgr=d.can_manage,tot=S.cart.reduce((a,c)=>a+(c.price||0),0);
   const m=document.createElement('div');m.className='mask';
-  m.innerHTML=`<form class="dlg"><b>Checkout — ${rp(tot)}</b>
+  m.innerHTML=`<form class="dlg"><b>Checkout — langkah 1 dari 2: data kontak</b>
+   <div>${S.cart.map((c,i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0"><span>${esc(c.label)}</span><span>${c.list&&c.list!==c.price?`<s class="mut">${rp(c.list)}</s> `:''}<b>${rp(c.price)}</b> <button type="button" data-rm="${i}" class="d small">✕</button></span></div>`).join('')}
+     <div style="display:flex;justify-content:space-between;font-size:16px;margin-top:6px"><b>Total belanja</b><b>${rp(tot)}</b></div></div>
    <div class="small mut">Untuk: <b>${esc(holdLabel())}</b></div>
-   ${S.cart.map((c,i)=>`<div class="row" style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:5px"><span>${esc(c.label)}</span><span>${c.list&&c.list!==c.price?`<s class="mut small">${rp(c.list)}</s> `:''}<b>${rp(c.price)}</b> <button type="button" data-rm="${i}" class="d small">✕</button></span></div>`).join('')}
-   <label>Referensi pembayaran / bukti transfer (opsional)<input name="ref" maxlength="120" placeholder="mis. TRF-2026-0012"></label>
-   <label>Catatan (opsional)<input name="note" maxlength="255"></label>
-   ${mgr?'<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" name="paid" style="width:18px;height:18px;margin:0"> Tandai LUNAS sekarang (lisensi langsung aktif)</label>':'<div class="small mut">Pesanan akan menunggu konfirmasi pembayaran oleh admin. Lisensi aktif setelah dikonfirmasi.</div>'}
-   <div class="row" style="justify-content:flex-end"><button type="button" id="x">Batal</button><button class="p">Pesan</button></div><span class="err small" id="e"></span></form>`;
+   <div class="note" id="cNote">📣 Pastikan <b>nomor WhatsApp</b> dan <b>email</b> di bawah ini <b>aktif</b>. Instruksi pembayaran dikirim ke email, dan pemberitahuan aktivasi lisensi oleh admin dikirim lewat <b>email dan WhatsApp</b>.</div>
+   <label>Nomor WhatsApp aktif<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="081234567890" value="${esc(d.me.phone_wa||'')}"></label>
+   <label>Email aktif<input name="email" type="email" autocomplete="email" placeholder="nama@perusahaan.com" value="${esc(d.me.email||'')}"></label>
+   <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400"><input type="checkbox" name="ok" style="width:18px;height:18px;margin:2px 0 0"> <span>Saya memastikan WhatsApp dan email di atas aktif dan dapat menerima pesan.</span></label>
+   ${mgr?'<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" name="paid" style="width:18px;height:18px;margin:0"> <span>Admin: tandai LUNAS sekarang (tanpa pembayaran QRIS; kontak opsional)</span></label>':''}
+   <div class="row" style="justify-content:flex-end"><button type="button" id="x">Batal</button><button class="p">Lanjut ke pembayaran →</button></div><span class="err small" id="e"></span></form>`;
   document.body.append(m);const f=m.querySelector('form');
   m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};
   m.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{S.cart.splice(+b.dataset.rm,1);m.remove();cartBar();if(S.cart.length)$('#cgo').click()});
-  f.onsubmit=async e=>{e.preventDefault();const btn=f.querySelector('button.p');btn.disabled=true;
+  f.onsubmit=async e=>{e.preventDefault();const E=f.querySelector('#e');E.textContent='';
+    const paid=!!(mgr&&f.paid&&f.paid.checked),ph=f.phone.value.replace(/[\s().\-]/g,''),em=f.email.value.trim();
+    if(!paid){
+      if(!PHONE_RE.test(ph))return E.textContent='Nomor WhatsApp tidak valid. Gunakan nomor seluler Indonesia aktif, mis. 081234567890.';
+      if(!MAIL_RE.test(em))return E.textContent='Email tidak valid. Gunakan alamat email aktif, mis. nama@perusahaan.com.';
+      if(!f.ok.checked)return E.textContent='Centang pernyataan bahwa WhatsApp dan email Anda aktif.';
+    }
+    const btn=f.querySelector('button.p');btn.disabled=true;
     try{const r=await api('POST','/orders',{items:S.cart.map(c=>c.scope==='report'?{module:c.module,scope:'report',doc_id:c.doc_id}:{module:c.module,months:c.months}),
-        for:S.hold.type==='tenant'?{type:'tenant'}:{type:S.hold.type,id:S.hold.id},paid:mgr&&f.paid&&f.paid.checked,payment_ref:f.ref.value,note:f.note.value});
+        for:S.hold.type==='tenant'?{type:'tenant'}:{type:S.hold.type,id:S.hold.id},paid,contact:(ph||em)?{phone:ph,email:em}:undefined});
       S.cart=[];m.remove();await boot();
-      note(r.order.status==='paid'?`Pesanan #${r.order.id} lunas — lisensi aktif.`:`Pesanan #${r.order.id} dibuat (${rp(r.order.total)}). Menunggu konfirmasi pembayaran admin.`,0)}
-    catch(x){f.querySelector('#e').textContent=x.message;btn.disabled=false}};
+      if(r.order.status==='paid')note(`Pesanan ${r.order.id} lunas — lisensi aktif.`,0);else payDlg(r.order,r.payment,r.notify)}
+    catch(x){E.textContent=x.message;btn.disabled=false}};
 };
+const copyTxt=async t=>{try{await navigator.clipboard.writeText(t);return true}catch(e){const i=document.createElement('input');i.value=t;document.body.append(i);i.select();try{document.execCommand('copy')}catch(_){}i.remove();return true}};
+function payDlg(o,pay,notify){
+  const m=document.createElement('div');m.className='mask';
+  m.innerHTML=`<form class="dlg"><b>Langkah 2 dari 2: bayar via QRIS — ${esc(pay.order_code)}</b>
+   <div style="text-align:center"><div class="small mut">Nominal yang harus ditransfer</div>
+    <div style="font-size:30px;font-weight:800;letter-spacing:.3px">${rp(pay.amount)}</div>
+    <button type="button" id="cp" class="small">📋 Salin nominal</button></div>
+   <div style="text-align:center"><img src="${esc(pay.qris_url)}" alt="QRIS" style="width:100%;max-width:300px;border:1px solid var(--line);border-radius:14px;background:#fff">
+    <div class="small mut">${esc(pay.merchant)} · NMID ${esc(pay.nmid)}</div></div>
+   <div class="note">Masukkan nominal <b>PERSIS ${rp(pay.amount)}</b> saat membayar agar mudah dicocokkan admin.</div>
+   <ol class="small" style="padding-left:18px;margin:0 0 9px">${pay.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>
+   <div>${itemsHtml(o.items)}</div>
+   ${notify&&(notify.email_buyer===true)?`<div class="small ok">✉ Instruksi pembayaran juga dikirim ke ${esc(o.contact_email||'email Anda')}.</div>`:(notify&&notify.email_buyer===false?'<div class="small mut">Email instruksi belum terkirim (server email belum diatur) — gunakan layar ini.</div>':'')}
+   <label>ID transaksi / referensi dari struk (opsional)<input name="ref" maxlength="120" placeholder="mis. nomor referensi e-wallet"></label>
+   <div class="row" style="justify-content:flex-end"><button type="button" id="x">Nanti saja</button><button class="p">✅ Saya sudah bayar</button></div><span class="err small" id="e"></span></form>`;
+  document.body.append(m);const f=m.querySelector('form');
+  m.querySelector('#x').onclick=()=>{m.remove();S.tab='saya';tabs();draw()};m.onclick=e=>{if(e.target===m)m.querySelector('#x').click()};
+  m.querySelector('#cp').onclick=async e=>{await copyTxt(String(pay.amount));e.target.textContent='✓ Tersalin'};
+  f.onsubmit=async e=>{e.preventDefault();const btn=f.querySelector('button.p');btn.disabled=true;
+    try{await api('POST',`/orders/${o.id}/claim`,{proof_ref:f.ref.value});m.remove();S.tab='saya';tabs();await draw();
+      note('Terima kasih. Admin akan memverifikasi pembayaran dan mengaktifkan lisensi. Pemberitahuan dikirim lewat email dan WhatsApp.',0)}
+    catch(x){f.querySelector('#e').textContent=x.message;btn.disabled=false}};
+}
+async function openPay(id){try{const r=await api('GET',`/orders/${id}/payment`);payDlg(r.order,r.payment,null)}catch(e){note(e.message,1)}}
 
 // ------------------------------------------------------------------------------- LISENSI & PESANAN SAYA
 async function viewSaya(){
@@ -176,7 +212,9 @@ async function viewSaya(){
   const ST={pending:'<span class="badge l">menunggu pembayaran</span>',paid:'<span class="badge g">lunas</span>',cancelled:'<span class="badge">dibatalkan</span>'};
   h+='<h4>Pesanan saya</h4>'+(S.ord.length?S.ord.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> ${ST[o.status]||o.status} <span class="mut small">${esc(dt(o.created_at))} · ${esc(o.holder_label||'')}</span>
     <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>')}</div>
-    <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref: ${esc(o.payment_ref)}</span>`:''}${o.status==='pending'?`<button type="button" class="d small" data-cancel="${o.id}">Batalkan</button>`:''}</div></div>`).join(''):'<p class="mut">Belum ada pesanan.</p>');
+    <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref: ${esc(o.payment_ref)}</span>`:''}${o.claimed_at&&o.status==='pending'?'<span class="badge g">✔ sudah dilaporkan dibayar — menunggu verifikasi admin</span>':''}
+      ${o.status==='pending'?`<button type="button" class="p small" data-pay="${o.id}">💳 Bayar / lihat QRIS</button><button type="button" class="d small" data-cancel="${o.id}">Batalkan</button>`:''}</div></div>`).join(''):'<p class="mut">Belum ada pesanan.</p>');
+  document.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>openPay(b.dataset.pay));
   $('#view').innerHTML=h;
   document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=async()=>{if(!confirm('Batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.cancel}/cancel`);viewSaya()}catch(e){note(e.message,1)}});
 }
@@ -186,10 +224,17 @@ async function viewAdmin(){
   $('#view').innerHTML='<p class="mut">memuat…</p>';
   try{S.adm={orders:(await api('GET','/orders?scope=all')).orders,lic:(await api('GET','/licenses?scope=all')).licenses}}catch(e){return note(e.message,1)}
   const d=S.d,A=S.adm,pend=A.orders.filter(o=>o.status==='pending');
-  let h=`<h4>Pesanan menunggu pembayaran (${pend.length})</h4>`+(pend.length?pend.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> oleh <b>${esc(o.buyer_name)}</b> · ${esc(o.holder_label)} · ${esc(dt(o.created_at))}
+  const waUrl=(o,paid)=>{if(!o.contact_phone)return '';const code='LIC-'+String(o.id).padStart(5,'0');
+    const txt=paid?`Halo, pembayaran pesanan ${code} sudah kami konfirmasi dan lisensi Anda sudah AKTIF (${o.items.map(i=>LBL(i.module_key)).join(', ')}). Silakan cek di ${location.origin}/store. Terima kasih.`
+      :`Halo, pesanan ${code} (${rp(o.total)}) di Toko Alat Hitung masih menunggu pembayaran. Mohon bayar via QRIS dengan nominal persis ${rp(o.total)} lalu tekan "Saya sudah bayar" di Toko. Terima kasih.`;
+    return `https://wa.me/${o.contact_phone}?text=${encodeURIComponent(txt)}`};
+  const contactLine=o=>`<div class="small mut">📧 ${esc(o.contact_email||'-')} · 📱 ${esc(o.contact_phone||'-')} ${o.claimed_at&&o.status==='pending'?'<span class="badge g">💬 pembeli melaporkan sudah bayar '+esc(dt(o.claimed_at))+'</span>':''}</div>`;
+  const paidRecent=A.orders.filter(o=>o.status==='paid'&&o.contact_phone).slice(0,8);
+  let h=`<h4>Pesanan menunggu pembayaran (${pend.length})</h4>`+(pend.length?pend.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> <span class="mut small">${'LIC-'+String(o.id).padStart(5,'0')}</span> oleh <b>${esc(o.buyer_name)}</b> · ${esc(o.holder_label)} · ${esc(dt(o.created_at))}${contactLine(o)}
      <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>')}</div>
      <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref pembeli: ${esc(o.payment_ref)}</span>`:''}</div>
-     <div class="row"><input class="fill" placeholder="Referensi pembayaran yang diterima" data-ref="${o.id}"><button type="button" class="p" data-ok="${o.id}">✔ Konfirmasi lunas</button><button type="button" class="d" data-no="${o.id}">Tolak</button></div></div>`).join(''):'<p class="mut">Tidak ada.</p>');
+     <div class="row"><input class="fill" placeholder="Referensi pembayaran yang diterima" data-ref="${o.id}"><button type="button" class="p" data-ok="${o.id}">✔ Konfirmasi lunas</button>${waUrl(o,false)?`<a href="${waUrl(o,false)}" target="_blank" rel="noopener"><button type="button">📲 WA pembeli</button></a>`:''}<button type="button" class="d" data-no="${o.id}">Tolak</button></div></div>`).join(''):'<p class="mut">Tidak ada.</p>');
+  h+=`<h4>Pemberitahuan aktivasi (pesanan lunas terbaru)</h4>`+(paidRecent.length?paidRecent.map(o=>`<div class="card" style="margin-bottom:6px"><b>#${o.id}</b> · ${esc(o.buyer_name)} · ${rp(o.total)}${contactLine(o)}<div class="row"><a href="${waUrl(o,true)}" target="_blank" rel="noopener"><button type="button" class="p small">📲 Kirim WA: lisensi aktif</button></a><span class="small mut">Email aktivasi dikirim otomatis saat konfirmasi.</span></div></div>`).join(''):'<p class="mut">Belum ada.</p>');
   h+=`<h4>Harga alat — HARGA DAFTAR (ORI) dalam Rupiah, kosong = belum dijual</h4><div class="small mut">Ditagihkan = harga daftar − diskon. Pembeli melihat harga ORI dicoret dan label diskon.</div><div class="scroll"><table><tr><th>Alat</th><th>Per laporan</th><th>6 bln</th><th>12 bln</th><th>24 bln</th><th>Diskon %</th></tr>`
     +d.engines.map(e=>`<tr><td>${e.icon} ${esc(e.label)}</td>${['report','6','12','24'].map(k=>`<td><input type="number" min="0" step="100" style="width:104px" data-pk="${e.key}|${k}" value="${e.list_prices[k]??''}"></td>`).join('')}<td><input type="number" min="0" max="90" style="width:64px" data-pd="${e.key}" value="${e.discount_pct||0}"></td></tr>`).join('')
     +`</table></div><div class="row"><button type="button" class="p" id="savePrice">Simpan harga</button></div>`;
