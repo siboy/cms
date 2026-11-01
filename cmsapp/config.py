@@ -14,6 +14,7 @@ class Config:
     UPLOAD_MAX_MB = int(os.environ.get("CMS_UPLOAD_MAX_MB", 20))
     DATA_DIR = os.environ.get("CMS_DATA_DIR", "/data")
     BASE_URL = os.environ.get("CMS_BASE_URL", "http://localhost:8879")
+    SIGNUP_URL = os.environ.get("CMS_SIGNUP_URL", "")          # tautan daftar mandiri di email undangan (mis. https://sdrive.team/register); kosong = BASE_URL/register
 
     # SMTP (opsional): notifikasi akun, verifikasi email, reset password. Kosong = mailer.send_mail no-op.
     SMTP_HOST = os.environ.get("CMS_SMTP_HOST", "")

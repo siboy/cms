@@ -382,6 +382,16 @@ def request_password_reset(email: str) -> dict | None:
     return row
 
 
+def issue_invite_reset(user_id: int, days: int = 7) -> str:
+    """Token atur-password untuk undangan akun baru (berlaku `days` hari; dipakai lewat alur reset biasa)."""
+    token = _gen_token()
+    expires = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    s = store()
+    with s._tx() as c:
+        s._x(c, "UPDATE cms_users SET reset_token=?, reset_expires=? WHERE id=?", (token, expires, user_id))
+    return token
+
+
 def reset_password(token: str, new_password: str):
     if len(new_password) < 8:
         raise ValueError("password minimal 8 karakter")
@@ -390,8 +400,9 @@ def reset_password(token: str, new_password: str):
         row = s._one(c, "SELECT id, reset_expires FROM cms_users WHERE reset_token=?", (token,))
         if not row or not row["reset_expires"] or row["reset_expires"] < _now():
             raise ValueError("token reset tidak valid atau sudah kedaluwarsa")
-        s._x(c, "UPDATE cms_users SET pw_hash=?, reset_token=NULL, reset_expires=NULL WHERE id=?",
-            (generate_password_hash(new_password), row["id"]))
+        s._x(c, "UPDATE cms_users SET pw_hash=?, reset_token=NULL, reset_expires=NULL, "
+                "email_verified_at=COALESCE(email_verified_at, ?) WHERE id=?",          # token hanya dikirim ke email -> memakainya = email terbukti milik pengguna
+            (generate_password_hash(new_password), _now(), row["id"]))
     rds().delete(f"cms:user:{row['id']}")
 
 

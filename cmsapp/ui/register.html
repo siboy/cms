@@ -49,6 +49,7 @@ button:disabled{opacity:.6}
 const $=s=>document.querySelector(s);
 const hdr={'Content-Type':'application/json','X-CMS':'1'};
 let EMAIL='';
+const _qe=new URLSearchParams(location.search).get('email');if(_qe)document.querySelector('[name=email]').value=_qe;
 (async()=>{
   try{
     const r=await (await fetch('/api/auth/register-info')).json();

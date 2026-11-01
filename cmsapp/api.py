@@ -1302,13 +1302,24 @@ def _doc_block_link(doc_id: int, block_id: int = None) -> str:
 @auth.require("user_manage")
 def admin_user():
     d = body()
-    uid, verify_token = auth.create_user(d["username"], d["password"], d.get("name", ""), d.get("role", "editor"),
+    invite = not d.get("password") and bool((d.get("email") or "").strip())      # tanpa password + ada email = UNDANGAN (pengguna atur password sendiri lewat email)
+    if not d.get("password") and not invite:
+        raise ValueError("isi password, atau isi email agar undangan dikirim")
+    import secrets as _sec
+    uid, verify_token = auth.create_user(d["username"], d.get("password") or _sec.token_urlsafe(18), d.get("name", ""), d.get("role", "editor"),
                                          d.get("email", ""), d.get("phone_wa", ""), d.get("expertise", ""))
     S().log_activity(g.user["username"], "user.create", target_type="user", target_id=uid,
-                     summary=f'{d["username"]} ({d.get("role", "editor")})')
-    if verify_token and d.get("email"):
+                     summary=f'{d["username"]} ({d.get("role", "editor")})' + (" undangan" if invite else ""))
+    sent = None
+    if invite:
+        from utils import accounts as _acc
+        link = f'{current_app.config["BASE_URL"]}/?reset={auth.issue_invite_reset(uid)}'
+        company = S().get_setting("company_name", "") or current_app.config["BASE_URL"].split("//")[-1]
+        sent = mailer.notify_company_invite(d["email"].strip().lower(), d.get("name") or d["username"], g.user.get("name") or g.user["username"], company,
+                                            d.get("role", "editor"), d["username"].strip().lower(), link, _acc.seat_billing_on())
+    elif verify_token and d.get("email"):
         mailer.notify_account_created(d["email"], d.get("name", ""), d["username"], _verify_link(verify_token))
-    return jsonify(id=uid), 201
+    return jsonify(id=uid, invited=invite, mail_sent=sent), 201
 
 
 @bp.patch("/admin/users/<int:uid>")

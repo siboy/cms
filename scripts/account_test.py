@@ -212,16 +212,46 @@ def main():
     cand = A.get(f"/api/projects/{pB}/team/candidates").get_json()
     check(cand["users"] == [] and cand["invite_by_email"], "kandidat tim akun mandiri kosong (tak bisa menjelajah pengguna)")
     check(A.post(f"/api/projects/{pB}/team", json={"user_id": 3, "title": "Penulis"}, headers=H).status_code == 403, "tambah anggota via id asing ditolak")
-    check(A.post(f"/api/projects/{pB}/team/invite", json={"identifier": "tidak@ada.com", "title": "Penulis"}, headers=H).status_code == 404, "undang akun yang belum terdaftar -> 404")
+    check(A.post(f"/api/projects/{pB}/team/invite", json={"identifier": "tidak-ada", "title": "Penulis"}, headers=H).status_code == 404, "undang username yang belum terdaftar -> 404")
     r = A.post(f"/api/projects/{pB}/team/invite", json={"identifier": "EKO@example.com", "title": "Penulis"}, headers=H)
     check(r.status_code == 201 and r.get_json()["user"]["username"] == "eko", "undang via email persis")
     check([p["name"] for p in E.get("/api/projects").get_json()["projects"]] == ["Proyek B"], "yang diundang melihat proyek B")
+    inv = [m for m in SENT if m[0] == "eko@example.com" and "diundang ke proyek" in m[1]]
+    check(inv and "Penulis" in inv[-1][2] and "Proyek B" in inv[-1][2], "akun lama diundang: email 'diundang menjadi <role>' terkirim")
+    nt = E.get("/api/me/notifications").get_json()["items"]
+    check(nt and nt[0]["type"] == "project_invite" and "menjadi Penulis di proyek Proyek B" in nt[0]["summary"] and nt[0]["project_id"] == pB, "notifikasi dalam aplikasi untuk yang diundang")
+    # email BELUM punya akun -> undangan tertunda + email ajakan daftar; otomatis bergabung setelah daftar & konfirmasi
+    n0 = len(SENT)
+    r = A.post(f"/api/projects/{pB}/team/invite", json={"identifier": "Dewi@Example.com", "title": "Reviewer"}, headers=H)
+    check(r.status_code == 202 and r.get_json()["pending"] and r.get_json()["email"] == "dewi@example.com", f"undang email baru: {r.get_data(as_text=True)[:100]}")
+    m = SENT[n0]
+    check(m[0] == "dewi@example.com" and "Reviewer" in m[2] and "Proyek B" in m[2] and "register?email=dewi%40example.com" in m[2], "email ajakan daftar memuat role, proyek, dan tautan daftar berisi email")
+    check(A.post(f"/api/projects/{pB}/team/invite", json={"identifier": "dewi@example.com", "title": "Reviewer QC"}, headers=H).status_code == 202
+          and len(A.get(f"/api/projects/{pB}/team").get_json()["pending_invites"]) == 1, "undangan ganda ke email sama tidak menggandakan")
+    check(E.get(f"/api/projects/{pB}/team").get_json()["pending_invites"] == [], "anggota biasa tak melihat daftar undangan")
+    check(A.post(f"/api/projects/{pB}/team/invite", json={"identifier": "username-tak-ada", "title": "X"}, headers=H).status_code == 404, "username tak dikenal tetap 404 (butuh email)")
+    iid = A.get(f"/api/projects/{pB}/team").get_json()["pending_invites"][0]["id"]
+    check(C.delete(f"/api/projects/{pD}/team/invite/{iid}", headers=H).status_code == 404, "tak bisa membatalkan undangan proyek lain")
+    reg(name="Dewi Lestari", email="dewi@example.com", phone="081234567805")
+    t_d = SENT[-1][2].split("token=")[1].split('"')[0]
+    check(app.test_client().post("/api/login", json={"username": "dewi", "password": "rahasia123"}, headers=H).status_code == 401, "sebelum konfirmasi belum masuk")
+    anon.get(f"/api/auth/confirm-registration?token={t_d}")
+    Dw = app.test_client()
+    Dw.post("/api/login", json={"username": "dewi", "password": "rahasia123"}, headers=H)
+    check([p["name"] for p in Dw.get("/api/projects").get_json()["projects"]] == ["Proyek B"], "setelah daftar+konfirmasi otomatis masuk proyek yang mengundang")
+    check([x["title"] for x in Dw.get(f"/api/projects/{pB}/team").get_json()["team"] if x.get("username") == "dewi"] == ["Reviewer QC"], "role mengikuti undangan terakhir")
+    check(any("Reviewer QC" in n["summary"] for n in Dw.get("/api/me/notifications").get_json()["items"]), "notifikasi undangan untuk pendaftar baru")
+    check(A.get(f"/api/projects/{pB}/team").get_json()["pending_invites"] == [], "undangan selesai dibersihkan")
+    check(Dw.get(f"/api/projects/{pD}").status_code == 404, "pendaftar baru tetap tak melihat proyek lain")
+    r = A.post(f"/api/projects/{pB}/team/invite", json={"identifier": "gigi@example.com", "title": "Penulis"}, headers=H)
+    iid2 = r.get_json()["invite_id"]
+    check(A.delete(f"/api/projects/{pB}/team/invite/{iid2}", headers=H).status_code == 200 and A.get(f"/api/projects/{pB}/team").get_json()["pending_invites"] == [], "undangan bisa dibatalkan")
     check([u["username"] for u in A.get(f"/api/projects/{pB}/team/candidates").get_json()["users"]] == [] or True, "kandidat")
     # setelah satu proyek, A & E saling 'kenal'; C tetap asing bagi keduanya
     check(C.get(f"/api/projects/{pB}/team").status_code == 404, "C tak bisa melihat tim proyek B")
     pA2 = A.post("/api/projects", json={"name": "Proyek A2"}, headers=H).get_json()["id"]
     cand2 = A.get(f"/api/projects/{pA2}/team/candidates").get_json()["users"]
-    check([u["username"] for u in cand2] == ["eko"], "kenalan (satu proyek) muncul sebagai kandidat; C tidak")
+    check(sorted(u["username"] for u in cand2) == ["dewi", "eko"], "kenalan (satu proyek) muncul sebagai kandidat; C tidak")
     check(A.post(f"/api/projects/{pA2}/team", json={"user_id": cand2[0]["id"], "title": "Penulis"}, headers=H).status_code == 201, "menambah kenalan pakai id boleh")
     # anggota undangan tidak boleh mengubah/menghapus proyek orang lain
     check(E.patch(f"/api/projects/{pB}", json={"name": "Dibajak"}, headers=H).status_code == 403, "anggota biasa tak bisa ubah proyek")
@@ -312,6 +342,22 @@ def main():
     r = adm.post("/api/admin/users", json={"username": "sari", "password": "password123", "name": "Sari", "role": "editor", "email": "sari@pt.com", "phone_wa": "081234567810"}, headers=H)
     check(r.status_code == 201, f"admin menambah akun: {r.get_data(as_text=True)[:100]}")
     adm.post("/api/admin/users", json={"username": "tono", "password": "password123", "name": "Tono", "role": "editor", "email": "tono@pt.com", "phone_wa": "081234567811"}, headers=H)
+    # undangan jalur 2: tanpa password + email -> email "diundang sebagai <role>" + tautan atur password
+    check(adm.post("/api/admin/users", json={"username": "x1", "name": "X", "role": "editor"}, headers=H).status_code == 400, "tanpa password dan tanpa email ditolak")
+    n0 = len(SENT)
+    r = adm.post("/api/admin/users", json={"username": "rina", "name": "Rina", "role": "reviewer/qc" if False else "editor", "email": "rina@pt.com"}, headers=H)
+    check(r.status_code == 201 and r.get_json()["invited"] and r.get_json()["mail_sent"], f"undangan jalur 2: {r.get_data(as_text=True)[:100]}")
+    m = SENT[n0]
+    check(m[0] == "rina@pt.com" and "PT Baru" in m[2] and "editor" in m[2] and "rina" in m[2] and "?reset=" in m[2] and "tahu" not in m[2], "email undangan memuat perusahaan, role, username, tautan atur password")
+    check("rahasia" not in m[2] and "password" in m[2].lower(), "tidak ada password di email")
+    tok = m[2].split("?reset=")[1].split('"')[0]
+    check(app3.test_client().post("/api/auth/reset-password", json={"token": tok, "password": "sandi-rina-1"}, headers=H).status_code == 200, "pengguna mengatur passwordnya lewat tautan")
+    check(Q1(st2, "SELECT email_verified_at FROM cms_users WHERE username='rina'")["email_verified_at"], "email otomatis terverifikasi setelah memakai tautan")
+    rina = app3.test_client()
+    check(rina.post("/api/login", json={"username": "rina", "password": "sandi-rina-1"}, headers=H).status_code == 401, "jalur 2: sebelum kursi dibayar tetap tak bisa masuk")
+    rid = Q1(st2, "SELECT id FROM cms_users WHERE username='rina'")["id"]
+    license_ops.confirm(st2, acc.order_seats(st2, {"id": 1, "username": "andi"}, [rid], 12, {"email": "a@x.id", "phone": "081234567890"})["id"], "OCR")
+    check(rina.post("/api/login", json={"username": "rina", "password": "sandi-rina-1"}, headers=H).status_code == 200, "kursi lunas -> masuk dengan password buatannya sendiri")
     sari = app3.test_client()
     r = sari.post("/api/login", json={"username": "sari", "password": "password123"}, headers=H)
     check(r.status_code == 401 and "langganan akun" in r.get_json()["error"], "akun tanpa kursi tak bisa masuk")

@@ -8,7 +8,7 @@ import uuid
 from flask import Blueprint, abort, current_app, g, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
-from cmsapp import auth
+from cmsapp import auth, mailer
 from utils import accounts
 from cmsapp.modules_api import guard
 from utils.blockstore import ConflictError, LockedError
@@ -686,8 +686,9 @@ def _team_manage_guard(pid: int):
 @auth.require()
 def project_team(pid):
     _project_visible(pid)
-    return jsonify(team=S().list_project_team(pid),
-                   can_manage=auth.has_perm(g.user, "project_team_manage") or S().is_project_leader(g.user["id"], pid),
+    can_manage = auth.has_perm(g.user, "project_team_manage") or S().is_project_leader(g.user["id"], pid)
+    return jsonify(team=S().list_project_team(pid), pending_invites=accounts.pending_invites(S(), pid) if can_manage else [],
+                   can_manage=can_manage,
                    can_appoint=bool(g.user.get("is_super")))     # angkat/lepas ketua: KHUSUS grup admin (super)
 
 
@@ -718,13 +719,54 @@ def project_team_invite(pid):
     d = body()
     from cmsapp.api import throttle
     throttle(f"invite:{g.user['id']}", 30, 3600)
-    u = accounts.find_user(S(), d.get("identifier"))
+    ident = str(d.get("identifier") or "").strip()
+    u = accounts.find_user(S(), ident)
     if not u:
-        return jsonify(error="akun dengan email/username itu belum terdaftar -- minta ia mendaftar dulu di halaman Daftar"), 404
+        if "@" not in ident:
+            return jsonify(error="username itu belum terdaftar -- undang lewat alamat email-nya"), 404
+        # belum punya akun: simpan undangan + email ajakan daftar; otomatis bergabung begitu emailnya terkonfirmasi
+        title = (d.get("title") or "").strip()
+        iid = accounts.add_pending_invite(S(), pid, ident, title, g.user["username"])
+        ident = accounts.lic.normalize_email(ident)
+        sent = mailer.notify_project_invite_new(ident, g.user.get("name") or g.user["username"], S().get_project(pid)["name"], title,
+                                                _signup_link(ident))
+        S().log_activity(g.user["username"], "project.team_invite", target_type="user", project_id=pid, summary=f"{title} -> {ident} (belum punya akun)")
+        return jsonify(ok=True, pending=True, invite_id=iid, email=ident, mail_sent=sent), 202
     row_id = S().add_project_team_member(pid, d.get("title", ""), user_id=u["id"])
     S().log_activity(g.user["username"], "project.team_add", target_type="user", target_id=u["id"], project_id=pid,
                      summary=d.get("title", "") + " (undangan)")
+    _notify_invited(pid, u["id"], d.get("title", ""))
     return jsonify(ok=True, row_id=row_id, user={"id": u["id"], "username": u["username"], "name": u["name"]}), 201
+
+
+def _signup_link(email: str) -> str:
+    from urllib.parse import quote
+    base = current_app.config.get("SIGNUP_URL") or (current_app.config["BASE_URL"].rstrip("/") + "/register")
+    return f"{base}?email={quote(email)}"
+
+
+def _notify_invited(pid: int, uid: int, title: str):
+    """Notifikasi dalam aplikasi + email: "Anda diundang menjadi <role> di proyek <nama>". Gagal kirim tidak menggagalkan penambahan anggota."""
+    if uid == g.user["id"]:
+        return
+    pname = S().get_project(pid)["name"]
+    S().add_notification(uid, "project_invite", actor=g.user["username"], project_id=pid, summary=f"Anda diundang menjadi {title} di proyek {pname}")
+    try:
+        u = auth.get_user(uid)
+        if u.get("email"):
+            mailer.notify_project_invite(u["email"], u.get("name") or u["username"], g.user.get("name") or g.user["username"], pname, title,
+                                         current_app.config["BASE_URL"])
+    except Exception:                                   # noqa: BLE001
+        pass
+
+
+@bp.delete("/projects/<int:pid>/team/invite/<int:iid>")
+@auth.require()
+def project_team_invite_cancel(pid, iid):
+    _project_visible(pid)
+    _team_manage_guard(pid)
+    accounts.cancel_invite(S(), pid, iid)
+    return jsonify(ok=True)
 
 
 @bp.post("/projects/<int:pid>/team")
@@ -741,6 +783,8 @@ def project_team_add(pid):
     row_id = S().add_project_team_member(pid, d.get("title", ""), user_id=uid,
                                         external_name=d.get("external_name", ""),
                                         external_contact=d.get("external_contact", ""))
+    if uid:
+        _notify_invited(pid, uid, d.get("title", ""))
     S().log_activity(g.user["username"], "project.team_add", target_type="user", target_id=uid, project_id=pid,
                      summary=d.get("title", "") + (f' ({d.get("external_name", "")})' if not uid else ""))
     return jsonify(ok=True, row_id=row_id), 201

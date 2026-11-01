@@ -113,6 +113,9 @@ def ensure(s) -> None:
         s._x(c, f"CREATE TABLE IF NOT EXISTS cms_companies (id {pk}, code {vc(30)} NOT NULL UNIQUE, name {vc(120)} NOT NULL, owner_id {big} NOT NULL, "
                 f"order_id {big} NULL, status {vc(12)} NOT NULL, created_at {dt} NOT NULL, paid_at {dt} NULL, provisioned_at {dt} NULL, "
                 f"tenant_url {vc(200)} NULL, error {vc(500)} NULL)")
+    with s._tx() as c:
+        s._x(c, f"CREATE TABLE IF NOT EXISTS cms_invites (id {pk}, project_id {big} NOT NULL, email {vc(120)} NOT NULL, title {vc(120)} NOT NULL, "
+                f"invited_by {vc(80)} NULL, created_at {dt} NOT NULL, accepted_at {dt} NULL)")
     _ensure_group(s)
     _ready.add(id(s))
 
@@ -221,7 +224,58 @@ def confirm(s, token: str) -> dict | None:
         if row["reg_token_at"] and datetime.strptime(str(row["reg_token_at"])[:19], "%Y-%m-%d %H:%M:%S") + timedelta(hours=CONFIRM_TTL_H) < now():
             raise ValueError(f"tautan konfirmasi sudah kedaluwarsa (berlaku {CONFIRM_TTL_H} jam). Daftar ulang dengan email yang sama untuk mendapat tautan baru")
         s._x(c, "UPDATE cms_users SET active=1, email_verified_at=?, verify_token=NULL, reg_token_at=NULL WHERE id=?", (_s(now()), row["id"]))
+    claim_invites(s, row["id"])                           # undangan proyek yang menunggu email ini -> otomatis bergabung
     return {"id": row["id"], "username": row["username"], "name": row["name"]}
+
+
+# ------------------------------------------------------------------------------------------- undangan proyek (jalur 1)
+def add_pending_invite(s, project_id: int, email: str, title: str, by: str) -> int:
+    """Undangan untuk alamat email yang BELUM punya akun. Satu undangan menunggu per (proyek, email)."""
+    ensure(s)
+    email = lic.normalize_email(email)
+    title = _clean(title, "Jabatan/role", 2, 120)
+    with s._tx() as c:
+        ex = s._one(c, "SELECT id FROM cms_invites WHERE project_id=? AND email=? AND accepted_at IS NULL", (project_id, email))
+        if ex:
+            s._x(c, "UPDATE cms_invites SET title=?, invited_by=? WHERE id=?", (title, by, ex["id"]))
+            return ex["id"]
+        return s._x(c, "INSERT INTO cms_invites(project_id,email,title,invited_by,created_at) VALUES (?,?,?,?,?)", (project_id, email, title, by, _s(now()))).lastrowid
+
+
+def pending_invites(s, project_id: int) -> list[dict]:
+    ensure(s)
+    with s._tx() as c:
+        return s._all(c, "SELECT id, email, title, invited_by, created_at FROM cms_invites WHERE project_id=? AND accepted_at IS NULL ORDER BY id", (project_id,))
+
+
+def cancel_invite(s, project_id: int, invite_id: int) -> None:
+    ensure(s)
+    with s._tx() as c:
+        if not s._one(c, "SELECT id FROM cms_invites WHERE id=? AND project_id=? AND accepted_at IS NULL", (invite_id, project_id)):
+            raise KeyError(f"undangan {invite_id} tidak ada")
+        s._x(c, "DELETE FROM cms_invites WHERE id=?", (invite_id,))
+
+
+def claim_invites(s, user_id: int) -> list[int]:
+    """Akun baru aktif (email sudah terkonfirmasi): masukkan ke semua proyek yang mengundang email-nya + kirim notifikasi dalam aplikasi."""
+    ensure(s)
+    with s._tx() as c:
+        u = s._one(c, "SELECT email FROM cms_users WHERE id=?", (user_id,))
+        rows = s._all(c, "SELECT id, project_id, title, invited_by FROM cms_invites WHERE email=? AND accepted_at IS NULL", (u["email"] if u else "-",))
+    done = []
+    for r in rows:
+        try:
+            s.add_project_team_member(r["project_id"], r["title"], user_id=user_id)
+        except (KeyError, ValueError):                      # proyek sudah dihapus
+            pass
+        else:
+            done.append(r["project_id"])
+            name = (s.get_project(r["project_id"]) or {}).get("name", "")
+            s.add_notification(user_id, "project_invite", actor=r["invited_by"] or "", project_id=r["project_id"],
+                               summary=f"Anda diundang menjadi {r['title']} di proyek {name}")
+        with s._tx() as c:
+            s._x(c, "UPDATE cms_invites SET accepted_at=? WHERE id=?", (_s(now()), r["id"]))
+    return done
 
 
 def resend_token(s, email: str) -> dict | None:

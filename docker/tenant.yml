@@ -75,6 +75,7 @@ services:
       CMS_EXPORT_DIR: /data/exports
       CMS_BASE_URL: ${CMS_BASE_URL:?isi di .env}    # https://<subdomain-tenant>, dipakai link email & share
       CMS_MODULES: ${CMS_MODULES:-none}               # modul fitur berlangganan yang aktif (diatur OPERATOR lewat cmspanel): none | all | templates,calc_lalin,...
+      CMS_SIGNUP_URL: ${CMS_SIGNUP_URL:-}               # tautan daftar mandiri di email undangan proyek (kosong = <BASE_URL>/register)
       CMS_SELF_REGISTER: ${CMS_SELF_REGISTER:-0}       # 1 = halaman /register dibuka (tenant akun MANDIRI, mis. cms); diatur OPERATOR
       CMS_SEAT_BILLING: ${CMS_SEAT_BILLING:-0}         # 1 = tiap akun wajib punya langganan akun aktif (tenant PERUSAHAAN hasil kode perusahaan)
       CMS_RESERVED_CODES: ${CMS_RESERVED_CODES:-}      # kode perusahaan terlarang tambahan (koma), mis. slug tenant yang sudah ada

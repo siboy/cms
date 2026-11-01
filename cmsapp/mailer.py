@@ -85,3 +85,29 @@ def notify_company_ready(to: str, name: str, company: str, url: str) -> bool:
             f"<p>Masuk memakai email/username dan password akun sdrive Anda. Anda adalah <b>admin pertama</b>: tambah anggota dari menu Admin, "
             f"lalu bayar langganan akun mereka di menu <b>🏢 Perusahaan</b>.</p>")
     return send_mail(to, f"Tenant {company} siap dipakai", html)
+
+
+def notify_project_invite(to: str, name: str, actor: str, project: str, title: str, link: str) -> bool:
+    """Akun yang SUDAH ada diundang masuk tim proyek (jalur 1 maupun jalur 2)."""
+    name, actor, project, title = escape(name), escape(actor), escape(project), escape(title)
+    html = (f"<p>Halo {name},</p><p><b>{actor}</b> mengundang Anda bergabung di proyek <b>{project}</b> sebagai <b>{title}</b>.</p>"
+            f"<p><a href=\"{link}\">Buka sdrive</a></p>")
+    return send_mail(to, f"Anda diundang ke proyek {project}", html)
+
+
+def notify_project_invite_new(to: str, actor: str, project: str, title: str, signup_link: str) -> bool:
+    """Alamat email BELUM punya akun: ajak daftar mandiri; begitu akun aktif, otomatis masuk tim proyek."""
+    actor, project, title = escape(actor), escape(project), escape(title)
+    html = (f"<p>Halo,</p><p><b>{actor}</b> mengundang Anda bergabung di proyek <b>{project}</b> sebagai <b>{title}</b> di sdrive.</p>"
+            f"<p>Anda belum punya akun. Daftar dulu memakai <b>email ini</b>, konfirmasi emailnya, dan Anda otomatis masuk ke proyek tersebut:<br>"
+            f"<a href=\"{signup_link}\">{signup_link}</a></p>")
+    return send_mail(to, f"Undangan proyek {project} — daftar untuk bergabung", html)
+
+
+def notify_company_invite(to: str, name: str, actor: str, company: str, role: str, username: str, link: str, needs_seat: bool) -> bool:
+    """Admin perusahaan menambahkan akun: undangan bergabung + tautan mengatur password (tanpa mengirim password lewat email)."""
+    name, actor, company, role, username = escape(name), escape(actor), escape(company), escape(role), escape(username)
+    seat = ("<p>Akun Anda aktif setelah admin mengaktifkan langganan akun; Anda baru bisa masuk setelah itu.</p>" if needs_seat else "")
+    html = (f"<p>Halo {name},</p><p><b>{actor}</b> mengundang Anda bergabung di <b>{company}</b> sebagai <b>{role}</b>.</p>"
+            f"<p>Username Anda: <b>{username}</b>. Atur password Anda lewat tautan berikut (berlaku 7 hari):<br><a href=\"{link}\">{link}</a></p>{seat}")
+    return send_mail(to, f"Anda diundang bergabung di {company}", html)

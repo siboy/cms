@@ -107,7 +107,7 @@ async function seatsView(m){
   upd();$('#mo').onchange=upd;
   document.querySelectorAll('[data-sel]').forEach(c=>c.onchange=()=>{const id=+c.dataset.sel;c.checked?SEL.add(id):SEL.delete(id);upd()});
   document.querySelectorAll('[data-adm]').forEach(b=>b.onclick=async()=>{
-    if(b.dataset.v==='0'&&!confirm('Lepas status admin akun ini?'))return;
+    if(b.dataset.v==='0'&&!b.dataset.sure){b.dataset.sure=1;b.textContent='Yakin? ketuk lagi';return}   // confirm() bawaan tak muncul di APK
     try{await api('POST',`/members/${b.dataset.adm}/admin`,{admin:b.dataset.v==='1'});note('Peran diperbarui.');seatsView(m)}catch(x){note(x.message,1)}});
   $('#pay').onclick=async()=>{
     if(!SEL.size)return $('#e').textContent='Centang akun yang akan dibayarkan.';
