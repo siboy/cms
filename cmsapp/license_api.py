@@ -115,8 +115,8 @@ def _mail_buyer_instructions(o: dict) -> bool:
             f"<p><b>Total yang harus dibayar: {_rp(o['total'])}</b></p>"
             f"<p>Bayar lewat <b>QRIS</b> ({pay['merchant']}, NMID {pay['nmid']}) dengan nominal PERSIS di atas. "
             f"Kode QRIS ada di <a href=\"{base}/store\">halaman Toko</a> (tab Lisensi &amp; Pesanan → Bayar).</p>"
-            f"<p>Setelah membayar, tekan <i>Saya sudah bayar</i> di Toko. Admin akan memverifikasi dan mengaktifkan lisensi; "
-            f"pemberitahuan aktivasi dikirim lewat email ini dan WhatsApp ke nomor {o.get('contact_phone') or '-'}.</p>")
+            f"<p>Setelah membayar, unggah tangkapan layar bukti transfer di Toko (nominal, status berhasil, tanggal &amp; jam harus terlihat). "
+            f"Bila terbaca cocok, lisensi langsung aktif; bila tidak, admin memverifikasi manual dan menghubungi Anda lewat email ini / WhatsApp {o.get('contact_phone') or '-'}.</p>")
     return mailer.send_mail(o.get("contact_email") or "", f"Pesanan {lic.order_code(o['id'])} — bayar {_rp(o['total'])}", html)
 
 
@@ -136,7 +136,7 @@ def _admin_emails(s) -> list[str]:
 
 def _mail_admins(s, o: dict, claimed: bool) -> int:
     base = current_app.config.get("BASE_URL", "")
-    ttl = "Pembeli menyatakan SUDAH BAYAR" if claimed else "Pesanan lisensi baru menunggu pembayaran"
+    ttl = ("Perlu VERIFIKASI MANUAL (bukti QRIS tak lolos OCR)" if o.get("verify_state") == "manual" else "Pembeli menyatakan SUDAH BAYAR") if claimed else "Pesanan lisensi baru menunggu pembayaran"
     html = (f"<p><b>{ttl}</b>: {lic.order_code(o['id'])} oleh {o.get('buyer_name')} untuk {o.get('holder_label')}</p>{_items_html(o)}"
             f"<p>Total <b>{_rp(o['total'])}</b>. Kontak: {o.get('contact_email') or '-'} / WA {o.get('contact_phone') or '-'}</p>"
             f"<p>Cek mutasi QRIS, lalu konfirmasi di <a href=\"{base}/store\">Toko → Admin</a>.</p>")
@@ -259,6 +259,40 @@ def order_claim(oid):
     o = lic.claim(S(), oid, g.user["username"], str(body().get("proof_ref") or ""))
     S().log_activity(g.user["username"], "license.claim", target_type="license_order", target_id=oid, summary=f"pesanan #{oid}: pembeli menyatakan sudah bayar")
     return jsonify(order=o, notify={"email_admins": _mail_admins(S(), o, True)})
+
+
+@bp.post("/orders/<int:oid>/proof")
+@auth.require()
+def order_proof(oid):
+    """Unggah tangkapan layar bukti QRIS (multipart, field 'proof') -> OCR -> lunas otomatis / minta unggah ulang / verifikasi manual."""
+    o = lic.get_order(S(), oid)
+    if o["buyer_id"] != g.user["id"] and not can_manage():
+        return jsonify(error="bukan pesanan Anda"), 403
+    f = request.files.get("proof")
+    if not f:
+        return jsonify(error="lampirkan tangkapan layar bukti pembayaran"), 400
+    r = lic.submit_proof(S(), oid, g.user["username"], f.read(9 * 1024 * 1024))
+    S().log_activity(g.user["username"], "license.proof", target_type="license_order", target_id=oid,
+                     summary=f"pesanan #{oid}: bukti ke-{r['attempt']} -> {r['result']}" + (f" ({'; '.join(r['reasons'])})" if r["reasons"] else ""))
+    notify = {}
+    if r["result"] == "paid":
+        notify = {"email_buyer": _mail_buyer_active(r["order"]) if r["order"].get("contact_email") else False}
+    elif r["result"] == "manual":
+        notify = {"email_admins": _mail_admins(S(), r["order"], True)}
+    r["notify"] = notify
+    return jsonify(r)
+
+
+@bp.get("/orders/<int:oid>/proof/<int:pid>")
+@auth.require()
+def order_proof_image(oid, pid):
+    o = lic.get_order(S(), oid)
+    if o["buyer_id"] != g.user["id"] and not can_manage():
+        return jsonify(error="bukan pesanan Anda"), 403
+    img = lic.get_proof_image(S(), oid, pid)
+    if not img:
+        return jsonify(error="bukti tidak ada"), 404
+    return current_app.response_class(img, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
 
 
 @bp.post("/orders/<int:oid>/confirm")

@@ -73,6 +73,9 @@ def ensure(s) -> None:
             f"holder_id {big} NULL, starts_at {dt} NOT NULL, ends_at {dt} NOT NULL, order_id {big} NULL, source {vc(12)} NOT NULL, "
             f"granted_by {vc(80)} NULL, note {vc(255)} NULL, revoked_at {dt} NULL, created_at {dt} NOT NULL, "
             f"scope {vc(10)} NOT NULL DEFAULT 'time', doc_id {big} NULL, doc_title {vc(200)} NULL)",
+            f"CREATE TABLE IF NOT EXISTS cms_payment_proofs (id {pk}, order_id {big} NOT NULL, attempt {big} NOT NULL, sha256 {vc(64)} NOT NULL, "
+            f"uploaded_by {vc(80)} NULL, uploaded_at {dt} NOT NULL, image {'BLOB' if sq else 'MEDIUMBLOB'} NULL, ocr_text {'TEXT' if sq else 'MEDIUMTEXT'} NULL, "
+            f"amount_found {big} NULL, status_found {vc(10)} NULL, tx_at {dt} NULL, ref_found {vc(40)} NULL, verdict {vc(10)} NOT NULL, reason {vc(500)} NULL)",
         ]
         with s._tx() as c:
             for q in ddl:
@@ -82,7 +85,8 @@ def ensure(s) -> None:
                               ("cms_license_items", "discount_pct", f"{big} NULL"),
                               ("cms_license_orders", "contact_email", "VARCHAR(120) NULL" if not sq else "TEXT"),
                               ("cms_license_orders", "contact_phone", "VARCHAR(30) NULL" if not sq else "TEXT"),
-                              ("cms_license_orders", "claimed_at", f"{dt} NULL"), ("cms_license_orders", "pay_method", "VARCHAR(12) NULL" if not sq else "TEXT")]:
+                              ("cms_license_orders", "claimed_at", f"{dt} NULL"), ("cms_license_orders", "pay_method", "VARCHAR(12) NULL" if not sq else "TEXT"),
+                              ("cms_license_orders", "verify_state", "VARCHAR(10) NULL" if not sq else "TEXT")]:
             try:
                 with s._tx() as c:
                     s._x(c, f"SELECT {col} FROM {tbl} LIMIT 1")
@@ -257,8 +261,8 @@ def payment_info(order: dict) -> dict:
             "qris_url": "/store-assets/qris.jpg", "merchant": QRIS_MERCHANT, "nmid": QRIS_NMID,
             "steps": ["Buka aplikasi mobile banking / e-wallet yang mendukung QRIS.", "Pilih Scan / Bayar dan pindai kode QRIS di bawah.",
                       f"Masukkan nominal PERSIS Rp {order['total']:,}".replace(",", ".") + " lalu bayar.",
-                      "Simpan bukti/struk, lalu tekan “Saya sudah bayar”.",
-                      "Admin memverifikasi dan mengaktifkan lisensi; pemberitahuan dikirim lewat email dan WhatsApp."]}
+                      "Simpan tangkapan layar bukti transfer (harus tampak nominal, status BERHASIL, tanggal & jam), lalu unggah di bawah.",
+                      "Sistem membaca bukti otomatis (OCR); bila cocok, lisensi langsung aktif. Bila tidak cocok, admin memverifikasi manual."]}
 
 
 def claim(s, oid: int, by: str, proof_ref: str = "") -> dict:
@@ -272,6 +276,83 @@ def claim(s, oid: int, by: str, proof_ref: str = "") -> dict:
             raise ValueError("pesanan ini sudah tidak menunggu pembayaran")
         s._x(c, "UPDATE cms_license_orders SET claimed_at=?, payment_ref=COALESCE(?, payment_ref) WHERE id=?", (_s(_now()), proof_ref[:120] or None, oid))
     return get_order(s, oid)
+
+
+MAX_AUTO_ATTEMPTS = 2           # unggahan ke-2 yang masih gagal -> verifikasi manual
+
+
+def _ts(x):
+    """Nilai tanggal dari DB (str/datetime) -> datetime."""
+    if isinstance(x, datetime):
+        return x
+    return datetime.strptime(str(x)[:19], "%Y-%m-%d %H:%M:%S")
+
+
+def submit_proof(s, oid: int, by: str, data: bytes, *, now: datetime | None = None, ocr=None) -> dict:
+    """Unggah bukti QRIS -> OCR -> putusan. `ocr` (opsional) = fungsi png->teks (untuk uji). Hasil:
+        {'result': 'paid'|'short'|'retry'|'manual', 'attempt', 'amount_found', 'total', 'reasons': [...], 'order': {...}}
+      paid   = nominal >= total + status berhasil + waktu cocok -> pesanan LUNAS & lisensi terbit (confirmed_by='sistem-OCR')
+      short  = unggahan ke-1, nominal terbaca < total (UI menanyakan "sudah transfer nominal total?" lalu minta unggah ulang)
+      retry  = unggahan ke-1 gagal karena alasan lain (buram/status/waktu) -> unggah ulang
+      manual = unggahan ke-2 masih gagal, bukti duplikat, atau OCR tak tersedia -> verify_state='manual', admin menghubungi pembeli."""
+    from utils import payproof as pp
+    ensure(s)
+    now = now or _now()
+    with s._tx() as c:
+        o = s._one(c, "SELECT * FROM cms_license_orders WHERE id=?", (oid,))
+        if not o:
+            raise KeyError(f"pesanan {oid} tidak ada")
+        if o["status"] != "pending":
+            raise ValueError("pesanan ini sudah tidak menunggu pembayaran")
+        if o.get("verify_state") == "manual":
+            raise ValueError("pesanan ini sudah masuk verifikasi manual; admin akan menghubungi Anda")
+        attempt = int(s._one(c, "SELECT COUNT(*) AS n FROM cms_payment_proofs WHERE order_id=?", (oid,))["n"]) + 1
+    jpeg, png, sha = pp.prepare(data)
+    text, engine_ok = "", True
+    try:
+        text = (ocr or pp.ocr_text)(png)
+    except RuntimeError:
+        engine_ok = False
+    p = pp.parse(text)
+    j = pp.judge(p, int(o["total"]), _ts(o["created_at"]), now)
+    with s._tx() as c:                                       # bukti yang sama (hash/ref) tak boleh dipakai pesanan lain
+        dup = s._one(c, "SELECT order_id FROM cms_payment_proofs WHERE order_id<>? AND (sha256=? OR (ref_found IS NOT NULL AND ref_found=?)) LIMIT 1",
+                     (oid, sha, p["ref"] or "-")) is not None
+    if not engine_ok:
+        verdict, why = "manual", ["mesin OCR tidak tersedia"]
+    elif dup:
+        verdict, why = "manual", ["bukti/nomor referensi yang sama sudah dipakai pada pesanan lain"]
+    elif j["ok"]:
+        verdict, why = "ok", []
+    elif attempt >= MAX_AUTO_ATTEMPTS:
+        verdict, why = "manual", j["reasons"]
+    elif p["amount"] is not None and p["amount"] < int(o["total"]):
+        verdict, why = "short", j["reasons"]
+    else:
+        verdict, why = "retry", j["reasons"]
+    with s._tx() as c:
+        cur = s._x(c, "INSERT INTO cms_payment_proofs(order_id, attempt, sha256, uploaded_by, uploaded_at, image, ocr_text, amount_found, status_found, tx_at, "
+                      "ref_found, verdict, reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (oid, attempt, sha, by, _s(now), jpeg, text[:20000], p["amount"], p["status"], _s(j["tx_at"]) if j["tx_at"] else None,
+                    p["ref"], verdict, "; ".join(why)[:500] or None))
+        pid = cur.lastrowid
+    if verdict == "ok":
+        try:
+            fulfill(s, oid, "sistem-OCR", p["ref"] or f"OCR bukti #{pid}")
+        except ValueError:                                   # keburu dikonfirmasi admin
+            pass
+    elif verdict == "manual":
+        with s._tx() as c:
+            s._x(c, "UPDATE cms_license_orders SET verify_state='manual', claimed_at=? WHERE id=?", (_s(now), oid))
+    return {"result": {"ok": "paid"}.get(verdict, verdict), "attempt": attempt, "amount_found": p["amount"], "total": int(o["total"]),
+            "reasons": why, "proof_id": pid, "order": get_order(s, oid)}
+
+
+def get_proof_image(s, oid: int, pid: int) -> bytes | None:
+    ensure(s)
+    with s._tx() as c:
+        r = s._one(c, "SELECT image FROM cms_payment_proofs WHERE id=? AND order_id=?", (pid, oid))
+    return bytes(r["image"]) if r and r["image"] else None
 
 
 def _doc_title(s, c, doc_id: int) -> str:
@@ -343,6 +424,8 @@ def get_order(s, oid: int) -> dict:
             raise KeyError(f"pesanan {oid} tidak ada")
         o["items"] = s._all(c, "SELECT module_key, months, price, list_price, discount_pct, COALESCE(scope,'time') AS scope, doc_id, doc_title FROM cms_license_items "
                                "WHERE order_id=? ORDER BY id", (oid,))
+        o["proofs"] = s._all(c, "SELECT id, attempt, uploaded_by, uploaded_at, amount_found, status_found, tx_at, ref_found, verdict, reason FROM cms_payment_proofs "
+                                "WHERE order_id=? ORDER BY id", (oid,))
     return o
 
 

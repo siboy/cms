@@ -4,6 +4,10 @@ FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 TZ=Asia/Jakarta
 
+# OCR bukti bayar QRIS (utils/payproof.py): tesseract + bahasa Indonesia & Inggris, font untuk uji
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ind tesseract-ocr-eng fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install \
       python-docx lxml pillow beautifulsoup4 \
       pymysql cryptography \

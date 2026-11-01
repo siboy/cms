@@ -203,15 +203,33 @@ function payDlg(o,pay,notify){
    <ol class="small" style="padding-left:18px;margin:0 0 9px">${pay.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>
    <div>${itemsHtml(o.items)}</div>
    ${notify&&(notify.email_buyer===true)?`<div class="small ok">✉ Instruksi pembayaran juga dikirim ke ${esc(o.contact_email||'email Anda')}.</div>`:(notify&&notify.email_buyer===false?'<div class="small mut">Email instruksi belum terkirim (server email belum diatur) — gunakan layar ini.</div>':'')}
-   <label>ID transaksi / referensi dari struk (opsional)<input name="ref" maxlength="120" placeholder="mis. nomor referensi e-wallet"></label>
-   <div class="row" style="justify-content:flex-end"><button type="button" id="x">Nanti saja</button><button class="p">✅ Saya sudah bayar</button></div><span class="err small" id="e"></span></form>`;
+   <div id="pst"></div>
+   <div id="pup"><label>Unggah tangkapan layar bukti transfer QRIS<input name="proof" type="file" accept="image/*"></label>
+    <div class="small mut">Bukti harus memperlihatkan <b>nominal</b>, status <b>BERHASIL</b>, serta <b>tanggal &amp; jam</b> transaksi. Sistem membacanya otomatis (OCR).</div>
+   <div class="row" style="justify-content:flex-end"><button type="button" id="x">Nanti saja</button><button class="p" id="up">📤 Unggah &amp; verifikasi</button></div></div><span class="err small" id="e"></span></form>`;
   document.body.append(m);const f=m.querySelector('form');
   m.querySelector('#x').onclick=()=>{m.remove();S.tab='saya';tabs();draw()};m.onclick=e=>{if(e.target===m)m.querySelector('#x').click()};
   m.querySelector('#cp').onclick=async e=>{await copyTxt(String(pay.amount));e.target.textContent='✓ Tersalin'};
-  f.onsubmit=async e=>{e.preventDefault();const btn=f.querySelector('button.p');btn.disabled=true;
-    try{await api('POST',`/orders/${o.id}/claim`,{proof_ref:f.ref.value});m.remove();if(backTo('wait'))return;S.tab='saya';tabs();await draw();
-      note('Terima kasih. Admin akan memverifikasi pembayaran dan mengaktifkan lisensi. Pemberitahuan dikirim lewat email dan WhatsApp.',0)}
-    catch(x){f.querySelector('#e').textContent=x.message;btn.disabled=false}};
+  const pst=f.querySelector('#pst'),pup=f.querySelector('#pup'),E=f.querySelector('#e');
+  const done=flag=>{m.remove();if(backTo(flag))return;S.tab='saya';tabs();draw()};
+  const show=(html)=>{pst.innerHTML=html};
+  f.onsubmit=async e=>{e.preventDefault();E.textContent='';
+    const file=f.proof.files[0];if(!file)return E.textContent='Pilih dulu berkas tangkapan layar bukti transfer.';
+    const btn=f.querySelector('#up');btn.disabled=true;btn.textContent='Membaca bukti… (OCR)';
+    try{const fd=new FormData();fd.append('proof',file);
+      const rr=await fetch(`/api/license/orders/${o.id}/proof`,{method:'POST',credentials:'same-origin',headers:{'X-CMS':'1'},body:fd});
+      const r=await rr.json().catch(()=>({}));if(!rr.ok)throw new Error(r.error||('HTTP '+rr.status));
+      f.proof.value='';btn.disabled=false;btn.textContent='📤 Unggah & verifikasi';
+      if(r.result==='paid'){show(`<div class="note" style="background:#15803d22;color:var(--ok)">✅ Pembayaran terverifikasi otomatis. Lisensi sudah aktif.</div>`);pup.classList.add('hide');setTimeout(()=>{S.cart=[];boot().then(()=>done('ok'))},1200)}
+      else if(r.result==='short'){pup.classList.add('hide');
+        show(`<div class="note"><b>⚠ Nominal tidak sama.</b> Terbaca ${rp(r.amount_found)}, kurang dari total ${rp(r.total)}.<br>Apakah Anda sudah mentransfer <b>${rp(r.total)}</b> lewat QRIS?
+          <div class="row"><button type="button" class="p" id="yes">Ya, sudah</button><button type="button" id="no">Belum</button></div></div>`);
+        f.querySelector('#yes').onclick=()=>{show(`<div class="note">Baik. Mohon <b>unggah ulang</b> bukti transfer yang jelas (nominal, status berhasil, tanggal &amp; jam terlihat penuh). Ini kesempatan terakhir pemeriksaan otomatis; bila masih tidak cocok, admin akan memverifikasi manual.</div>`);pup.classList.remove('hide')};
+        f.querySelector('#no').onclick=()=>{show(`<div class="note">Silakan transfer <b>${rp(r.total)}</b> lebih dulu lewat QRIS, lalu unggah buktinya.</div>`);pup.classList.remove('hide')}}
+      else if(r.result==='retry'){show(`<div class="note"><b>Bukti belum bisa diverifikasi:</b> ${esc((r.reasons||[]).join('; '))}.<br>Mohon unggah ulang tangkapan layar yang lebih jelas (seluruh layar bukti, tidak terpotong). Ini kesempatan terakhir pemeriksaan otomatis.</div>`)}
+      else{pup.classList.add('hide');show(`<div class="note"><b>🔎 Perlu verifikasi manual.</b> Admin akan segera menghubungi Anda. Status sementara: <b>butuh verifikasi manual</b> — lisensi aktif setelah admin memeriksa bukti Anda.${r.reasons&&r.reasons.length?`<div class="small">Alasan: ${esc(r.reasons.join('; '))}</div>`:''}<div class="row" style="justify-content:flex-end"><button type="button" class="p" id="okm">Mengerti</button></div></div>`);
+        f.querySelector('#okm').onclick=()=>{boot().then(()=>done('wait'))}}
+    }catch(x){E.textContent=x.message;btn.disabled=false;btn.textContent='📤 Unggah & verifikasi'}};
 }
 async function openPay(id){try{const r=await api('GET',`/orders/${id}/payment`);payDlg(r.order,r.payment,null)}catch(e){note(e.message,1)}}
 
@@ -225,8 +243,8 @@ async function viewSaya(){
   const ST={pending:'<span class="badge l">menunggu pembayaran</span>',paid:'<span class="badge g">lunas</span>',cancelled:'<span class="badge">dibatalkan</span>'};
   h+='<h4>Pesanan saya</h4>'+(S.ord.length?S.ord.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> ${ST[o.status]||o.status} <span class="mut small">${esc(dt(o.created_at))} · ${esc(o.holder_label||'')}</span>
     <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>')}</div>
-    <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref: ${esc(o.payment_ref)}</span>`:''}${o.claimed_at&&o.status==='pending'?'<span class="badge g">✔ sudah dilaporkan dibayar — menunggu verifikasi admin</span>':''}
-      ${o.status==='pending'?`<button type="button" class="p small" data-pay="${o.id}">💳 Bayar / lihat QRIS</button><button type="button" class="d small" data-cancel="${o.id}">Batalkan</button>`:''}</div></div>`).join(''):'<p class="mut">Belum ada pesanan.</p>');
+    <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref: ${esc(o.payment_ref)}</span>`:''}${o.verify_state==='manual'&&o.status==='pending'?'<span class="badge l">🔎 butuh verifikasi manual — admin akan menghubungi Anda</span>':(o.claimed_at&&o.status==='pending'?'<span class="badge g">✔ sudah dilaporkan dibayar — menunggu verifikasi admin</span>':'')}
+      ${o.status==='pending'&&o.verify_state!=='manual'?`<button type="button" class="p small" data-pay="${o.id}">💳 Bayar / unggah bukti</button>`:''}${o.status==='pending'?`<button type="button" class="d small" data-cancel="${o.id}">Batalkan</button>`:''}</div></div>`).join(''):'<p class="mut">Belum ada pesanan.</p>');
   document.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>openPay(b.dataset.pay));
   $('#view').innerHTML=h;
   document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=async()=>{if(!confirm('Batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.cancel}/cancel`);viewSaya()}catch(e){note(e.message,1)}});
@@ -241,7 +259,8 @@ async function viewAdmin(){
     const txt=paid?`Halo, pembayaran pesanan ${code} sudah kami konfirmasi dan lisensi Anda sudah AKTIF (${o.items.map(i=>LBL(i.module_key)).join(', ')}). Silakan cek di ${location.origin}/store. Terima kasih.`
       :`Halo, pesanan ${code} (${rp(o.total)}) di Toko Alat Hitung masih menunggu pembayaran. Mohon bayar via QRIS dengan nominal persis ${rp(o.total)} lalu tekan "Saya sudah bayar" di Toko. Terima kasih.`;
     return `https://wa.me/${o.contact_phone}?text=${encodeURIComponent(txt)}`};
-  const contactLine=o=>`<div class="small mut">📧 ${esc(o.contact_email||'-')} · 📱 ${esc(o.contact_phone||'-')} ${o.claimed_at&&o.status==='pending'?'<span class="badge g">💬 pembeli melaporkan sudah bayar '+esc(dt(o.claimed_at))+'</span>':''}</div>`;
+  const proofLine=o=>(o.proofs||[]).length?`<div class="small">🧾 Bukti: ${o.proofs.map(p=>`<a href="/api/license/orders/${o.id}/proof/${p.id}" target="_blank" rel="noopener">#${p.attempt}</a> ${p.verdict==='ok'?'✅':p.verdict==='manual'?'🔎':'⚠'} OCR ${p.amount_found!=null?rp(p.amount_found):'nominal ?'}${p.status_found?' · '+esc(p.status_found):''}${p.tx_at?' · '+esc(p.tx_at.slice(0,16)):''}${p.reason?' — '+esc(p.reason):''}`).join('<br>')}</div>`:'';
+  const contactLine=o=>`<div class="small mut">📧 ${esc(o.contact_email||'-')} · 📱 ${esc(o.contact_phone||'-')} ${o.claimed_at&&o.status==='pending'?(o.verify_state==='manual'?'<span class="badge l">🔎 BUTUH VERIFIKASI MANUAL '+esc(dt(o.claimed_at))+'</span>':'<span class="badge g">💬 pembeli melaporkan sudah bayar '+esc(dt(o.claimed_at))+'</span>'):''}</div>`+proofLine(o);
   const paidRecent=A.orders.filter(o=>o.status==='paid'&&o.contact_phone).slice(0,8);
   let h=`<h4>Pesanan menunggu pembayaran (${pend.length})</h4>`+(pend.length?pend.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> <span class="mut small">${'LIC-'+String(o.id).padStart(5,'0')}</span> oleh <b>${esc(o.buyer_name)}</b> · ${esc(o.holder_label)} · ${esc(dt(o.created_at))}${contactLine(o)}
      <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>')}</div>
