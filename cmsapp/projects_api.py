@@ -9,6 +9,7 @@ from flask import Blueprint, abort, current_app, g, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
 from cmsapp import auth
+from utils import accounts
 from cmsapp.modules_api import guard
 from utils.blockstore import ConflictError, LockedError
 
@@ -65,6 +66,24 @@ def _project_visible(pid: int):
         raise KeyError(f"proyek {pid} tidak ada")
 
 
+def _isolated() -> bool:
+    """Akun mandiri (jalur 1): tidak boleh melihat/menyentuh apa pun di luar proyek tempat ia menjadi anggota."""
+    return bool(g.user.get("isolated"))
+
+
+def _manage(pid: int) -> bool:
+    """Boleh mengelola proyek ini? Pemegang project_manage; untuk akun mandiri hanya bila ia Ketua Tim (pembuat) proyek ITU --
+    anggota undangan yang kebetulan punya project_manage tidak boleh mengubah/menghapus proyek orang lain."""
+    if not auth.has_perm(g.user, "project_manage"):
+        return False
+    return not _isolated() or S().is_project_leader(g.user["id"], pid)
+
+
+def _manage_guard(pid: int):
+    if not _manage(pid):
+        abort(403, description="hanya pemilik/Ketua Tim proyek ini yang boleh melakukan ini")
+
+
 def _can_edit_task(t: dict) -> bool:
     if auth.has_perm(g.user, "project_tasks_admin"):
         return True
@@ -113,7 +132,11 @@ def create_project():
                              client=d.get("client"), description=d.get("description"), location=d.get("location"),
                              start_date=d.get("start_date"), end_date=d.get("end_date"), status=d.get("status"),
                              sales_team=d.get("sales_team"), pic=d.get("pic"), pemrakarsa_contact=d.get("pemrakarsa_contact"))
+    if _isolated():                               # pembuat proyek (akun mandiri) otomatis jadi Ketua Tim -> proyek terlihat & bisa dikelola olehnya
+        S().set_team_leader(S().add_project_team_member(pid, "Pemilik proyek", user_id=g.user["id"]), True)
     tpl = d.get("template_project_id")
+    if tpl and _isolated() and int(tpl) not in S().visible_project_ids(g.user["id"]):
+        raise ValueError("proyek acuan tidak ditemukan")
     if tpl:
         S().apply_project_template(pid, int(tpl), user=g.user["username"])
     S().log_activity(g.user["username"], "project.create", target_type="project", target_id=pid, project_id=pid,
@@ -472,7 +495,7 @@ def chat_image(pid):
 def chat_delete(cid):
     m = S().get_project_chat(cid)
     _project_visible(m["project_id"])
-    if m["username"] != g.user["username"] and not auth.has_perm(g.user, "project_manage"):
+    if m["username"] != g.user["username"] and not _manage(m["project_id"]):
         abort(403, description="hanya penulis pesan / pengelola proyek")
     S().delete_project_chat(cid)
     return jsonify(ok=True)
@@ -485,7 +508,7 @@ def update_project(pid):
     d = body()
     # Ketua Tim proyek (tanpa project_manage) boleh mengubah SATU field saja: progress_override —
     # "admin atau ketua melaporkan progres/final"; field lain tetap khusus pemegang project_manage.
-    if not auth.has_perm(g.user, "project_manage"):
+    if not _manage(pid):
         if set(d.keys()) <= {"progress_override"} and S().is_project_leader(g.user["id"], pid):
             pass
         else:
@@ -500,6 +523,7 @@ def update_project(pid):
 @auth.require("project_manage")
 def delete_project(pid):
     _project_visible(pid)
+    _manage_guard(pid)
     p = S().get_project(pid)
     S().delete_project(pid)
     S().log_activity(g.user["username"], "project.delete", target_type="project", target_id=pid, project_id=pid,
@@ -512,7 +536,10 @@ def delete_project(pid):
 def docs_index():
     """Semua dokumen di sistem + (kalau tertaut) nama proyek & report_type -- utk dialog pilih dokumen
     sumber salin outline/tim, bisa difilter per proyek atau langsung dicari lintas proyek by nama."""
-    return jsonify(docs=S().list_documents_with_project())
+    docs = S().list_documents_with_project()
+    if _isolated():                               # akun mandiri: hanya dokumen yang memang boleh dilihatnya
+        docs = [x for x in docs if auth.can_view_doc(x["id"])]
+    return jsonify(docs=docs)
 
 
 @bp.post("/projects/<int:pid>/clone-document")
@@ -523,10 +550,13 @@ def clone_document(pid):
     tertaut ke proyek mana/tak tertaut sama sekali) jadi dokumen laporan BARU KOSONG di proyek ini.
     Tim/PIC TIDAK ikut -- pakai /projects/<pid>/copy-team terpisah kalau perlu (bisa dari dokumen lain)."""
     _project_visible(pid)
+    _manage_guard(pid)
     d = body()
     src_doc_id = d.get("doc_id")
     if not src_doc_id:
         raise ValueError("doc_id wajib diisi")
+    if _isolated() and not auth.can_view_doc(int(src_doc_id)):
+        raise KeyError(f"dokumen {src_doc_id} tidak ada")
     new_doc_id = S().clone_document_outline(pid, int(src_doc_id), report_type=d.get("report_type") or "draft",
                                             label=d.get("label", ""), user=g.user["username"])
     S().log_activity(g.user["username"], "doc.clone", target_type="document", target_id=new_doc_id, doc_id=new_doc_id,
@@ -566,7 +596,10 @@ def list_documents(pid):
 @auth.require("project_manage")
 def unlinked_docs(pid):
     _project_visible(pid)
-    return jsonify(docs=S().unlinked_documents())
+    docs = S().unlinked_documents()
+    if _isolated():
+        docs = [x for x in docs if auth.can_view_doc(x["id"])]
+    return jsonify(docs=docs)
 
 
 @bp.post("/projects/<int:pid>/documents")
@@ -574,6 +607,7 @@ def unlinked_docs(pid):
 def link_document(pid):
     """JSON {doc_id, report_type, label} utk dokumen yang sudah ada, ATAU multipart {file, report_type, label} utk unggah baru."""
     _project_visible(pid)
+    _manage_guard(pid)
     st = S()
     if request.files.get("file"):
         import uuid as _uuid
@@ -598,6 +632,8 @@ def link_document(pid):
     else:
         d = body()
         doc_id = int(d["doc_id"])
+        if _isolated() and not auth.can_view_doc(doc_id):         # jangan bisa "mencomot" laporan orang lain dengan menebak id
+            raise KeyError(f"dokumen {doc_id} tidak ada")
         report_type = d.get("report_type", "draft")
         label = d.get("label", "")
     link_id = st.link_document(pid, doc_id, report_type, label)
@@ -611,6 +647,7 @@ def link_document(pid):
 @auth.require("project_manage")
 def set_printed(pid, link_id):
     _project_visible(pid)
+    _manage_guard(pid)
     printed = bool(body().get("printed", True))
     S().set_printed(link_id, printed, user=g.user["username"])
     S().log_activity(g.user["username"], "doc.print", target_type="document", target_id=link_id, project_id=pid,
@@ -626,6 +663,14 @@ def team_workload():
     halaman Admin (checkbox): true = angka skor/poin tampil utk semua pembuka panel; false = note saja."""
     return jsonify(items=S().team_workload(),
                    detail=S().get_setting("workload_detail", "0") == "1")
+
+
+def _team_row_guard(pid: int, row_id: int):
+    """Baris anggota tim harus milik proyek pid -- tanpa ini Ketua Tim proyek A bisa mengubah/menghapus anggota proyek B lewat row_id."""
+    with S()._tx() as c:
+        ok = S()._one(c, "SELECT 1 AS x FROM cms_user_project_roles WHERE id=? AND project_id=?", (row_id, pid))
+    if not ok:
+        raise KeyError(f"anggota tim {row_id} tidak ada")
 
 
 def _team_manage_guard(pid: int):
@@ -657,7 +702,29 @@ def project_team_candidates(pid):
     with st._tx() as c:
         rows = st._all(c, "SELECT u.id, u.username, u.name FROM cms_users u JOIN cms_groups g ON g.id=u.group_id "
                           "WHERE u.active=1 AND g.is_super=0 ORDER BY COALESCE(NULLIF(u.name,''), u.username)")
-    return jsonify(users=rows)
+    if _isolated():                               # akun mandiri: hanya orang yang sudah sama-sama di salah satu proyeknya; selain itu diundang via email
+        known = accounts.connection_ids(st, g.user["id"])
+        rows = [r for r in rows if r["id"] in known]
+    return jsonify(users=rows, invite_by_email=_isolated())
+
+
+@bp.post("/projects/<int:pid>/team/invite")
+@auth.require()
+def project_team_invite(pid):
+    """Undang akun ke tim proyek lewat EMAIL/USERNAME persis {identifier, title}. Satu-satunya cara akun mandiri menambah orang yang belum
+    sebelumnya satu proyek dengannya; tidak ada pencarian parsial sehingga daftar pengguna tidak bisa dijelajahi."""
+    _project_visible(pid)
+    _team_manage_guard(pid)
+    d = body()
+    from cmsapp.api import throttle
+    throttle(f"invite:{g.user['id']}", 30, 3600)
+    u = accounts.find_user(S(), d.get("identifier"))
+    if not u:
+        return jsonify(error="akun dengan email/username itu belum terdaftar -- minta ia mendaftar dulu di halaman Daftar"), 404
+    row_id = S().add_project_team_member(pid, d.get("title", ""), user_id=u["id"])
+    S().log_activity(g.user["username"], "project.team_add", target_type="user", target_id=u["id"], project_id=pid,
+                     summary=d.get("title", "") + " (undangan)")
+    return jsonify(ok=True, row_id=row_id, user={"id": u["id"], "username": u["username"], "name": u["name"]}), 201
 
 
 @bp.post("/projects/<int:pid>/team")
@@ -669,6 +736,8 @@ def project_team_add(pid):
     _team_manage_guard(pid)
     d = body()
     uid = int(d["user_id"]) if d.get("user_id") else None
+    if uid and _isolated() and uid not in accounts.connection_ids(S(), g.user["id"]):
+        abort(403, description="akun ini belum satu proyek dengan Anda -- undang lewat email")
     row_id = S().add_project_team_member(pid, d.get("title", ""), user_id=uid,
                                         external_name=d.get("external_name", ""),
                                         external_contact=d.get("external_contact", ""))
@@ -682,6 +751,7 @@ def project_team_add(pid):
 def project_team_update(pid, row_id):
     _project_visible(pid)
     _team_manage_guard(pid)
+    _team_row_guard(pid, row_id)
     d = body()
     if "is_leader" in d:                              # angkat/lepas Ketua Tim: KHUSUS grup admin (super),
         if not g.user.get("is_super"):                # bukan sesama ketua / pemegang project_team_manage biasa
@@ -701,6 +771,7 @@ def project_team_update(pid, row_id):
 def project_team_remove(pid, row_id):
     _project_visible(pid)
     _team_manage_guard(pid)
+    _team_row_guard(pid, row_id)
     S().remove_project_team_member(row_id)
     S().log_activity(g.user["username"], "project.team_remove", target_type="user", target_id=row_id, project_id=pid)
     return jsonify(ok=True)
@@ -717,6 +788,7 @@ def project_team_import(pid):
     if not d.get("src_project_id"):
         raise ValueError("src_project_id wajib diisi")
     src_pid = int(d["src_project_id"])
+    _project_visible(src_pid)                     # sumber impor juga harus proyek yang boleh dilihat (cegah bocor anggota proyek lain)
     n = S().import_project_team(src_pid, pid)
     S().log_activity(g.user["username"], "project.team_import", target_type="project", target_id=src_pid,
                      project_id=pid, summary=f'{n} anggota diimpor')

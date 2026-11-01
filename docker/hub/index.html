@@ -1,19 +1,86 @@
 <!DOCTYPE html>
 <html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>sdrive — masuk perusahaan</title>
+<title>sdrive — tulis laporan lingkungan bersama tim, tanpa Word yang membengkak</title>
+<meta name="description" content="sdrive memecah laporan AMDAL/UKL-UPL jadi blok. Tim menulis bersamaan, laptop apa pun lancar, Word dibuat hanya saat diekspor.">
 <style>
-body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f172a;color:#e2e8f0;font:16px system-ui,sans-serif}
-main{width:min(92vw,380px);background:#1e293b;border-radius:16px;padding:28px}
-h1{margin:0 0 4px;font-size:22px}p{margin:0 0 18px;color:#94a3b8;font-size:14px}
-input,button{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #334155;font-size:16px}
-input{background:#0f172a;color:#e2e8f0;margin-bottom:10px}
-button{background:#f97316;color:#fff;border:0;font-weight:600;cursor:pointer}
-#err{color:#fca5a5;min-height:20px;margin-top:10px;font-size:14px}
-</style></head><body><main>
-<h1>sdrive</h1><p>Masukkan kode perusahaan Anda.</p>
-<form id="f"><input id="c" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="mis. chp" autofocus>
-<button>Masuk</button></form><div id="err"></div>
+:root{--bg:#fff;--fg:#202124;--mut:#5f6368;--line:#dadce0;--soft:#f8f9fa;--blue:#1a73e8;--blue2:#e8f0fe;--green:#188038;--card:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#171a1f;--fg:#e8eaed;--mut:#9aa0a6;--line:#3c4043;--soft:#202327;--blue:#8ab4f8;--blue2:#243247;--green:#81c995;--card:#1d2025}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 "Google Sans",Roboto,system-ui,sans-serif}
+a{color:var(--blue);text-decoration:none}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:10px max(16px,calc(50% - 560px))}
+nav b{font-size:20px;letter-spacing:-.3px;margin-right:auto}nav a.l{color:var(--fg);padding:8px 12px;border-radius:8px;font-size:14px}nav a.l:hover{background:var(--soft)}
+.btn{display:inline-block;border-radius:999px;padding:10px 22px;font-weight:600;font-size:15px;border:1px solid var(--blue)}
+.btn.p{background:var(--blue);color:#fff}.btn.p:hover{filter:brightness(1.08)}.btn.o:hover{background:var(--blue2)}
+@media(prefers-color-scheme:dark){.btn.p{color:#0b1b33}}
+.w{max-width:1120px;margin:0 auto;padding:0 16px}
+.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:64px 0 48px}
+@media(max-width:860px){.hero{grid-template-columns:1fr;padding-top:36px}}
+.tag{display:inline-block;background:var(--blue2);color:var(--blue);border-radius:999px;padding:3px 12px;font-size:13px;font-weight:600}
+h1{font-size:clamp(32px,5vw,52px);line-height:1.12;letter-spacing:-1px;margin:14px 0}
+.lead{color:var(--mut);font-size:19px;margin:0 0 24px}.cta{display:flex;gap:10px;flex-wrap:wrap}
+.mock{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 8px 28px rgba(60,64,67,.15)}
+.mock .row{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin:7px 0;font-size:13px}
+.mock .row i{width:9px;height:9px;border-radius:50%;flex:none}.mock small{margin-left:auto;color:var(--mut)}
+.mock .on{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue2)}
+section{padding:56px 0}section.alt{background:var(--soft)}
+h2{font-size:clamp(26px,3.5vw,36px);letter-spacing:-.5px;margin:0 0 8px}.sub{color:var(--mut);margin:0 0 32px;max-width:640px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}@media(max-width:860px){.g3{grid-template-columns:1fr}}
+.c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}.c h3{margin:6px 0}.c p{color:var(--mut);margin:0}.ic{font-size:28px}
+.paths{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:760px){.paths{grid-template-columns:1fr}}
+.paths .c{display:flex;flex-direction:column;gap:10px}.paths ul{margin:0;padding-left:20px;color:var(--mut)}.price{font-size:30px;font-weight:700}.price s{font-size:16px;color:var(--mut);font-weight:400}
+form.code{display:flex;gap:8px;flex-wrap:wrap}form.code input{flex:1;min-width:160px;padding:11px 14px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--fg);font:inherit}
+#err{color:#d93025;min-height:22px;font-size:14px;margin-top:6px}
+footer{padding:28px 16px;text-align:center;color:var(--mut);font-size:14px;border-top:1px solid var(--line)}
+</style></head><body>
+<nav><b>sdrive</b><a class="l" href="/howto">Kenapa sdrive</a><a class="l" href="#jalur">Harga</a><a class="l" href="#masuk">Masuk</a><a class="btn p" href="/register">Daftar gratis</a></nav>
+
+<div class="w hero">
+ <div>
+  <span class="tag">Untuk konsultan &amp; tim penyusun dokumen lingkungan</span>
+  <h1>Laporan AMDAL ditulis bersama, tanpa Word yang membengkak.</h1>
+  <p class="lead">sdrive memecah laporan jadi blok. Tim menulis bersamaan di bab masing-masing, laptop apa pun tetap lancar, dan file Word dibuat rapi hanya saat Anda menekan Ekspor.</p>
+  <div class="cta"><a class="btn p" href="/register">Daftar gratis</a><a class="btn o" href="/howto">Lihat cara kerjanya</a></div>
+ </div>
+ <div class="mock" aria-hidden="true">
+  <div class="row"><i style="background:#1a73e8"></i><b>BAB I — Pendahuluan</b><small>Andi · menulis</small></div>
+  <div class="row on"><i style="background:#188038"></i><b>BAB II — Deskripsi Rencana Kegiatan</b><small>Anda</small></div>
+  <div class="row"><i style="background:#f9ab00"></i><b>BAB III — Rona Lingkungan Awal</b><small>Sari · PIC</small></div>
+  <div class="row"><i style="background:#d93025"></i><b>BAB IV — Prakiraan Dampak</b><small>Budi · review</small></div>
+  <div class="row"><i style="background:#9aa0a6"></i><b>Lampiran</b><small>5 berkas</small></div>
+ </div>
+</div>
+
+<section class="alt"><div class="w">
+ <h2>Tiga alasan tim berpindah ke sdrive</h2><p class="sub">Dibuat untuk cara kerja nyata penyusun dokumen lingkungan.</p>
+ <div class="g3">
+  <div class="c"><div class="ic">🧩</div><h3>Sistem blok</h3><p>Hanya bab yang sedang dikerjakan yang dimuat. Tidak ada file raksasa yang harus dibuka utuh.</p></div>
+  <div class="c"><div class="ic">👥</div><h3>Tulis bersamaan</h3><p>Pembagian PIC per bab, komentar, riwayat perubahan, dan penguncian blok agar tidak saling menimpa.</p></div>
+  <div class="c"><div class="ic">💸</div><h3>Biaya terjangkau</h3><p>Mulai gratis untuk akun mandiri. Tim berbayar Rp 63.000 per akun per tahun.</p></div>
+ </div>
+ <p style="margin-top:24px"><a href="/howto">Baca selengkapnya →</a></p>
+</div></section>
+
+<section id="jalur"><div class="w">
+ <h2>Pilih cara memulai</h2><p class="sub">Dua jalur, satu platform.</p>
+ <div class="paths">
+  <div class="c"><span class="tag">Jalur 1 · Mandiri</span><div class="price">Gratis</div>
+   <ul><li>Daftar dengan email &amp; nomor HP</li><li>Buat proyek, laporan, dan tim sendiri</li><li>Proyek Anda privat: hanya anggota proyek yang melihat</li></ul>
+   <a class="btn p" href="/register" style="align-self:flex-start">Daftar sekarang</a></div>
+  <div class="c"><span class="tag">Jalur 2 · Perusahaan</span><div class="price">Rp 50.000 <small style="font-size:15px;color:var(--mut);font-weight:400">/ tahun</small></div>
+   <ul><li>Kode perusahaan &amp; tenant sendiri (<code>kode.sdrive.team</code>)</li><li>Anda jadi admin; boleh mengangkat admin lain</li><li>Akun anggota: <s>Rp 70.000</s> <b>63.000</b>/tahun, atau <b>77.000</b> untuk 2 tahun (hemat 45%)</li></ul>
+   <a class="btn o" href="/register" style="align-self:flex-start">Daftar, lalu pesan kode</a></div>
+ </div>
+</div></section>
+
+<section class="alt" id="masuk"><div class="w">
+ <h2>Sudah punya akun?</h2><p class="sub">Masukkan kode perusahaan Anda, atau masuk sebagai akun mandiri.</p>
+ <form class="code" id="f"><input id="c" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="kode perusahaan, mis. chp"><button class="btn p" style="cursor:pointer">Masuk perusahaan</button><a class="btn o" href="__SELF_URL__">Masuk akun mandiri</a></form>
+ <div id="err"></div>
+</div></section>
+
+<footer>© sdrive · <a href="/howto">Kenapa sdrive</a> · <a href="/register">Daftar</a></footer>
 <script>
 const f=document.getElementById('f'),c=document.getElementById('c'),e=document.getElementById('err');
 f.onsubmit=async ev=>{ev.preventDefault();e.textContent='';
@@ -22,4 +89,4 @@ try{const r=await fetch('/api/resolve?code='+encodeURIComponent(code),{cache:'no
 const j=await r.json().catch(()=>({}));
 if(r.ok&&j.ok)location.href=j.url;else e.textContent=r.status===429?'Terlalu banyak percobaan, tunggu sebentar':'Kode perusahaan tidak dikenal'}
 catch(x){e.textContent='Tidak bisa menghubungi server'}};
-</script></main></body></html>
+</script></body></html>

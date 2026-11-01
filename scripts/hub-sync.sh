@@ -15,13 +15,14 @@ HUB="$BASE/_hub"
 DOMAIN="${HUB_DOMAIN:-sdrive.team}"
 PORT="${HUB_PORT:-8890}"
 NAME="${HUB_NAME:-cms-hub}"
+SELF="${HUB_SELF_TENANT:-cms}"      # tenant akun MANDIRI: /register di apex diteruskan ke sini
 re_slug='^[a-z0-9][a-z0-9-]{0,29}$'
 [[ "$DOMAIN" =~ ^[a-z0-9.-]+$ && "$PORT" =~ ^[0-9]+$ ]] || { echo "HUB_DOMAIN/HUB_PORT tidak valid" >&2; exit 1; }
 
 mkdir -p "$HUB/html"
 [ -f "$HUB/aliases" ] || printf '# <alias> <slug>   contoh: cms utama\n' > "$HUB/aliases"
 sed -e "s/__DOMAIN__/$DOMAIN/g" -e "s/__PORT__/$PORT/g" "$REPO/docker/hub/nginx.conf" > "$HUB/nginx.conf"
-cp "$REPO/docker/hub/index.html" "$HUB/html/index.html"
+cp "$REPO/docker/hub/howto.html" "$HUB/html/howto.html"
 cp "$REPO/docker/hub/compose.yml" "$HUB/compose.yml"
 printf 'HUB_NAME=%s\nCOMPOSE_PROJECT_NAME=%s\n' "$NAME" "$NAME" > "$HUB/.env"
 
@@ -46,11 +47,16 @@ while read -r alias slug _; do
   else echo "[lewati] alias tidak valid: $alias $slug" >&2; fi
 done < "$HUB/aliases"
 
+# beranda apex: tombol "Masuk akun mandiri" -> host tenant mandiri
+sed -e "s#__SELF_URL__#https://${CANON[$SELF]:-$SELF.$DOMAIN}#g" "$REPO/docker/hub/index.html" > "$HUB/html/index.html"
+
 {
   echo "# GENERATED oleh scripts/hub-sync.sh $(date -Is) -- jangan edit"
   echo 'map $host $hub_port {'; echo '    default "";'
   for h in $(printf '%s\n' "${!HOSTPORT[@]}" | sort); do echo "    $h ${HOSTPORT[$h]};"; done
   echo '}'
+  echo 'map $host $hub_self_port { default "'"${SLUGPORT[$SELF]:-}"'"; }'
+  echo 'map $host $hub_self_host { default "'"${CANON[$SELF]:-}"'"; }'
   echo 'map $arg_code $hub_target {'; echo '    default "";'
   for c in $(printf '%s\n' "${!CODEHOST[@]}" | sort); do echo "    ~*^$c\$ ${CODEHOST[$c]};"; done
   echo '}'

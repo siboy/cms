@@ -205,6 +205,8 @@ def act_update(pid, kind, rid):
 @auth.require("project_manage")
 def act_delete(pid, kind, rid):
     _pv(pid)
+    if g.user.get("isolated") and not S().is_project_leader(g.user["id"], pid):
+        abort(403, description="hanya pemilik/Ketua Tim proyek ini yang boleh menghapus")
     table = _spec(kind)[0]
     _row(kind, pid, rid)
     st = S()

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daftar — sdrive</title>
+<link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#f6f7f9;--fg:#1F2937;--mut:#64748b;--line:#e2e7ef;--card:#fff;--acc:#7c3aed;--mint:#A8E6CF;--lilac:#D8B4F8;--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--warn-bg:#fef3c7}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--fg:#e6e9ee;--mut:#8d97a9;--line:#2a3140;--card:#1a1f29;--acc:#b794f6;--ok:#4ade80;--bad:#f87171;--warn:#f0a35e;--warn-bg:#3a2a12}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}
+main{max-width:520px;margin:0 auto;padding:18px 16px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--mint);border-radius:14px;padding:16px}
+h2{margin:0 0 4px}.mut{color:var(--mut);font-size:13px}
+label{display:block;margin:11px 0 0;font-size:13px;font-weight:600}
+input,select,textarea,button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 10px;width:100%;min-width:0;margin-top:4px}
+button.p{background:linear-gradient(90deg,var(--lilac),var(--mint));color:#1F2937;border:none;font-weight:700;margin-top:16px;cursor:pointer}
+button:disabled{opacity:.6}
+.chk{display:flex;gap:8px;align-items:flex-start;font-weight:400;margin-top:14px}.chk input{width:auto;margin-top:3px}
+.note{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:9px 12px;margin:10px 0;font-size:13px}
+.ok{background:#15803d22;color:var(--ok)}.err{color:var(--bad);font-size:13px;margin-top:8px;min-height:18px}
+.hide{display:none}a{color:var(--acc)}
+</style></head><body><main>
+<p><a href="/">← Masuk</a></p>
+<div class="card" id="box">
+ <h2>Daftar akun sdrive</h2>
+ <div class="mut">Daftar mandiri untuk membuat proyek, laporan, dan tim Anda sendiri. Anda hanya melihat proyek yang Anda buat atau yang mengundang Anda.</div>
+ <div id="closed" class="note hide"></div>
+ <form id="f" autocomplete="on">
+  <label>Nama lengkap<input name="name" required maxlength="80" autocomplete="name"></label>
+  <label>Email<input name="email" type="email" required maxlength="120" autocomplete="email"></label>
+  <label>Nomor HP / WhatsApp<input name="phone" type="tel" required inputmode="tel" placeholder="081234567890" autocomplete="tel"></label>
+  <label>Kota domisili<input name="city" required maxlength="80" autocomplete="address-level2"></label>
+  <label>Pekerjaan<input name="occupation" required maxlength="80" placeholder="mis. Konsultan lingkungan, Staf dinas, Mahasiswa"></label>
+  <label>Mendaftar untuk keperluan<select name="purpose" required></select></label>
+  <label>Keterangan tambahan (opsional)<input name="purpose_note" maxlength="150"></label>
+  <label>Password (min. 8 karakter)<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+  <label class="chk"><input type="checkbox" name="agree"><span>Saya setuju dengan <a href="/privacy-policy" target="_blank">kebijakan privasi</a> dan syarat penggunaan.</span></label>
+  <div class="err" id="e"></div>
+  <button class="p" id="go">Daftar</button>
+ </form>
+ <div id="done" class="hide">
+  <div class="note ok"><b>Satu langkah lagi.</b> Kami mengirim email konfirmasi ke <b id="em"></b>. Buka tautan di email itu untuk mengaktifkan akun (berlaku 72 jam). Cek folder spam bila belum masuk.</div>
+  <button type="button" id="rs" style="margin-top:6px">Kirim ulang email konfirmasi</button>
+  <div class="mut" id="rsm" style="margin-top:6px"></div>
+ </div>
+</div>
+<p class="mut" style="text-align:center">Punya perusahaan sendiri? Setelah akun aktif, buka menu <b>🏢 Perusahaan</b> untuk memesan kode perusahaan.</p>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const hdr={'Content-Type':'application/json','X-CMS':'1'};
+let EMAIL='';
+(async()=>{
+  try{
+    const r=await (await fetch('/api/auth/register-info')).json();
+    $('[name=purpose]').innerHTML='<option value="">— pilih —</option>'+r.purposes.map(p=>`<option value="${p.key}">${p.label}</option>`).join('');
+    if(!r.enabled||!r.mail_ready){
+      $('#closed').classList.remove('hide');
+      $('#closed').textContent=!r.enabled?'Pendaftaran mandiri belum dibuka di alamat ini.':'Pendaftaran sementara belum bisa dipakai (pengiriman email konfirmasi belum diatur). Coba lagi nanti.';
+      $('#go').disabled=true;
+    }
+  }catch(e){}
+})();
+$('#f').onsubmit=async e=>{
+  e.preventDefault();const f=e.target,E=$('#e');E.textContent='';
+  const d=Object.fromEntries(new FormData(f));d.agree=f.agree.checked;
+  $('#go').disabled=true;$('#go').textContent='Mendaftar…';
+  try{
+    const r=await fetch('/api/auth/register',{method:'POST',headers:hdr,body:JSON.stringify(d)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+    EMAIL=j.email;$('#em').textContent=j.email;f.classList.add('hide');$('#done').classList.remove('hide');
+    if(j.mail_sent===false)$('#rsm').textContent='Email belum terkirim; coba "kirim ulang" beberapa saat lagi.';
+  }catch(x){E.textContent=x.message;$('#go').disabled=false;$('#go').textContent='Daftar'}
+};
+$('#rs').onclick=async()=>{
+  await fetch('/api/auth/resend-confirmation',{method:'POST',headers:hdr,body:JSON.stringify({email:EMAIL})});
+  $('#rsm').textContent='Jika email terdaftar dan belum aktif, tautan baru sudah dikirim.';
+};
+</script></body></html>

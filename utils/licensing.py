@@ -486,6 +486,25 @@ def create_order(s, buyer: dict, items: list[dict], htype: str, hid=None, *, pai
             seen.add((k, "time", f["months"]))
             lines.append((k, f["months"], f["price"], "time", None, f["price"], 0))
             continue
+        from utils import accounts as acc
+        if acc.is_corp(k):                                    # kode perusahaan (jalur 2): Rp 50.000 / tahun, hanya untuk akun pemesan
+            if htype != "user":
+                raise ValueError("kode perusahaan dipesan untuk akun sendiri")
+            acc.check_code(s, acc.corp_code(k), buyer["id"])
+            if (k, "time", acc.CORP_MONTHS) in seen:
+                continue
+            seen.add((k, "time", acc.CORP_MONTHS))
+            lines.append((k, acc.CORP_MONTHS, acc.CORP_PRICE, "time", None, acc.CORP_PRICE, 0))
+            continue
+        if acc.is_seat(k):                                    # kursi akun tenant perusahaan: 12 bln diskon 10%, 24 bln diskon 45%; pembayar = admin tenant
+            if htype != "tenant":
+                raise ValueError("langganan akun dibayar admin untuk tenant")
+            sp = acc.seat_price(it.get("months"))
+            if (k, "time", sp["months"]) in seen:
+                continue
+            seen.add((k, "time", sp["months"]))
+            lines.append((k, sp["months"], sp["price"], "time", None, sp["list"], sp["discount_pct"]))
+            continue
         if is_tpl(k):                                         # template outline: harga tunggal, satu pesanan-baris = satu kali impor
             if not tpl_exists(tpl_id(k)):
                 raise ValueError(f"template {tpl_id(k)} tidak dikenal")
@@ -607,7 +626,15 @@ def fulfill(s, oid: int, by: str, payment_ref: str = "") -> dict:
             raise ValueError("pesanan ini sudah lunas")
         if o["status"] != "pending":
             raise ValueError(f"pesanan berstatus {o['status']}, tidak bisa dikonfirmasi")
+        from utils import accounts as acc
         for it in s._all(c, "SELECT module_key, months, COALESCE(scope,'time') AS scope, doc_id, doc_title FROM cms_license_items WHERE order_id=?", (oid,)):
+            if acc.is_seat(it["module_key"]):                 # kursi: lisensi per akun (bukan per pemegang pesanan)
+                _grant_row(s, c, it["module_key"], "user", acc.seat_uid(it["module_key"]), int(it["months"]), "purchase", by, oid, f"pesanan #{oid}")
+                continue
+            if acc.is_corp(it["module_key"]):                 # kode perusahaan: lisensi pemilik + tandai siap dibuatkan tenant oleh operator
+                _grant_row(s, c, it["module_key"], o["holder_type"], o["holder_id"], int(it["months"]), "purchase", by, oid, f"pesanan #{oid}")
+                acc.on_corp_paid(s, c, acc.corp_code(it["module_key"]), oid)
+                continue
             _grant_row(s, c, it["module_key"], o["holder_type"], o["holder_id"], int(it["months"]), "purchase", by, oid, f"pesanan #{oid}",
                        scope=it["scope"], doc_id=it["doc_id"], doc_title=it["doc_title"])
         s._x(c, "UPDATE cms_license_orders SET status='paid', paid_at=?, confirmed_by=?, payment_ref=COALESCE(?, payment_ref) WHERE id=?",

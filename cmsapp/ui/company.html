@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Perusahaan — sdrive</title>
+<link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#f6f7f9;--fg:#1F2937;--mut:#64748b;--line:#e2e7ef;--card:#fff;--acc:#7c3aed;--mint:#A8E6CF;--lilac:#D8B4F8;--ok:#15803d;--bad:#b91c1c;--warn:#b45309;--warn-bg:#fef3c7;--soft:#f3ecfd}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--fg:#e6e9ee;--mut:#8d97a9;--line:#2a3140;--card:#1a1f29;--acc:#b794f6;--ok:#4ade80;--bad:#f87171;--warn:#f0a35e;--warn-bg:#3a2a12;--soft:#2a2340}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
+header{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:3px solid var(--mint);background:var(--card)}
+main{max-width:780px;margin:0 auto;padding:14px 16px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--mint);border-radius:14px;padding:14px;margin-bottom:12px}
+h3{margin:0 0 6px}.mut{color:var(--mut);font-size:13px}.small{font-size:12.5px}
+label{display:block;margin:10px 0 0;font-size:13px;font-weight:600}
+input,select,button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
+input,select{width:100%;margin-top:4px}
+button{cursor:pointer}button.p{background:linear-gradient(90deg,var(--lilac),var(--mint));color:#1F2937;border:none;font-weight:700}
+button.d{color:var(--bad);border-color:var(--bad)}button:disabled{opacity:.6}
+.note{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:9px 12px;margin:8px 0;font-size:13px}
+.ok{background:#15803d22;color:var(--ok)}.err{color:var(--bad);min-height:18px;font-size:13px;margin-top:6px}
+table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:6px;text-align:left;font-size:13px;vertical-align:middle}th{color:var(--mut);font-weight:600}
+.badge{display:inline-block;font-size:11px;padding:1px 9px;border-radius:999px;background:var(--soft);color:var(--acc);font-weight:700}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.hide{display:none}s{color:var(--mut)}
+.tbl{overflow-x:auto}
+</style></head><body>
+<header><b>🏢 Perusahaan</b><span id="who" class="mut"></span><span style="flex:1"></span><a href="/">← sdrive</a></header>
+<main><div id="msg"></div><div id="view">Memuat…</div></main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rp=n=>'Rp '+Number(n).toLocaleString('id-ID');
+const QS=new URLSearchParams(location.search);
+async function api(method,path,body){
+  const o={method,credentials:'same-origin',headers:{}};
+  if(body!==undefined){o.body=JSON.stringify(body);o.headers={'Content-Type':'application/json'}}
+  if(method!=='GET')o.headers['X-CMS']='1';
+  const r=await fetch('/api/company'+path,o);
+  if(r.status===401){location.href='/';throw new Error('belum login')}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+  return j;
+}
+const note=(t,bad)=>{$('#msg').innerHTML=t?`<div class="note ${bad?'':'ok'}">${esc(t)}</div>`:''};
+const priceLine=p=>`${p.months} bulan: ${p.discount_pct?`<s>${rp(p.list)}</s> `:''}<b>${rp(p.price)}</b>${p.discount_pct?` <span class="badge">hemat ${p.discount_pct}%</span>`:''}`;
+
+async function boot(){
+  let m;try{m=await api('GET','/me')}catch(e){return $('#view').textContent=e.message}
+  if(QS.get('bought')==='ok')note('Pembayaran terverifikasi. Terima kasih!');
+  else if(QS.get('bought')==='wait')note('Bukti pembayaran Anda sedang diverifikasi manual oleh operator.');
+  if(m.isolated)return mandiriView(m);
+  if(m.billing&&m.can_manage_users)return seatsView(m);
+  $('#view').innerHTML='<div class="card">Halaman ini untuk akun mandiri (memesan kode perusahaan) dan admin perusahaan (langganan akun).</div>';
+}
+
+/* ---------------- jalur 2: pesan kode perusahaan ---------------- */
+function mandiriView(m){
+  const c=m.company;
+  let h='';
+  if(c&&(c.status==='paid'||c.status==='provisioned')){
+    h+=`<div class="card"><h3>Kode perusahaan: <code>${esc(c.code)}</code></h3><div class="mut">${esc(c.name)}</div>`;
+    if(c.status==='provisioned'&&c.tenant_url)h+=`<div class="note ok">✅ Tenant perusahaan Anda sudah siap: <a href="${esc(c.tenant_url)}" target="_blank" rel="noopener"><b>${esc(c.tenant_url)}</b></a><br>Masuk memakai email/username dan password akun ini. Anda adalah <b>admin pertama</b>; tambah anggota dan angkat admin lain dari menu Admin di sana.</div>`;
+    else h+=`<div class="note">✅ Pembayaran diterima (${esc((c.paid_at||'').slice(0,10))}). Tenant sedang disiapkan operator — Anda akan menerima email begitu siap${c.error?`<div class="small">Catatan: ${esc(c.error)}</div>`:''}.</div>`;
+    h+='</div>';
+    return $('#view').innerHTML=h;
+  }
+  h+=`<div class="card"><h3>Buat perusahaan sendiri</h3>
+   <div class="mut">Dapatkan <b>tenant khusus</b> (alamat <code>kode.sdrive.team</code>) seperti chp/utama: data terpisah total, Anda jadi admin, dan bisa mendaftarkan anggota tim.</div>
+   <ul class="small" style="padding-left:18px">
+    <li>Kode perusahaan: <b>${rp(m.corp.price)} / tahun</b> (sudah termasuk akun Anda sebagai admin pertama).</li>
+    <li>Tiap akun anggota yang ditambahkan admin: ${m.seat.map(priceLine).join(' · ')} per akun.</li>
+   </ul>
+   <form id="f">
+    <label>Nama perusahaan<input name="name" required maxlength="120" value="${esc(c?c.name:'')}"></label>
+    <label>Kode perusahaan (alamat tenant)<input name="code" required maxlength="24" placeholder="mis. pt-maju-jaya" value="${esc(c?c.code:'')}" autocapitalize="none"></label>
+    <div class="small mut" id="ck">3-24 karakter: huruf kecil, angka, strip; diawali huruf.</div>
+    <div class="err" id="e"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="p" id="go">Pesan &amp; bayar ${rp(m.corp.price)}</button></div>
+   </form></div>`;
+  if(m.pending_order)h+=`<div class="note">⏳ Pesanan kode <b>${esc(c.code)}</b> menunggu pembayaran. <a href="/store?pay=${m.pending_order.id}&back=%2Fcompany%3Fp%3D1">Lanjutkan pembayaran</a>${m.pending_order.verify_state==='manual'?' — butuh verifikasi manual, operator akan menghubungi Anda.':''}</div>`;
+  $('#view').innerHTML=h;
+  const f=$('#f'),ck=$('#ck');let t;
+  f.code.oninput=()=>{clearTimeout(t);f.code.value=f.code.value.toLowerCase();t=setTimeout(async()=>{
+    if(f.code.value.length<3)return;
+    try{const r=await api('POST','/check',{code:f.code.value});ck.innerHTML=r.ok?`<span style="color:var(--ok)">✓ tersedia: ${esc(r.host)}</span>`:`<span style="color:var(--bad)">${esc(r.error)}</span>`}catch(e){}},350)};
+  f.onsubmit=async e=>{e.preventDefault();$('#e').textContent='';$('#go').disabled=true;
+    try{const r=await api('POST','/order',{code:f.code.value,name:f.name.value});location.href=r.pay_url}
+    catch(x){$('#e').textContent=x.message;$('#go').disabled=false}};
+}
+
+/* ---------------- tenant perusahaan: kursi akun & admin ---------------- */
+let SEL=new Set();
+async function seatsView(m){
+  let d;try{d=await api('GET','/seats')}catch(e){return $('#view').textContent=e.message}
+  $('#who').textContent=m.tenant_name||'';
+  const now=new Date().toISOString().slice(0,10);
+  const rows=d.users.map(u=>{
+    const st=u.pending_order?`<span class="badge">⏳ menunggu bayar #${u.pending_order}</span>`:u.seat_active?`<span style="color:var(--ok)">aktif s.d. ${esc(u.seat_ends_at.slice(0,10))}</span>`:'<span style="color:var(--bad)">belum aktif / berakhir</span>';
+    const adm=m.is_admin?(u.is_super?(u.id===d.me?'<span class="badge">admin (Anda)</span>':`<button type="button" class="d" data-adm="${u.id}" data-v="0">Lepas admin</button>`):`<button type="button" data-adm="${u.id}" data-v="1" ${u.seat_active?'':'disabled title="bayar langganan akun dulu"'}>Jadikan admin</button>`):(u.is_super?'<span class="badge">admin</span>':'');
+    return `<tr><td><input type="checkbox" data-sel="${u.id}" ${SEL.has(u.id)?'checked':''} style="width:auto"></td><td><b>${esc(u.name||u.username)}</b><div class="mut small">${esc(u.username)} · ${esc(u.email||'-')}</div></td><td>${esc(u.role)}</td><td>${st}</td><td>${adm}</td></tr>`}).join('');
+  $('#view').innerHTML=`<div class="card"><h3>Langganan akun</h3>
+   <div class="mut">Setiap akun di perusahaan ini perlu langganan aktif agar bisa masuk. Tambah akun baru di menu <b>Admin</b> (⋮ → Admin), lalu bayar langganannya di sini.</div>
+   <div class="note ok" style="margin-top:8px">${d.seat.map(priceLine).join(' &nbsp;|&nbsp; ')} <span class="small">per akun</span></div>
+   <div class="tbl"><table><thead><tr><th></th><th>Akun</th><th>Peran</th><th>Langganan</th><th>Admin</th></tr></thead><tbody>${rows}</tbody></table></div>
+   <div class="row" style="margin-top:12px"><select id="mo" style="width:auto">${d.seat.map(p=>`<option value="${p.months}">${p.months} bulan — ${rp(p.price)}/akun${p.discount_pct?` (hemat ${p.discount_pct}%)`:''}</option>`).join('')}</select>
+    <button class="p" id="pay">Bayar akun terpilih</button><span class="mut small" id="tot"></span></div><div class="err" id="e"></div></div>`;
+  const upd=()=>{const p=d.seat.find(x=>x.months==$('#mo').value);$('#tot').textContent=SEL.size?`${SEL.size} akun × ${rp(p.price)} = ${rp(SEL.size*p.price)}`:''};
+  upd();$('#mo').onchange=upd;
+  document.querySelectorAll('[data-sel]').forEach(c=>c.onchange=()=>{const id=+c.dataset.sel;c.checked?SEL.add(id):SEL.delete(id);upd()});
+  document.querySelectorAll('[data-adm]').forEach(b=>b.onclick=async()=>{
+    if(b.dataset.v==='0'&&!confirm('Lepas status admin akun ini?'))return;
+    try{await api('POST',`/members/${b.dataset.adm}/admin`,{admin:b.dataset.v==='1'});note('Peran diperbarui.');seatsView(m)}catch(x){note(x.message,1)}});
+  $('#pay').onclick=async()=>{
+    if(!SEL.size)return $('#e').textContent='Centang akun yang akan dibayarkan.';
+    $('#pay').disabled=true;
+    try{const r=await api('POST','/seats/order',{user_ids:[...SEL],months:+$('#mo').value});location.href=r.pay_url}
+    catch(x){$('#e').textContent=x.message;$('#pay').disabled=false}};
+}
+boot();
+</script></body></html>

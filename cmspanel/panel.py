@@ -503,7 +503,7 @@ def api_settings(slug):
             if not re.match(pat, v):
                 return jsonify(error=f"{key}: format salah (contoh 512m / 2g / 4)"), 400
             env_changes[env_key] = v
-    for key in ("CMS_SMTP_HOST", "CMS_SMTP_PORT", "CMS_SMTP_USER", "CMS_SMTP_PASS", "CMS_SMTP_FROM"):
+    for key in ("CMS_SMTP_HOST", "CMS_SMTP_PORT", "CMS_SMTP_USER", "CMS_SMTP_PASS", "CMS_SMTP_FROM", "CMS_SELF_REGISTER", "CMS_RESERVED_CODES"):
         if key.lower() in d:
             env_changes[key] = str(d[key.lower()])
     applied = ""
@@ -526,6 +526,133 @@ def api_add_admin(slug):
     if rc != 0:
         return jsonify(error=out[-400:]), 500
     return jsonify(ok=True, username=u, password=p), 201
+
+
+# ---------------------------------------------------------------- Kode perusahaan (jalur 2): buat tenant setelah pesanan lunas
+# Akun mandiri memesan kode (Rp 50 rb/tahun, QRIS+OCR di tenant mandiri). Setelah LUNAS, operator menekan "Buat tenant" (atau PANEL_AUTO_PROVISION=1
+# agar otomatis): stack Docker baru <kode>.<PANEL_ROOT_DOMAIN>, CMS_SEAT_BILLING=1, pemesan dipasang sebagai admin pertama (hash sandi disalin).
+SELF_TENANT = os.environ.get("PANEL_SELF_TENANT", "cms")          # tenant tempat akun mandiri mendaftar
+ROOT_DOMAIN = os.environ.get("PANEL_ROOT_DOMAIN", "sdrive.team")
+_prov_lock = __import__("threading").Lock()
+
+
+def company_op(slug: str, action: str, args: dict | None = None) -> tuple[dict, int]:
+    """Jalankan scripts/company_op.py di container app tenant `slug` (stdin JSON -> stdout JSON). Argumen/keluaran tak pernah dicatat (memuat hash sandi)."""
+    tenant_dir(slug)
+    payload = json.dumps({**(args or {}), "action": action})
+    try:
+        p = subprocess.run(["docker", "exec", "-i", cname(slug, "app"), "python", "scripts/company_op.py"], input=payload, capture_output=True,
+                           text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout menjalankan operasi perusahaan"}, 504
+    except FileNotFoundError as e:
+        return {"error": str(e)}, 500
+    lines = (p.stdout or "").strip().splitlines()
+    try:
+        j = json.loads(lines[-1]) if lines else {}
+    except ValueError:
+        j = {}
+    if not j:
+        return {"error": "tenant tidak menjawab (app mati?)"}, 502
+    return ({"ok": True, **j["data"]}, 200) if j.get("ok") else ({"error": j.get("error", "gagal")}, 400)
+
+
+def provision_company(code: str) -> tuple[dict, int]:
+    """Buat tenant untuk kode `code` yang sudah lunas. Aman dipanggil ulang setelah gagal (status 'failed')."""
+    if not SLUG_RE.match(code or ""):
+        return {"error": "kode tidak valid"}, 400
+    with _prov_lock:                                   # satu pembuatan tenant pada satu waktu (build/port/subnet dihitung dari folder yang ada)
+        info, st = company_op(SELF_TENANT, "owner", {"code": code})
+        if st != 200:
+            return info, st
+        comp, owner = info["company"], info["owner"]
+        domain, url = f"{code}.{ROOT_DOMAIN}", f"https://{code}.{ROOT_DOMAIN}"
+
+        def fail(msg: str, status: int = 500):
+            company_op(SELF_TENANT, "mark", {"code": code, "status": "failed", "error": msg})
+            return {"error": msg}, status
+
+        if os.path.isdir(os.path.join(BASE, code)):
+            return fail(f"folder tenant '{code}' sudah ada (kode bentrok dengan tenant lain) -- hubungi pemesan untuk kode lain atau pindahkan manual", 409)
+        rc, out = sh(["bash", os.path.join(REPO, "scripts", "add-tenant.sh"), code, domain], timeout=900)
+        if rc != 0:
+            return fail(f"add-tenant gagal: {out[-300:]}")
+        update_env(os.path.join(tenant_dir(code), ".env"), {"CMS_SEAT_BILLING": "1", "CMS_SELF_REGISTER": "0"})
+        rc, out = compose(code, "up", "-d")
+        if rc != 0:
+            return fail(f"compose up gagal: {out[-300:]}")
+        for _ in range(60):
+            if container_states(code).get("app", {}).get("health") == "healthy":
+                break
+            time.sleep(5)
+        else:
+            return fail("app tenant baru belum sehat setelah 5 menit")
+        r, st = company_op(code, "adopt_owner", {"company": comp, "owner": owner})
+        if st != 200:
+            return fail("gagal memasang admin pertama: " + str(r.get("error"))[:200])
+        write_meta(code, {"company": comp["name"], "admin_email": owner.get("email") or "", "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                          "storage_limit_gb": 20, "source": "kode-perusahaan"})
+        r, st = company_op(SELF_TENANT, "mark", {"code": code, "status": "provisioned", "tenant_url": url})
+        return ({"ok": True, "code": code, "url": url, "notify": r.get("notify")}, 201) if st == 200 else (r, st)
+
+
+@app.get("/api/companies")
+def api_companies():
+    out, code = company_op(SELF_TENANT, "list")
+    if code == 200:
+        out["self_tenant"], out["root_domain"] = SELF_TENANT, ROOT_DOMAIN
+        out["auto"] = os.environ.get("PANEL_AUTO_PROVISION") == "1"
+        for c in out["companies"]:
+            c["dir_exists"] = os.path.isdir(os.path.join(BASE, c["code"]))
+    return jsonify(out), code
+
+
+@app.post("/api/companies/<code>/provision")
+def api_company_provision(code):
+    out, st = provision_company(code)
+    return jsonify(out), st
+
+
+def _auto_provision_loop():
+    """Opsional (PANEL_AUTO_PROVISION=1): tiap 60 dtk buat tenant untuk kode yang sudah lunas. Gagal -> status 'failed' (tidak diulang otomatis)."""
+    while True:
+        time.sleep(60)
+        try:
+            out, st = company_op(SELF_TENANT, "list")
+            for c in (out.get("companies") or []) if st == 200 else []:
+                if c["status"] == "paid" and not os.path.isdir(os.path.join(BASE, c["code"])):
+                    provision_company(c["code"])
+        except Exception:                                # noqa: BLE001
+            pass
+
+
+@app.get("/companies")
+def companies_page():
+    return _page(r"""
+<style>main{max-width:1100px!important}.note{background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px}.badge{font-size:11px;padding:1px 8px;border-radius:99px;background:#2563eb1a}</style>
+<header><a href="/"><button type=button>← Panel</button></a><b>🏢 Kode perusahaan (jalur 2)</b><button id=rf>↻</button></header>
+<main><div class=note>Daftar pesanan kode perusahaan dari akun mandiri. Pesanan <b>lunas</b> (bukti QRIS lolos OCR, atau Anda konfirmasi di <a href="/license">Lisensi</a>) siap dibuatkan tenant. Nominal kecil, tetapi bukti QRIS bisa dipalsukan &mdash; cocokkan mutasi sebelum menekan <b>Buat tenant</b>, kecuali mode otomatis dinyalakan.</div>
+<div id=meta></div><div class=card><table><thead><tr><th>Kode</th><th>Perusahaan</th><th>Pemilik</th><th>Status</th><th></th></tr></thead><tbody id=tb></tbody></table></div></main>
+<script>
+const H={'Content-Type':'application/json','X-PANEL':'1'};
+const api=(m,u,b)=>fetch(u,{method:m,headers:H,body:b?JSON.stringify(b):undefined}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ST={ordered:'⏳ menunggu bayar',paid:'💰 lunas — siap dibuat',provisioned:'✅ tenant aktif',failed:'⚠ gagal'};
+async function load(){
+ try{const d=await api('GET','/api/companies');
+  meta.innerHTML=`<small>Tenant mandiri: <b>${esc(d.self_tenant)}</b> · domain: <b>${esc(d.root_domain)}</b> · pembuatan otomatis: <b>${d.auto?'NYALA':'mati'}</b></small>`;
+  tb.innerHTML=d.companies.map(c=>`<tr><td><b>${esc(c.code)}</b>${c.dir_exists&&c.status!=='provisioned'?' <span class=badge style="background:#fee2e2;color:#b91c1c">folder sudah ada</span>':''}</td><td>${esc(c.name)}</td>
+   <td>${esc(c.owner_name||c.username)}<br><small>${esc(c.email||'')} · WA ${esc(c.phone_wa||'-')}<br>${esc(c.city||'')} · ${esc(c.occupation||'')}</small></td>
+   <td>${ST[c.status]||esc(c.status)}${c.error?`<br><small style="color:var(--bad)">${esc(c.error)}</small>`:''}${c.tenant_url?`<br><a href="${esc(c.tenant_url)}" target=_blank>${esc(c.tenant_url)}</a>`:''}</td>
+   <td>${c.status==='paid'||c.status==='failed'?`<button class=p data-go="${esc(c.code)}">Buat tenant</button>`:''}</td></tr>`).join('')||'<tr><td colspan=5><small>Belum ada pesanan.</small></td></tr>';
+  document.querySelectorAll('[data-go]').forEach(b=>b.onclick=async()=>{
+   if(!confirm(`Buat tenant "${b.dataset.go}" sekarang? Proses bisa 1-5 menit (membangun stack Docker).`))return;
+   b.disabled=true;b.textContent='membuat…';
+   try{await api('POST',`/api/companies/${b.dataset.go}/provision`);}catch(e){alert('Gagal: '+e.message)}
+   load()});
+ }catch(e){tb.innerHTML=`<tr><td colspan=5 style="color:var(--bad)">${esc(e.message)}</td></tr>`}}
+rf.onclick=load;load();
+</script>""")
 
 
 # ---------------------------------------------------------------- Lisensi & harga Toko Engine (HANYA superadmin platform)
@@ -679,7 +806,7 @@ def home():
 .kmenu{position:absolute;right:8px;top:30px;z-index:20;min-width:230px;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:8px;box-shadow:0 6px 20px #0003;padding:4px}
 .kmenu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px}.kmenu button:hover{background:var(--acc-soft,#2563eb1a)}
 .kmenu .kh{font-size:11px;color:var(--mut);padding:4px 10px}.tpl-on{color:var(--ok)}.tpl-off{color:orange}</style>
-<header><b>🏢 CMS Control Panel — semua tenant</b><a href="/backups"><button type=button id=bkb>💾 Backup <span id=bkd>…</span></button></a><a href="/modules"><button type=button>🧩 Fitur &amp; modul per perusahaan</button></a><a href="/license"><button type=button>🛒 Lisensi &amp; Harga</button></a><button class=p id=bnew>+ Perusahaan baru</button></header>
+<header><b>🏢 CMS Control Panel — semua tenant</b><a href="/backups"><button type=button id=bkb>💾 Backup <span id=bkd>…</span></button></a><a href="/modules"><button type=button>🧩 Fitur &amp; modul per perusahaan</button></a><a href="/license"><button type=button>🛒 Lisensi &amp; Harga</button></a><a href="/companies"><button type=button>🏢 Kode perusahaan</button></a><button class=p id=bnew>+ Perusahaan baru</button></header>
 <main><div class=grid id=cards>memuat…</div></main>
 <script>
 const H={'Content-Type':'application/json','X-PANEL':'1'};
@@ -896,4 +1023,6 @@ if __name__ == "__main__":
         raise SystemExit("set env PANEL_PASSWORD dulu (wajib)")
     # PANEL_BIND: default hanya loopback; boleh diisi IP VPN (mis. 10.100.10.29) spt pola CMS_BIND —
     # JANGAN 0.0.0.0 (panel memegang kendali docker penuh)
+    if os.environ.get("PANEL_AUTO_PROVISION") == "1":
+        __import__("threading").Thread(target=_auto_provision_loop, daemon=True).start()
     app.run(host=os.environ.get("PANEL_BIND", "127.0.0.1"), port=int(os.environ.get("PANEL_PORT", 8895)))

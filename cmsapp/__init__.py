@@ -24,6 +24,9 @@ def create_app(cfg=Config) -> Flask:
         app.config["DB_HOST"], app.config["DB_USER"], app.config["DB_PASS"], app.config["DB_NAME"],
         app.config["DB_PORT"], pool_size=app.config["DB_POOL"], locks=locks)
 
+    from utils import accounts
+    accounts.ensure(app.extensions["cms_store"])          # kolom profil pendaftaran + tabel cms_companies + grup 'mandiri' (idempoten)
+
     from cmsapp.api import bp
     app.register_blueprint(bp)
 
@@ -50,6 +53,9 @@ def create_app(cfg=Config) -> Flask:
 
     from cmsapp.journal_api import bp as journal_bp
     app.register_blueprint(journal_bp)
+
+    from cmsapp.account_api import bp as account_bp
+    app.register_blueprint(account_bp)
 
     @app.after_request
     def _security_headers(resp):

@@ -422,11 +422,17 @@ def _load_user(uid: int):
     s = store()
     with s._tx() as c:
         row = s._one(c, "SELECT u.id, u.username, u.name, u.group_id, g.name AS role, g.is_super, u.active, "
-                        "u.email, u.email_verified_at, u.phone_wa, u.expertise, u.bio "
+                        "u.email, u.email_verified_at, u.phone_wa, u.expertise, u.bio, u.reg_source "
                         "FROM cms_users u JOIN cms_groups g ON g.id=u.group_id WHERE u.id=?", (uid,))
         if not row:
             return None
         row["is_super"] = bool(row["is_super"])
+        row["isolated"] = row.get("reg_source") == "mandiri"        # akun mandiri: hanya melihat proyek/orang yang sama-sama dengannya
+        if row["active"]:
+            from utils import accounts
+            block = accounts.seat_block(s, uid)                      # tenant perusahaan: akun tanpa kursi aktif tidak boleh masuk
+            if block:
+                row["active"], row["seat_block"] = 0, block
         perms: set[str] = set()
         if not row["is_super"]:
             for p in s._all(c, "SELECT perm_key FROM cms_group_perms WHERE group_id=? AND allowed=1",
@@ -466,14 +472,26 @@ def login(username: str, password: str, ip: str):
     if n > 10:
         return None, "terlalu banyak percobaan; coba lagi 5 menit"
     s = store()
+    ident = username.strip().lower()
     with s._tx() as c:
-        u = s._one(c, "SELECT u.id, u.username, u.name, g.name AS role, u.pw_hash, u.active FROM cms_users u "
-                     "JOIN cms_groups g ON g.id=u.group_id WHERE u.username=?", (username.strip().lower(),))
-        ok = bool(u and u["active"] and check_password_hash(u["pw_hash"], password))
+        # boleh masuk dengan username ATAU email (akun mandiri mendaftar dengan email)
+        u = s._one(c, "SELECT u.id, u.username, u.name, g.name AS role, u.pw_hash, u.active, u.email_verified_at, u.reg_source FROM cms_users u "
+                     "JOIN cms_groups g ON g.id=u.group_id WHERE u.username=?", (ident,))
+        if not u and "@" in ident:
+            u = s._one(c, "SELECT u.id, u.username, u.name, g.name AS role, u.pw_hash, u.active, u.email_verified_at, u.reg_source FROM cms_users u "
+                         "JOIN cms_groups g ON g.id=u.group_id WHERE u.email=?", (ident,))
+        pw_ok = bool(u and check_password_hash(u["pw_hash"], password))
+        if pw_ok and not u["active"] and u["reg_source"] == "mandiri" and not u["email_verified_at"]:
+            return None, "akun belum dikonfirmasi -- buka tautan konfirmasi yang dikirim ke email pendaftaran"
+        ok = bool(pw_ok and u["active"])
         if ok:
+            from utils import accounts
+            block = accounts.seat_block(s, u["id"])
+            if block:
+                return None, block
             s._x(c, "UPDATE cms_users SET last_login=? WHERE id=?", (_now(), u["id"]))
     if not ok:
-        return None, "username atau password salah"
+        return None, "username/email atau password salah"
     r.delete(rl)
     session.clear()
     session["uid"] = u["id"]

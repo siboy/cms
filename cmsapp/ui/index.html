@@ -343,7 +343,7 @@ body.jfab #ed{padding-bottom:84px}
 <button id="bproj" hidden>Proyek</button>
 <button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button>
 </nav>
-<div id="kwrap"><button id="bkeb" title="Menu" hidden>⋮</button><div id="kmenu" hidden><button id="badm" hidden>Admin</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="bdocs" hidden>Dokumen</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button><button id="balat" hidden title="Tools Simulator: pustaka rumus AMDAL/UKL-UPL & simulasi lingkungan (pencemaran air/udara, kebisingan)">🧮 Tools Simulator</button><button id="bpriv" hidden>🔐 Privilege</button><button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bstore" hidden title="Beli / lihat lisensi engine hitung & simulasi (per paket waktu atau per laporan)">🛒 Toko Engine</button><a id="bhow" href="/howto">📘 Howto</a><button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bout" hidden>Keluar</button></div></div>
+<div id="kwrap"><button id="bkeb" title="Menu" hidden>⋮</button><div id="kmenu" hidden><button id="badm" hidden>Admin</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="bdocs" hidden>Dokumen</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button><button id="balat" hidden title="Tools Simulator: pustaka rumus AMDAL/UKL-UPL & simulasi lingkungan (pencemaran air/udara, kebisingan)">🧮 Tools Simulator</button><button id="bpriv" hidden>🔐 Privilege</button><button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bcomp" hidden title="Pesan kode perusahaan (tenant sendiri) atau bayar langganan akun anggota">🏢 Perusahaan</button><button id="bstore" hidden title="Beli / lihat lisensi engine hitung & simulasi (per paket waktu atau per laporan)">🛒 Toko Engine</button><a id="bhow" href="/howto">📘 Howto</a><button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bout" hidden>Keluar</button></div></div>
 </header>
 <div id="kscrim" hidden></div><div id="app"></div><div id="bar" hidden></div>
 <script src="/offline.js?v=1"></script>
@@ -441,7 +441,7 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  const stok=qp.get('share');if(stok)return shareView(stok);
  try{me=(await api('GET','/me')).user;if(window.OFF)OFF.setUser(me.username)}catch(e){return loginView()}
  pruneDrafts();
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#balat').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;try{const mr=await api('GET','/modules');$('#bstore').hidden=!mr.licensing;MODON=new Set((mr.modules||[]).filter(m=>m.on).map(m=>m.key))}catch(e){MODON=new Set()}$('#bapk').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#balat').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;try{const mr=await api('GET','/modules');$('#bstore').hidden=!mr.licensing;MODON=new Set((mr.modules||[]).filter(m=>m.on).map(m=>m.key))}catch(e){MODON=new Set()}try{const cm=await api('GET','/company/me');$('#bcomp').hidden=!cm.show_menu}catch(e){}$('#bapk').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));
  const dq=qp.get('doc');
  if(dq){await openDoc(+dq);const bq=qp.get('block');
@@ -493,8 +493,10 @@ async function notifPanel(){document.querySelector('.notifd')?.remove();
    if(it.project_id&&!it.doc_id)projectDetailView(it.project_id,{tab:'laporan'});   // mention Diskusi -> buka chatnya
    else if(it.doc_id){await openDoc(it.doc_id);if(it.block_id)jumpToBlock(it.block_id,it.chapter_id,it.section_id)}}});
  setTimeout(()=>document.addEventListener('click',function h(e){if(!d.contains(e.target)&&e.target!==$('#bnotif')){d.remove();document.removeEventListener('click',h)}}),0)}
-function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder=username autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span>
- <p style="text-align:center;margin:0"><a href="#" id=lfp style="font-size:12px">Lupa password?</a></p></form>`;
+function loginView(){$('#app').innerHTML=`<form id=login><h3>Masuk</h3><input name=u placeholder="username atau email" autofocus><input name=p type=password placeholder=password><button class=p>Masuk</button><span class=err id=le></span>
+ <p style="text-align:center;margin:0"><a href="#" id=lfp style="font-size:12px">Lupa password?</a></p>
+ <p id=lreg hidden style="text-align:center;margin:6px 0 0;font-size:13px">Belum punya akun? <a href="/register"><b>Daftar</b></a></p></form>`;
+ fetch('/api/auth/register-info').then(r=>r.json()).then(j=>{if(j.enabled&&$('#lreg'))$('#lreg').hidden=false}).catch(()=>{});
  $('#login').onsubmit=async e=>{e.preventDefault();try{await api('POST','/login',{username:e.target.u.value,password:e.target.p.value});boot()}catch(x){$('#le').textContent=x.message}}
  $('#lfp').onclick=e=>{e.preventDefault();forgotPasswordDlg()}}
 function forgotPasswordDlg(){const m=document.createElement('div');m.className='mask';
@@ -512,6 +514,7 @@ $('#bproj').onclick=()=>projectsView();
 $('#bdata').onclick=()=>{location.href='/data-desa'};
 $('#balat').onclick=()=>{location.href='/alat'};
 $('#btpl').onclick=()=>{location.href='/templates'};
+$('#bcomp').onclick=()=>{location.href='/company'};
 $('#bstore').onclick=()=>{location.href='/store'+(typeof doc!=='undefined'&&doc?'?doc='+doc:'')};
 $('#bfiles').onclick=()=>meFilesView();
 $('#bnotif').onclick=notifPanel;
@@ -775,8 +778,8 @@ async function tabAktivitas(host){
  await load()}
 async function tabTim(host){const H=host||$('#ptab');const {team,can_manage,can_appoint}=await api('GET',`/projects/${curProj}/team`);
  const canManage=!!can_manage;                       // admin ATAU Ketua Tim proyek ini (diputuskan server)
- let avail=[],opts=ROLE_SUGGEST;if(canManage){try{const inTeam=new Set(team.filter(t=>t.user_id).map(t=>t.user_id));
-  avail=(await api('GET',`/projects/${curProj}/team/candidates`)).users.filter(u=>!inTeam.has(u.id))}catch(e){}
+ let avail=[],opts=ROLE_SUGGEST,invite=false;if(canManage){try{const inTeam=new Set(team.filter(t=>t.user_id).map(t=>t.user_id));
+  const cd=await api('GET',`/projects/${curProj}/team/candidates`);invite=!!cd.invite_by_email;avail=cd.users.filter(u=>!inTeam.has(u.id))}catch(e){}
   opts=await roleOptions()}
  const nameOf=t=>(t.is_external?`${esc(t.external_name)} <span class=badge style="background:var(--mut)">Eksternal</span>`:esc(t.name||t.username))
   +(t.is_leader?' <span class=badge style="background:#b8860b" title="Ketua Tim — boleh kelola tim proyek ini">👑 Ketua Tim</span>':'');
@@ -788,8 +791,9 @@ async function tabTim(host){const H=host||$('#ptab');const {team,can_manage,can_
  ||`<tr><td colspan=${canManage?3:2} style="color:var(--mut)">Belum ada anggota tim.</td></tr>`}</table></div>
  ${canManage?`<h4 style="margin-top:14px">Tambah anggota</h4>
  <form id=fteam style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
- <select name=kind><option value=akun>Akun CMS</option><option value=eksternal>Eksternal (tanpa akun)</option></select>
- <select name=user_id required><option value="">— pilih orang —</option>${avail.map(u=>`<option value=${u.id}>${esc(u.name||u.username)}</option>`).join('')}</select>
+ <select name=kind>${invite?'<option value=undang>Undang via email/username</option>':''}<option value=akun>${invite?'Kenalan (satu proyek)':'Akun CMS'}</option><option value=eksternal>Eksternal (tanpa akun)</option></select>
+ <input name=identifier placeholder="email atau username akun" ${invite?'required':'hidden'}>
+ <select name=user_id ${invite?'hidden':'required'}><option value="">— pilih orang —</option>${avail.map(u=>`<option value=${u.id}>${esc(u.name||u.username)}</option>`).join('')}</select>
  <input name=external_name placeholder="Nama anggota eksternal" hidden>
  <input name=external_contact placeholder="Kontak (telp/email, opsional)" hidden>
  <input name=title list=roleSuggest value="${esc(ROLE_DEFAULT)}" required>
@@ -810,10 +814,13 @@ async function tabTim(host){const H=host||$('#ptab');const {team,can_manage,can_
   document.querySelectorAll('[data-ldr]').forEach(b=>b.onclick=async()=>{
    try{await api('PATCH',`/projects/${curProj}/team/${b.dataset.ldr}`,{is_leader:!!+b.dataset.v});tabTim(H)}catch(e){note(e.message,1)}});
   const f=$('#fteam');
-  f.kind.onchange=()=>{const ext=f.kind.value==='eksternal';f.user_id.hidden=ext;f.user_id.required=!ext;
+  const kindUi=()=>{const k=f.kind.value,ext=k==='eksternal',und=k==='undang';f.user_id.hidden=ext||und;f.user_id.required=k==='akun';
+   f.identifier.hidden=!und;f.identifier.required=und;
    f.external_name.hidden=!ext;f.external_name.required=ext;f.external_contact.hidden=!ext};
+  f.kind.onchange=kindUi;kindUi();
   f.onsubmit=async e=>{e.preventDefault();
-   try{await api('POST',`/projects/${curProj}/team`,f.kind.value==='eksternal'
+   try{if(f.kind.value==='undang')await api('POST',`/projects/${curProj}/team/invite`,{identifier:f.identifier.value,title:f.title.value});
+    else await api('POST',`/projects/${curProj}/team`,f.kind.value==='eksternal'
      ?{external_name:f.external_name.value,external_contact:f.external_contact.value,title:f.title.value}
      :{user_id:+f.user_id.value,title:f.title.value});tabTim(H)}catch(x){note(x.message,1)}};
   $('#timport').onclick=()=>teamImportDlg()}}

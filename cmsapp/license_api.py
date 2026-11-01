@@ -10,6 +10,7 @@ import time
 from flask import Blueprint, current_app, g, has_request_context, jsonify, request
 
 from cmsapp import auth, mailer
+from utils import accounts as acc
 from utils import licensing as lic
 from utils import modules as mods
 
@@ -112,6 +113,20 @@ def _rp(n) -> str:
     return "Rp " + f"{int(n):,}".replace(",", ".")
 
 
+def item_label(key: str) -> str:
+    """Label item pesanan jalur perusahaan: kode perusahaan / langganan akun (nama akun dicari dari DB bila ada)."""
+    if acc.is_corp(key):
+        return "Kode perusahaan: " + acc.corp_code(key)
+    if acc.is_seat(key):
+        try:
+            with S()._tx() as c:
+                r = S()._one(c, "SELECT username, name FROM cms_users WHERE id=?", (acc.seat_uid(key),))
+        except Exception:                                   # noqa: BLE001
+            r = None
+        return "Langganan akun: " + (f"{r['name'] or r['username']} ({r['username']})" if r else f"#{acc.seat_uid(key)}")
+    return key
+
+
 def _items_html(o: dict) -> str:
     from html import escape
     rows = []
@@ -121,7 +136,7 @@ def _items_html(o: dict) -> str:
         else:
             what = f"sekali pakai: {escape(i.get('doc_title') or '#' + str(i.get('doc_id')))}" if i["scope"] == "report" else f"paket {i['months']} bulan"
         lp = f" <s>{_rp(i['list_price'])}</s>" if i.get("list_price") and i["list_price"] != i["price"] else ""
-        label = ("Template: " + lic.tpl_title(lic.tpl_id(i["module_key"]))) if lic.is_tpl(i["module_key"]) else (
+        label = item_label(i["module_key"]) if (acc.is_corp(i["module_key"]) or acc.is_seat(i["module_key"])) else ("Template: " + lic.tpl_title(lic.tpl_id(i["module_key"]))) if lic.is_tpl(i["module_key"]) else (
             ("Fitur premium: " + lic.FEATURES[lic.feat_id(i["module_key"])]["label"]) if lic.is_feat(i["module_key"]) else mods.tool_label(i["module_key"]))
         rows.append(f"<li>{escape(label)} — {what} ({lp} <b>{_rp(i['price'])}</b>)</li>")
     return "<ul>" + "".join(rows) + "</ul>"
@@ -221,6 +236,10 @@ def store_view():
             tpl_items.append({"key": lic.FEAT + fid, "label": f["label"], "icon": "⭐", "group": "Fitur premium perusahaan", "feat": True, "price": f["price"], "months": f["months"],
                               "desc": f["desc"], "active": st_["active"], "ends_at": st_["ends_at"], "can_buy": auth.has_perm(g.user, "premium_buy")})
     pend_orders = lic.list_orders(s, buyer_id=g.user["id"], status="pending")
+    for o_ in pend_orders:
+        for it_ in o_["items"]:
+            if acc.is_corp(it_["module_key"]) or acc.is_seat(it_["module_key"]):
+                labels[it_["module_key"]] = item_label(it_["module_key"])
     keys_ = set(want) | {it["module_key"] for o in pend_orders for it in o["items"] if lic.is_tpl(it["module_key"])}
     credits = lic.copy_credits(s, g.user["id"])
     for k in sorted(k_ for k_ in keys_ if lic.is_tpl(k_)):
@@ -258,6 +277,8 @@ def order_create():
     Pembeli di tenant HANYA boleh membeli untuk dirinya sendiri dan pesanan selalu 'pending' sampai pembayaran terverifikasi (OCR bukti QRIS
     atau konfirmasi superadmin di cmspanel). Tidak ada 'tandai lunas', 'beli untuk orang lain/grup/tenant' di sini."""
     d = body()
+    if any(acc.is_corp(it.get("module")) or acc.is_seat(it.get("module")) for it in (d.get("items") or [])):
+        return jsonify(error="kode perusahaan & langganan akun dipesan lewat menu Perusahaan, bukan Toko"), 400
     tgt = d.get("for") or {"type": "user", "id": g.user["id"]}
     feats = [it for it in (d.get("items") or []) if lic.is_feat(it.get("module"))]
     if feats:                                            # langganan fitur premium = untuk SELURUH perusahaan, hanya admin berizin 'premium_buy'

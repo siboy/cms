@@ -76,3 +76,12 @@ def notify_comment(to: str, name: str, actor: str, label: str, snippet: str, is_
             f"<p style=\"padding:8px 12px;border-left:3px solid #1f6feb;background:#f6f7f9\">{snippet}</p>"
             f"<p><a href=\"{link}\">Buka di CMS</a></p>")
     return send_mail(to, f"Komentar baru — {label}", html)
+
+
+def notify_company_ready(to: str, name: str, company: str, url: str) -> bool:
+    name, company, url = escape(name), escape(company), escape(url)
+    html = (f"<p>Halo {name},</p><p>Pembayaran kode perusahaan diterima dan tenant <b>{company}</b> sudah siap:</p>"
+            f"<p><a href=\"{url}\">{url}</a></p>"
+            f"<p>Masuk memakai email/username dan password akun sdrive Anda. Anda adalah <b>admin pertama</b>: tambah anggota dari menu Admin, "
+            f"lalu bayar langganan akun mereka di menu <b>🏢 Perusahaan</b>.</p>")
+    return send_mail(to, f"Tenant {company} siap dipakai", html)

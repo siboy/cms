@@ -236,5 +236,5 @@ function payDlg(o,pay,notify){
 }
 async function openPay(id){try{const r=await api('GET',`/orders/${id}/payment`);payDlg(r.order,r.payment,null)}catch(e){note(e.message,1)}}
 
-boot();
+boot().then(()=>{if(QS.get('pay'))openPay(QS.get('pay'))});
 </script></body></html>
