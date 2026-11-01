@@ -15,7 +15,6 @@ from utils import modules as mods
 
 bp = Blueprint("license", __name__, url_prefix="/api/license")
 S = auth.store
-PERM = "license_manage"
 
 
 def body() -> dict:
@@ -23,7 +22,9 @@ def body() -> dict:
 
 
 def can_manage() -> bool:
-    return auth.has_perm(g.user, PERM)
+    """SELALU False di tenant: harga, konfirmasi pembayaran, pemberian lisensi & mode lisensi dikelola SUPERADMIN PLATFORM lewat cmspanel
+    (utils/license_ops.py), bukan admin tenant. Tetap ada sebagai fungsi agar kode pemanggil/uji lama jelas gagalnya."""
+    return False
 
 
 @bp.errorhandler(KeyError)
@@ -127,11 +128,15 @@ def _mail_buyer_active(o: dict) -> bool:
     return mailer.send_mail(o.get("contact_email") or "", f"Lisensi aktif — pesanan {lic.order_code(o['id'])}", html)
 
 
-def _admin_emails(s) -> list[str]:
-    with s._tx() as c:
-        rows = s._all(c, "SELECT u.email FROM cms_users u JOIN cms_groups g ON g.id=u.group_id WHERE u.active=1 AND u.email IS NOT NULL AND u.email<>'' AND "
-                         "(g.is_super=1 OR EXISTS (SELECT 1 FROM cms_group_perms p WHERE p.group_id=g.id AND p.perm_key='license_manage' AND p.allowed=1))")
-    return sorted({r["email"] for r in rows})
+def notify_confirmed(o: dict) -> dict:
+    """Dipanggil operasi superadmin (scripts/license_op.py) setelah pesanan dikonfirmasi lunas: email 'lisensi aktif' ke pembeli (SMTP tenant)."""
+    return {"email_buyer": _mail_buyer_active(o) if o.get("contact_email") else False}
+
+
+def _operator_emails(s) -> list[str]:
+    """Penerima pemberitahuan pesanan baru / perlu verifikasi manual = OPERATOR PLATFORM (env CMS_OPERATOR_EMAIL, pisah koma), bukan admin tenant."""
+    import os
+    return sorted({e.strip() for e in (os.environ.get("CMS_OPERATOR_EMAIL") or "").split(",") if "@" in e})
 
 
 def _mail_admins(s, o: dict, claimed: bool) -> int:
@@ -139,8 +144,8 @@ def _mail_admins(s, o: dict, claimed: bool) -> int:
     ttl = ("Perlu VERIFIKASI MANUAL (bukti QRIS tak lolos OCR)" if o.get("verify_state") == "manual" else "Pembeli menyatakan SUDAH BAYAR") if claimed else "Pesanan lisensi baru menunggu pembayaran"
     html = (f"<p><b>{ttl}</b>: {lic.order_code(o['id'])} oleh {o.get('buyer_name')} untuk {o.get('holder_label')}</p>{_items_html(o)}"
             f"<p>Total <b>{_rp(o['total'])}</b>. Kontak: {o.get('contact_email') or '-'} / WA {o.get('contact_phone') or '-'}</p>"
-            f"<p>Cek mutasi QRIS, lalu konfirmasi di <a href=\"{base}/store\">Toko → Admin</a>.</p>")
-    return sum(1 for e in _admin_emails(s) if mailer.send_mail(e, f"[Lisensi] {ttl} — {lic.order_code(o['id'])}", html))
+            f"<p>Tenant: {base}. Periksa bukti/mutasi QRIS lalu konfirmasi di <b>cmspanel → 🛒 Lisensi &amp; Harga</b>.</p>")
+    return sum(1 for e in _operator_emails(s) if mailer.send_mail(e, f"[Lisensi] {ttl} — {lic.order_code(o['id'])}", html))
 
 
 def _my_docs(s) -> list[dict]:
@@ -161,7 +166,7 @@ def _my_docs(s) -> list[dict]:
 @bp.get("/store")
 @auth.require()
 def store_view():
-    """Katalog engine + harga + status kepemilikan untuk pengguna ini. Admin berizin license_manage juga dapat daftar grup/pengguna."""
+    """Katalog engine + harga + status kepemilikan untuk pengguna ini (tidak ada fungsi admin di tenant -- lihat utils/license_ops.py)."""
     s = S()
     pr = lic.prices(s)
     mine = {}
@@ -187,14 +192,13 @@ def store_view():
                    "prices": {m: lic.effective(p.get(m), disc) for m in ("6", "12", "24", "report")}, "owned": mine.get(k), "operator": e["module"] in mods.enabled(),
                    "pending_order": pending.get(k), "report_licenses": rep_own.get(k, []),
                    "owned_here": bool(ctx_doc) and k in lic.active_keys(s, g.user["id"], doc_id=ctx_doc)})
-    out = {"licensing": lic.enabled(s), "engines": en, "periods": list(lic.PERIODS), "can_manage": can_manage(), "doc": ctx_doc,
+    out = {"licensing": lic.enabled(s), "engines": en, "periods": list(lic.PERIODS), "doc": ctx_doc,
+           "pending_orders": [{"id": o["id"], "total": o["total"], "created_at": o["created_at"], "verify_state": o.get("verify_state"),
+                               "code": lic.order_code(o["id"]), "items": [it["module_key"] for it in o["items"]]}
+                              for o in lic.list_orders(s, buyer_id=g.user["id"], status="pending")],
            "docs": _my_docs(s), "me": {"id": g.user["id"], "username": g.user["username"], "role": g.user.get("role"),
                                        "email": g.user.get("email") or "", "phone_wa": g.user.get("phone_wa") or ""},
            "payment": {"method": "qris", "merchant": lic.QRIS_MERCHANT, "nmid": lic.QRIS_NMID}}
-    if can_manage():
-        with s._tx() as c:
-            out["groups"] = s._all(c, "SELECT id, name FROM cms_groups ORDER BY name")
-            out["users"] = s._all(c, "SELECT id, username, name, group_id FROM cms_users WHERE active=1 ORDER BY username")
     return jsonify(out)
 
 
@@ -202,41 +206,25 @@ def store_view():
 @bp.post("/orders")
 @auth.require()
 def order_create():
-    """Body: {items:[{module, months}], for:{type:'user'|'group'|'tenant', id?}, paid?, payment_ref?, note?}.
-    Tanpa izin license_manage: hanya boleh utk diri sendiri dan selalu 'pending' (menunggu konfirmasi pembayaran admin).
-    Dengan izin: boleh utk pengguna lain/grup/tenant, dan paid=true langsung menerbitkan lisensi (membelikan)."""
+    """Body: {items:[{module, months|scope:'report',doc_id}], contact:{phone,email}}.
+    Pembeli di tenant HANYA boleh membeli untuk dirinya sendiri dan pesanan selalu 'pending' sampai pembayaran terverifikasi (OCR bukti QRIS
+    atau konfirmasi superadmin di cmspanel). Tidak ada 'tandai lunas', 'beli untuk orang lain/grup/tenant' di sini."""
     d = body()
     tgt = d.get("for") or {"type": "user", "id": g.user["id"]}
-    htype, hid = tgt.get("type", "user"), tgt.get("id")
-    if htype == "user" and hid is None:
-        hid = g.user["id"]
-    mgr = can_manage()
-    if not mgr and not (htype == "user" and int(hid) == g.user["id"]):
-        return jsonify(error="hanya admin berizin Kelola Lisensi yang boleh membeli untuk pengguna lain, grup, atau seluruh tenant"), 403
-    paid = bool(d.get("paid")) and mgr
+    if d.get("paid") or tgt.get("type", "user") != "user" or int(tgt.get("id") or g.user["id"]) != g.user["id"]:
+        return jsonify(error="pembelian hanya untuk akun Anda sendiri; pemberian lisensi dikelola operator platform"), 403
     for it in d.get("items") or []:
-        if it.get("scope") == "report" and it.get("doc_id") and not mgr and not auth.can_view_doc(int(it["doc_id"])):
+        if it.get("scope") == "report" and it.get("doc_id") and not auth.can_view_doc(int(it["doc_id"])):
             return jsonify(error=f"laporan #{it['doc_id']} tidak ditemukan"), 404
-    o = lic.create_order(S(), g.user, d.get("items") or [], htype, hid, paid=paid, payment_ref=str(d.get("payment_ref") or ""),
-                         note=str(d.get("note") or ""), contact=d.get("contact"))
+    o = lic.create_order(S(), g.user, d.get("items") or [], "user", g.user["id"], paid=False, payment_ref="", note=str(d.get("note") or ""), contact=d.get("contact"))
     S().log_activity(g.user["username"], "license.order", target_type="license_order", target_id=o["id"],
-                     summary=f'pesanan #{o["id"]} {o["holder_label"]} total {o["total"]} {"LUNAS" if paid else "menunggu"}')
-    notify = {}
-    if o["status"] == "pending":
-        notify = {"email_buyer": _mail_buyer_instructions(o), "email_admins": _mail_admins(S(), o, False)}
-    elif o.get("contact_email"):
-        notify = {"email_buyer": _mail_buyer_active(o)}
-    return jsonify(order=o, payment=lic.payment_info(o) if o["status"] == "pending" else None, notify=notify), 201
+                     summary=f'pesanan #{o["id"]} {o["holder_label"]} total {o["total"]} menunggu')
+    return jsonify(order=o, payment=lic.payment_info(o), notify={"email_buyer": _mail_buyer_instructions(o), "email_admins": _mail_admins(S(), o, False)}), 201
 
 
 @bp.get("/orders")
 @auth.require()
 def orders_list():
-    scope = request.args.get("scope", "mine")
-    if scope == "all":
-        if not can_manage():
-            return jsonify(error="butuh izin Kelola Lisensi Engine"), 403
-        return jsonify(orders=lic.list_orders(S(), status=request.args.get("status") or None))
     return jsonify(orders=lic.list_orders(S(), buyer_id=g.user["id"]))
 
 
@@ -244,7 +232,7 @@ def orders_list():
 @auth.require()
 def order_payment(oid):
     o = lic.get_order(S(), oid)
-    if o["buyer_id"] != g.user["id"] and not can_manage():
+    if o["buyer_id"] != g.user["id"]:
         return jsonify(error="bukan pesanan Anda"), 403
     return jsonify(order=o, payment=lic.payment_info(o))
 
@@ -254,7 +242,7 @@ def order_payment(oid):
 def order_claim(oid):
     """Pembeli menyatakan sudah membayar. Admin diberi tahu lewat email; aktivasi tetap oleh admin setelah cek mutasi QRIS."""
     o = lic.get_order(S(), oid)
-    if o["buyer_id"] != g.user["id"] and not can_manage():
+    if o["buyer_id"] != g.user["id"]:
         return jsonify(error="bukan pesanan Anda"), 403
     o = lic.claim(S(), oid, g.user["username"], str(body().get("proof_ref") or ""))
     S().log_activity(g.user["username"], "license.claim", target_type="license_order", target_id=oid, summary=f"pesanan #{oid}: pembeli menyatakan sudah bayar")
@@ -266,7 +254,7 @@ def order_claim(oid):
 def order_proof(oid):
     """Unggah tangkapan layar bukti QRIS (multipart, field 'proof') -> OCR -> lunas otomatis / minta unggah ulang / verifikasi manual."""
     o = lic.get_order(S(), oid)
-    if o["buyer_id"] != g.user["id"] and not can_manage():
+    if o["buyer_id"] != g.user["id"]:
         return jsonify(error="bukan pesanan Anda"), 403
     f = request.files.get("proof")
     if not f:
@@ -287,7 +275,7 @@ def order_proof(oid):
 @auth.require()
 def order_proof_image(oid, pid):
     o = lic.get_order(S(), oid)
-    if o["buyer_id"] != g.user["id"] and not can_manage():
+    if o["buyer_id"] != g.user["id"]:
         return jsonify(error="bukan pesanan Anda"), 403
     img = lic.get_proof_image(S(), oid, pid)
     if not img:
@@ -295,20 +283,11 @@ def order_proof_image(oid, pid):
     return current_app.response_class(img, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
 
 
-@bp.post("/orders/<int:oid>/confirm")
-@auth.require(PERM)
-def order_confirm(oid):
-    d = body()
-    o = lic.fulfill(S(), oid, g.user["username"], str(d.get("payment_ref") or ""))
-    S().log_activity(g.user["username"], "license.confirm", target_type="license_order", target_id=oid, summary=f"pesanan #{oid} dikonfirmasi lunas")
-    return jsonify(order=o, notify={"email_buyer": _mail_buyer_active(o) if o.get("contact_email") else False})
-
-
 @bp.post("/orders/<int:oid>/cancel")
 @auth.require()
 def order_cancel(oid):
     o = lic.get_order(S(), oid)
-    if o["buyer_id"] != g.user["id"] and not can_manage():
+    if o["buyer_id"] != g.user["id"]:
         return jsonify(error="bukan pesanan Anda"), 403
     return jsonify(order=lic.cancel_order(S(), oid, g.user["username"]))
 
@@ -317,51 +296,6 @@ def order_cancel(oid):
 @bp.get("/licenses")
 @auth.require()
 def licenses_list():
-    if request.args.get("scope") == "all":
-        if not can_manage():
-            return jsonify(error="butuh izin Kelola Lisensi Engine"), 403
-        return jsonify(licenses=lic.list_licenses(S()))
     return jsonify(licenses=lic.list_licenses(S(), user_id=g.user["id"]))
 
 
-@bp.post("/licenses/grant")
-@auth.require(PERM)
-def license_grant():
-    d = body()
-    tgt = d.get("for") or {}
-    row = lic.grant(S(), d.get("module", ""), tgt.get("type", "user"), tgt.get("id"), int(d.get("months") or 0), g.user["username"], str(d.get("note") or ""),
-                    scope="report" if d.get("scope") == "report" else "time", doc_id=d.get("doc_id"))
-    S().log_activity(g.user["username"], "license.grant", target_type="license", target_id=row["id"],
-                     summary=f'{row["module_key"]} {tgt.get("type")} #{tgt.get("id")} s.d. {row["ends_at"]}')
-    return jsonify(license=row), 201
-
-
-@bp.post("/licenses/<int:lid>/revoke")
-@auth.require(PERM)
-def license_revoke(lid):
-    lic.revoke(S(), lid, g.user["username"])
-    S().log_activity(g.user["username"], "license.revoke", target_type="license", target_id=lid, summary=f"lisensi #{lid} dicabut")
-    return jsonify(ok=True)
-
-
-@bp.put("/prices")
-@auth.require(PERM)
-def prices_set():
-    """Body: {prices: {calc_bising: {"6":..,"12":..,"24":..}, ...}} -- kosong/null = belum diberi harga."""
-    d = (body().get("prices") or {})
-    for k, p in d.items():
-        lic.set_price(S(), k, p.get("6"), p.get("12"), p.get("24"), g.user["username"], p.get("report"), p.get("discount"))
-    S().log_activity(g.user["username"], "license.prices", summary=f"harga {len(d)} engine diperbarui")
-    return jsonify(ok=True)
-
-
-@bp.put("/mode")
-@auth.require(PERM)
-def mode_set():
-    """Nyalakan/matikan mode lisensi di tenant ini (hanya bila env CMS_LICENSING tidak memaksa)."""
-    import os
-    if (os.environ.get("CMS_LICENSING") or "").strip():
-        return jsonify(error="mode lisensi dikunci operator (env CMS_LICENSING)"), 409
-    S().set_setting("licensing", "1" if body().get("on") else "0")
-    _Resolver._flag = (0.0, False)
-    return jsonify(ok=True)

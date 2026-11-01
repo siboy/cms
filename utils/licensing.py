@@ -12,7 +12,7 @@ DUA JENIS lisensi (scope):
     'time'   -> berlaku untuk SEMUA laporan sampai ends_at (paket 6/12/24 bulan)
     'report' -> "sekali pakai per laporan": berlaku HANYA untuk satu laporan (doc_id) tanpa batas waktu; laporan lain harus beli lagi.
                 Konteks laporan dibawa permintaan (header X-Doc / ?doc= / body doc_id) -- halaman alat hitung dibuka dari editor dengan ?doc=.
-Lisensi terbit dari: (a) pesanan yang dibayar (dikonfirmasi admin berizin license_manage), (b) pemberian langsung admin.
+Lisensi terbit dari: (a) pesanan yang dibayar (bukti QRIS lolos OCR, atau dikonfirmasi SUPERADMIN PLATFORM di cmspanel -- bukan admin tenant), (b) pemberian langsung superadmin platform (kerja sama / penunjukan khusus; utils/license_ops.py).
 Habis masa berlaku (ends_at) -> engine terkunci lagi otomatis. Heading, petunjuk, dan penanda 🧮 tetap terlihat; hanya pemakaiannya terkunci.
 
 Tabel dibuat sendiri saat pertama dipakai (CREATE TABLE IF NOT EXISTS) -> tidak perlu migrasi manual per tenant.

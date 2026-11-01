@@ -528,6 +528,121 @@ def api_add_admin(slug):
     return jsonify(ok=True, username=u, password=p), 201
 
 
+# ---------------------------------------------------------------- Lisensi & harga Toko Engine (HANYA superadmin platform)
+# Harga, konfirmasi pembayaran, lisensi langsung (kerja sama / penunjukan khusus), pencabutan, dan mode lisensi dikelola DI SINI -- tidak ada
+# di aplikasi tenant. Dijalankan di dalam container app tenant lewat scripts/license_op.py (utils/license_ops.py); tak ada endpoint baru di tenant.
+LICENSE_ACTIONS = {"overview", "set_prices", "grant", "revoke", "confirm", "cancel", "mode"}
+
+
+def license_op(slug: str, action: str, args: dict | None = None) -> tuple[dict, int]:
+    tenant_dir(slug)
+    payload = json.dumps({**(args or {}), "action": action})
+    try:
+        p = subprocess.run(["docker", "exec", "-i", cname(slug, "app"), "python", "scripts/license_op.py"], input=payload, capture_output=True,
+                           text=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout menjalankan operasi lisensi"}, 504
+    except FileNotFoundError as e:
+        return {"error": str(e)}, 500
+    lines = (p.stdout or "").strip().splitlines()
+    try:
+        j = json.loads(lines[-1]) if lines else {}
+    except ValueError:
+        j = {}
+    if not j:
+        return {"error": ((p.stderr or p.stdout or "tenant tidak menjawab (app mati?)").strip()[-300:])}, 502
+    return ({"ok": True, **j["data"]}, 200) if j.get("ok") else ({"error": j.get("error", "gagal")}, 400)
+
+
+@app.get("/api/tenants/<slug>/license")
+def api_license_overview(slug):
+    out, code = license_op(slug, "overview")
+    return jsonify(out), code
+
+
+@app.post("/api/tenants/<slug>/license/<action>")
+def api_license_action(slug, action):
+    if action not in LICENSE_ACTIONS or action == "overview":
+        abort(404)
+    out, code = license_op(slug, action, request.get_json(silent=True) or {})
+    return jsonify(out), code
+
+
+@app.get("/api/tenants/<slug>/license/proof/<int:oid>/<int:pid>")
+def api_license_proof(slug, oid, pid):
+    import base64
+    out, code = license_op(slug, "proof_image", {"order_id": oid, "proof_id": pid})
+    if code != 200:
+        return jsonify(out), code
+    return app.response_class(base64.b64decode(out["jpeg_b64"]), mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=300"})
+
+
+@app.get("/license")
+def license_page():
+    return _page(r"""
+<style>main{max-width:1200px!important}.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}.tabs button.cur{background:var(--acc);color:#fff;border-color:var(--acc)}
+.badge{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;background:#2563eb1a;color:var(--acc)}.badge.w{background:#fef3c7;color:#b45309}.badge.g{background:#2da44e22;color:var(--ok)}
+.sc{overflow:auto}.pr input{width:104px}.ord{margin-bottom:10px}.note{background:#fef3c7;color:#92400e;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px}
+.thumb{height:90px;border:1px solid var(--line);border-radius:6px;margin:4px 6px 0 0}</style>
+<header><a href="/"><button type=button>← Panel</button></a><b>🛒 Lisensi &amp; Harga Toko Engine</b>
+ <select id=ten></select></header>
+<main><div class=note>Halaman ini <b>hanya untuk superadmin platform</b>. Admin tenant tidak punya akses ke harga, konfirmasi pembayaran, atau pemberian lisensi. Lisensi langsung (tanpa bayar) dipakai untuk <b>penunjukan khusus / kerja sama</b>.</div>
+<div id=sum></div><div class=tabs id=tabs></div><div id=view>memuat…</div></main>
+<script>
+const H={'Content-Type':'application/json','X-PANEL':'1'};
+const api=(m,u,b)=>fetch(u,{method:m,headers:H,body:b?JSON.stringify(b):undefined}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rp=n=>n==null?'—':'Rp '+Number(n).toLocaleString('id-ID');const dt=s=>(s||'').slice(0,16).replace('T',' ');
+const LBL=k=>(D.engines.find(e=>e.key===k)||{label:k}).label;
+let TEN=[],D=null,slug='',tab='pesanan';
+const TABS=[['pesanan','📥 Pesanan'],['harga','💲 Harga'],['beri','🎁 Beri lisensi'],['lisensi','📄 Semua lisensi'],['mode','⚙ Mode']];
+async function boot(){TEN=(await api('GET','/api/tenants')).tenants;slug=(location.hash||'').slice(1)||(TEN[0]||{}).slug||'';
+ ten.innerHTML=TEN.map(t=>`<option value="${esc(t.slug)}" ${t.slug===slug?'selected':''}>${esc(t.company)} (${esc(t.slug)})</option>`).join('');
+ ten.onchange=()=>{slug=ten.value;location.hash=slug;load()};await load();
+ TEN.forEach(async t=>{try{const o=await api('GET',`/api/tenants/${t.slug}/license`);const e=[...ten.options].find(x=>x.value===t.slug);if(e&&o.pending)e.textContent+=` — ${o.pending} menunggu${o.manual?` (${o.manual} manual)`:''}`}catch(e){}})}
+async function load(){view.textContent='memuat…';try{D=await api('GET',`/api/tenants/${slug}/license`)}catch(e){view.innerHTML='<span style="color:var(--bad)">'+esc(e.message)+'</span>';return}draw()}
+function draw(){tabs.innerHTML=TABS.map(([k,l])=>`<button type=button data-t="${k}" class="${tab===k?'cur':''}">${l}${k==='pesanan'&&D.pending?` <span class="badge w">${D.pending}</span>`:''}</button>`).join('');
+ tabs.onclick=e=>{const b=e.target.closest('button');if(b){tab=b.dataset.t;draw()}};
+ sum.innerHTML=`<small>Mode lisensi tenant: <b>${D.licensing?'AKTIF':'mati'}</b> · ${D.orders.length} pesanan · ${D.licenses.length} lisensi</small>`;
+ ({pesanan:vPesanan,harga:vHarga,beri:vBeri,lisensi:vLisensi,mode:vMode})[tab]()}
+const call=async(a,b,ok)=>{try{await api('POST',`/api/tenants/${slug}/license/${a}`,b);if(ok)alert(ok);await load()}catch(e){alert(e.message)}};
+function wa(o,paid){if(!o.contact_phone)return '';const code='LIC-'+String(o.id).padStart(5,'0');
+ const t=paid?`Halo, pembayaran pesanan ${code} sudah kami konfirmasi dan lisensi Anda sudah AKTIF. Terima kasih.`:`Halo, pesanan ${code} (${rp(o.total)}) di Toko Alat Hitung masih menunggu pembayaran/verifikasi. Mohon bayar via QRIS dengan nominal persis lalu unggah bukti di Toko. Terima kasih.`;
+ return `https://wa.me/${o.contact_phone}?text=${encodeURIComponent(t)}`}
+const itemsT=o=>o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>');
+function proofs(o){return (o.proofs||[]).map(p=>`<div><a href="/api/tenants/${slug}/license/proof/${o.id}/${p.id}" target=_blank><img class=thumb loading=lazy src="/api/tenants/${slug}/license/proof/${o.id}/${p.id}"></a>
+ <small>#${p.attempt} ${p.verdict==='ok'?'✅':p.verdict==='manual'?'🔎':'⚠'} OCR ${p.amount_found!=null?rp(p.amount_found):'nominal ?'}${p.status_found?' · '+esc(p.status_found):''}${p.tx_at?' · '+esc(dt(p.tx_at)):''}${p.reason?' — '+esc(p.reason):''}</small></div>`).join('')}
+function vPesanan(){const pend=D.orders.filter(o=>o.status==='pending'),paid=D.orders.filter(o=>o.status==='paid').slice(0,10);
+ view.innerHTML=`<h3>Menunggu pembayaran / verifikasi (${pend.length})</h3>`+(pend.length?pend.map(o=>`<div class="card ord"><b>#${o.id}</b> <small>LIC-${String(o.id).padStart(5,'0')}</small> oleh <b>${esc(o.buyer_name)}</b> · ${esc(dt(o.created_at))} ${o.verify_state==='manual'?'<span class="badge w">🔎 BUTUH VERIFIKASI MANUAL</span>':''}
+  <div><small>📧 ${esc(o.contact_email||'-')} · 📱 ${esc(o.contact_phone||'-')}</small></div><div class=sc style="font-size:12px;margin:4px 0">${itemsT(o)}</div>
+  <div class=row><b>${rp(o.total)}</b><input style="flex:1;min-width:180px" placeholder="Referensi pembayaran yang diterima" data-ref="${o.id}"><button class=p type=button data-ok="${o.id}">✔ Konfirmasi lunas</button>
+  ${wa(o,false)?`<a href="${wa(o,false)}" target=_blank><button type=button>📲 WA pembeli</button></a>`:''}<button class=bad type=button data-no="${o.id}">Tolak</button></div><div class=row>${proofs(o)}</div></div>`).join(''):'<p><small>Tidak ada.</small></p>')
+  +`<h3>Lunas terbaru</h3>`+(paid.length?paid.map(o=>`<div class="card ord"><b>#${o.id}</b> ${esc(o.buyer_name)} · ${rp(o.total)} · ${esc(dt(o.paid_at))} · oleh <small>${esc(o.confirmed_by||'-')}</small>${wa(o,true)?` <a href="${wa(o,true)}" target=_blank><button type=button>📲 Kirim WA: lisensi aktif</button></a>`:''}<div style="font-size:12px">${itemsT(o)}</div></div>`).join(''):'<p><small>Belum ada.</small></p>');
+ view.querySelectorAll('[data-ok]').forEach(b=>b.onclick=()=>{if(confirm('Konfirmasi LUNAS pesanan #'+b.dataset.ok+'? Lisensi langsung aktif.'))call('confirm',{order_id:+b.dataset.ok,payment_ref:view.querySelector(`[data-ref="${b.dataset.ok}"]`).value})});
+ view.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>{if(confirm('Tolak/batalkan pesanan #'+b.dataset.no+'?'))call('cancel',{order_id:+b.dataset.no})})}
+function vHarga(){view.innerHTML=`<h3>Harga daftar (ORI) dalam Rupiah — kosong = belum dijual</h3><small>Ditagihkan = harga daftar − diskon. Pembeli melihat harga ORI dicoret dan label diskon.</small>
+ <div class=sc><table><tr><th>Alat</th><th>Per laporan</th><th>6 bln</th><th>12 bln</th><th>24 bln</th><th>Diskon %</th></tr>${D.engines.map(e=>`<tr class=pr><td>${e.icon||''} ${esc(e.label)}</td>${['report','6','12','24'].map(k=>`<td><input type=number min=0 step=100 data-pk="${e.key}|${k}" value="${e.list_prices[k]??''}"></td>`).join('')}<td><input type=number min=0 max=90 style="width:64px" data-pd="${e.key}" value="${e.discount_pct||0}"></td></tr>`).join('')}</table></div>
+ <div class=row><button class=p type=button id=sp>Simpan harga</button></div>`;
+ sp.onclick=()=>{const pr={};view.querySelectorAll('[data-pk]').forEach(i=>{const[k,p]=i.dataset.pk.split('|');(pr[k]=pr[k]||{})[p]=i.value===''?null:+i.value});view.querySelectorAll('[data-pd]').forEach(i=>{(pr[i.dataset.pd]=pr[i.dataset.pd]||{}).discount=+i.value||0});call('set_prices',{prices:pr},'Harga disimpan.')}}
+function vBeri(){view.innerHTML=`<h3>Beri lisensi langsung (tanpa pembayaran)</h3><small>Untuk penunjukan khusus ke seseorang atau kerja sama baru. Langsung aktif.</small>
+ <form id=gf class="card" style="display:grid;gap:8px;max-width:640px;margin-top:8px"><label>Alat<select name=module>${D.engines.map(e=>`<option value="${e.key}">${esc(e.label)}</option>`).join('')}</select></label>
+ <label>Jenis<select name=scope><option value=time>Paket waktu (semua laporan)</option><option value=report>Sekali pakai per laporan</option></select></label>
+ <label id=gm>Bulan<input type=number name=months min=1 max=60 value=12></label><label id=gd style="display:none">Laporan<select name=doc_id>${D.docs.map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join('')}</select></label>
+ <label>Untuk<select name=ht><option value=user>Pengguna</option><option value=group>Grup (peran)</option><option value=tenant>Seluruh pengguna tenant</option></select></label>
+ <label id=gw>Pilih<select name=hid></select></label><label>Catatan (mis. kerja sama X)<input name=note maxlength=255></label><button class=p>Terbitkan lisensi</button></form>`;
+ const f=gf,fill=()=>{const t=f.ht.value;gw.style.display=t==='tenant'?'none':'';f.hid.innerHTML=(t==='group'?D.groups.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`):D.users.map(x=>`<option value="${x.id}">${esc((x.name||x.username)+' ('+x.username+')')}</option>`)).join('')};
+ f.ht.onchange=fill;fill();f.scope.onchange=()=>{gm.style.display=f.scope.value==='report'?'none':'';gd.style.display=f.scope.value==='report'?'':'none'};
+ f.onsubmit=e=>{e.preventDefault();call('grant',{module:f.module.value,scope:f.scope.value,months:+f.months.value,doc_id:f.scope.value==='report'?+f.doc_id.value:undefined,for:f.ht.value==='tenant'?{type:'tenant'}:{type:f.ht.value,id:+f.hid.value},note:f.note.value},'Lisensi diterbitkan.')}}
+function vLisensi(){const sc=l=>l.scope==='report'?'📄 '+esc(l.doc_title||'#'+l.doc_id):'s.d. '+esc((l.ends_at||'').slice(0,10));
+ view.innerHTML=`<h3>Semua lisensi (${D.licenses.length})</h3><div class=sc><table><tr><th>Alat</th><th>Pemegang</th><th>Berlaku</th><th>Sumber</th><th>Status</th><th></th></tr>${D.licenses.map(l=>`<tr><td>${esc(LBL(l.module_key))}</td><td>${esc(l.holder_label)}</td><td>${sc(l)}</td><td>${esc(l.source==='purchase'?'beli #'+(l.order_id||''):'diberikan'+(l.note?' — '+l.note:''))}</td><td>${l.revoked_at?'dicabut':l.expired?'kedaluwarsa':l.active?'aktif':'—'}</td><td>${l.revoked_at?'':`<button class=bad type=button data-rv="${l.id}">Cabut</button>`}</td></tr>`).join('')}</table></div>`;
+ view.querySelectorAll('[data-rv]').forEach(b=>b.onclick=()=>{if(confirm('Cabut lisensi ini? Pemegang langsung kehilangan akses.'))call('revoke',{id:+b.dataset.rv})})}
+function vMode(){view.innerHTML=`<h3>Mode lisensi</h3><p>Mode lisensi per-alat tenant ini: <b>${D.licensing?'AKTIF':'mati'}</b>${D.licensing_locked?' <span class="badge w">dikunci env CMS_LICENSING</span>':''}</p>
+ <button type=button class=p id=mm ${D.licensing_locked?'disabled':''}>${D.licensing?'Matikan':'Nyalakan'} mode lisensi</button>`;
+ mm.onclick=()=>{if(confirm((D.licensing?'Matikan':'Nyalakan')+' mode lisensi di tenant ini?'))call('mode',{on:!D.licensing})}}
+boot();
+</script>""")
+
+
 # ---------------------------------------------------------------- UI
 def _page(body: str) -> str:
     return ("<!doctype html><html lang=id><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -560,7 +675,7 @@ def home():
 .kmenu{position:absolute;right:8px;top:30px;z-index:20;min-width:230px;background:var(--card,#fff);border:1px solid var(--line,#ddd);border-radius:8px;box-shadow:0 6px 20px #0003;padding:4px}
 .kmenu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px}.kmenu button:hover{background:var(--acc-soft,#2563eb1a)}
 .kmenu .kh{font-size:11px;color:var(--mut);padding:4px 10px}.tpl-on{color:var(--ok)}.tpl-off{color:orange}</style>
-<header><b>🏢 CMS Control Panel — semua tenant</b><a href="/backups"><button type=button id=bkb>💾 Backup <span id=bkd>…</span></button></a><a href="/modules"><button type=button>🧩 Fitur &amp; modul per perusahaan</button></a><button class=p id=bnew>+ Perusahaan baru</button></header>
+<header><b>🏢 CMS Control Panel — semua tenant</b><a href="/backups"><button type=button id=bkb>💾 Backup <span id=bkd>…</span></button></a><a href="/modules"><button type=button>🧩 Fitur &amp; modul per perusahaan</button></a><a href="/license"><button type=button>🛒 Lisensi &amp; Harga</button></a><button class=p id=bnew>+ Perusahaan baru</button></header>
 <main><div class=grid id=cards>memuat…</div></main>
 <script>
 const H={'Content-Type':'application/json','X-PANEL':'1'};

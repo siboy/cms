@@ -76,12 +76,8 @@ async function boot(){
   if(BACK){const a=$('#backTop');a.href=BACK;a.classList.remove('hide')}
   tabs();draw();cartBar();
 }
-function tabs(){
-  const T=[['toko','🛒 Toko'],['saya','📄 Lisensi & Pesanan'],...(S.d.can_manage?[['admin','⚙ Admin']]:[])];
-  $('#tabs').innerHTML=T.map(([k,l])=>`<button data-t="${k}" class="${S.tab===k?'cur':''}">${l}</button>`).join('');
-  $('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.tab=b.dataset.t;tabs();draw()};
-}
-function draw(){({toko:viewToko,saya:viewSaya,admin:viewAdmin})[S.tab]();cartBar()}
+function tabs(){$('#tabs').innerHTML=''}      // tenant hanya punya halaman Toko; Lisensi/Pesanan/Admin ada di cmspanel (superadmin platform)
+function draw(){viewToko();cartBar()}
 
 // ------------------------------------------------------------------------------- TOKO
 function ownBadges(e){
@@ -101,12 +97,13 @@ function viewToko(){
   const only=S.buy?d.engines.filter(e=>e.key===S.hl):d.engines;
   if(S.buy&&only.length){S.docSel=S.doc||S.docSel;
     h+=`<div class="note" style="background:var(--soft);color:var(--acc)">⚡ <b>Beli langsung</b> — pilih paket, bayar, lalu Anda otomatis kembali ke bagian laporan tadi. <a href="#" id="allTools">Lihat semua alat</a></div>`;
-  }else if(!d.licensing)h+=`<div class="note">Mode lisensi per-alat <b>belum aktif</b> di tenant ini, sehingga akses alat mengikuti pengaturan operator. ${d.can_manage?'<button type="button" id="modeOn" class="p">Nyalakan mode lisensi</button>':'Hubungi admin untuk mengaktifkannya.'}</div>`;
+  }else if(!d.licensing)h+=`<div class="note">Mode lisensi per-alat <b>belum aktif</b> di tenant ini, sehingga akses alat mengikuti pengaturan operator platform.</div>`;
+  const pend=d.pending_orders||[];
+  if(pend.length)h+=`<div class="card" style="margin-bottom:10px;border-color:var(--warn)"><b>⏳ Pesanan menunggu pembayaran</b>${pend.map(o=>`<div class="row"><span class="small"><b>${esc(o.code)}</b> · ${rp(o.total)} · ${o.items.map(k=>esc(LBL(k))).join(', ')}</span>${o.verify_state==='manual'?'<span class="badge l">🔎 butuh verifikasi manual — operator akan menghubungi Anda</span>':`<button type="button" class="p small" data-pay="${o.id}">💳 Bayar / unggah bukti</button>`}<button type="button" class="d small" data-cancel="${o.id}">Batalkan</button></div>`).join('')}</div>`;
   if(!S.buy)h+=`<div class="card" style="margin-bottom:10px"><b>Cara kerja</b>
    <div class="small mut">Tiap alat hitung/simulasi dibeli terpisah dengan harga sendiri (sesuai kesulitan hitung dan hasil yang ditawarkan). Pilih <b>Paket waktu</b> (berlaku untuk semua laporan selama 6/12/24 bulan) atau <b>Sekali pakai per laporan</b> (hanya untuk satu laporan; laporan lain harus beli lagi).
    Admin dapat membelikan untuk Anda, grup, atau seluruh tenant. Judul bagian, petunjuk, dan penanda 🧮 di dokumen tetap terlihat; yang terkunci hanya pemakaian hitung/simulasinya.</div></div>`;
-  if(!S.buy)h+=`<div class="row"><label class="fill small"><b>Beli untuk</b><br><select id="hType"><option value="user">Saya sendiri</option>${d.can_manage?'<option value="user2">Pengguna lain…</option><option value="group">Satu grup (peran)…</option><option value="tenant">Seluruh pengguna tenant</option>':''}</select></label>
-   <label class="fill small hide" id="hWrap"><b id="hLbl"></b><br><select id="hId"></select></label>
+  if(!S.buy)h+=`<div class="row">
    <label class="fill small"><b>Laporan (utk paket per-laporan)</b><br><select id="docSel">${d.docs.length?d.docs.map(x=>`<option value="${x.id}" ${x.id===S.docSel?'selected':''}>${esc(x.title)}</option>`).join(''):'<option value="">(belum ada laporan)</option>'}</select></label></div>`;
   h+='<div class="grid">'+only.map(e=>{
     const p=e.prices,lp=e.list_prices,has=['6','12','24','report'].some(k=>p[k]!=null);
@@ -116,16 +113,10 @@ function viewToko(){
      <div><span class="chip">${e.n_formulas} rumus</span><span class="chip">${e.n_params} parameter</span>${e.sim?'<span class="chip">🎞 simulasi 2-D</span>':''}</div>
      ${has?opt('report','📄 Sekali pakai — 1 laporan','report')+opt('6','Paket 6 bulan (semua laporan)','6')+opt('12','Paket 12 bulan (semua laporan)','12')+opt('24','Paket 24 bulan (semua laporan)','24')
         +`<div class="row"><button type="button" class="p now" data-k="${e.key}">⚡ Beli langsung</button>${S.buy?'':`<button type="button" class="add" data-k="${e.key}">＋ Keranjang</button>`}</div>`
-       :`<div class="note">Harga belum ditetapkan.${d.can_manage?' Atur di tab Admin → Harga, atau beri lisensi langsung.':' Hubungi admin.'}</div>`}</div>`}).join('')+'</div>';
+       :`<div class="note">Harga belum ditetapkan oleh operator platform.</div>`}</div>`}).join('')+'</div>';
   $('#view').innerHTML=h;
-  if($('#modeOn'))$('#modeOn').onclick=async()=>{try{await api('PUT','/mode',{on:true});note('Mode lisensi dinyalakan',0);await boot()}catch(e){note(e.message,1)}};
-  const hT=$('#hType'),hW=$('#hWrap'),hI=$('#hId');
-  const setHold=()=>{const v=hT.value;hW.classList.toggle('hide',!(v==='user2'||v==='group'));
-    if(v==='user'){S.hold={type:'user',id:d.me.id}}else if(v==='tenant'){S.hold={type:'tenant',id:null}}
-    else{const L=v==='group'?d.groups:d.users;$('#hLbl').textContent=v==='group'?'Pilih grup':'Pilih pengguna';
-      hI.innerHTML=L.map(x=>`<option value="${x.id}">${esc(v==='group'?x.name:(x.name||x.username)+' ('+x.username+')')}</option>`).join('');
-      S.hold={type:v==='group'?'group':'user',id:+hI.value}}};
-  if(hT){hT.onchange=()=>{setHold();cartBar()};hI.onchange=()=>{S.hold.id=+hI.value;cartBar()}}
+  document.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>openPay(b.dataset.pay));
+  document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=async()=>{if(!confirm('Batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.cancel}/cancel`);await boot()}catch(e){note(e.message,1)}});
   if($('#docSel'))$('#docSel').onchange=e=>{S.docSel=+e.target.value||0};
   document.querySelectorAll('.add').forEach(b=>b.onclick=()=>addToCart(b.dataset.k));
   document.querySelectorAll('.now').forEach(b=>b.onclick=()=>buyNow(b.dataset.k));
@@ -153,14 +144,12 @@ function cartBar(){
   const b=$('#cartbar');b.classList.toggle('hide',!S.cart.length||S.tab!=='toko');
   $('#ccount').textContent=S.cart.length+' item';$('#ctotal').textContent='Total '+rp(S.cart.reduce((a,c)=>a+(c.price||0),0))+' · untuk '+holdLabel();
 }
-function holdLabel(){const d=S.d,h=S.hold;if(h.type==='tenant')return 'seluruh tenant';
-  if(h.type==='group')return 'grup '+((d.groups||[]).find(g=>g.id===h.id)||{}).name;
-  if(h.id===d.me.id)return 'saya sendiri';const u=(d.users||[]).find(x=>x.id===h.id);return 'pengguna '+(u?u.username:h.id)}
+function holdLabel(){return 'saya sendiri'}
 $('#cclear').onclick=()=>{S.cart=[];cartBar()};
 const PHONE_RE=/^(\+?62|0)8\d{8,12}$/,MAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
 function itemsHtml(items){return items.map(i=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0"><span>${esc(LBL(i.module_key||i.module))} — ${i.scope==='report'?'sekali pakai'+(i.doc_title?': '+esc(i.doc_title):''):i.months+' bln'}</span><span>${i.list_price&&i.list_price!==i.price?`<s class="mut">${rp(i.list_price)}</s> `:''}<b>${rp(i.price)}</b></span></div>`).join('')}
 $('#cgo').onclick=()=>{
-  const d=S.d,mgr=d.can_manage,tot=S.cart.reduce((a,c)=>a+(c.price||0),0);
+  const d=S.d,tot=S.cart.reduce((a,c)=>a+(c.price||0),0);
   const m=document.createElement('div');m.className='mask';
   m.innerHTML=`<form class="dlg"><b>Checkout — langkah 1 dari 2: data kontak</b>
    <div>${S.cart.map((c,i)=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0"><span>${esc(c.label)}</span><span>${c.list&&c.list!==c.price?`<s class="mut">${rp(c.list)}</s> `:''}<b>${rp(c.price)}</b> <button type="button" data-rm="${i}" class="d small">✕</button></span></div>`).join('')}
@@ -170,24 +159,23 @@ $('#cgo').onclick=()=>{
    <label>Nomor WhatsApp aktif<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="081234567890" value="${esc(d.me.phone_wa||'')}"></label>
    <label>Email aktif<input name="email" type="email" autocomplete="email" placeholder="nama@perusahaan.com" value="${esc(d.me.email||'')}"></label>
    <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400"><input type="checkbox" name="ok" style="width:18px;height:18px;margin:2px 0 0"> <span>Saya memastikan WhatsApp dan email di atas aktif dan dapat menerima pesan.</span></label>
-   ${mgr?'<label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" name="paid" style="width:18px;height:18px;margin:0"> <span>Admin: tandai LUNAS sekarang (tanpa pembayaran QRIS; kontak opsional)</span></label>':''}
    <div class="row" style="justify-content:flex-end"><button type="button" id="x">Batal</button><button class="p">Lanjut ke pembayaran →</button></div><span class="err small" id="e"></span></form>`;
   document.body.append(m);const f=m.querySelector('form');
   const closeCk=()=>{m.remove();if(S.direct){S.direct=false;S.cart=[];cartBar()}};
   m.querySelector('#x').onclick=closeCk;m.onclick=e=>{if(e.target===m)closeCk()};
   m.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{S.cart.splice(+b.dataset.rm,1);m.remove();cartBar();if(S.cart.length)$('#cgo').click()});
   f.onsubmit=async e=>{e.preventDefault();const E=f.querySelector('#e');E.textContent='';
-    const paid=!!(mgr&&f.paid&&f.paid.checked),ph=f.phone.value.replace(/[\s().\-]/g,''),em=f.email.value.trim();
-    if(!paid){
+    const ph=f.phone.value.replace(/[\s().\-]/g,''),em=f.email.value.trim();
+    {
       if(!PHONE_RE.test(ph))return E.textContent='Nomor WhatsApp tidak valid. Gunakan nomor seluler Indonesia aktif, mis. 081234567890.';
       if(!MAIL_RE.test(em))return E.textContent='Email tidak valid. Gunakan alamat email aktif, mis. nama@perusahaan.com.';
       if(!f.ok.checked)return E.textContent='Centang pernyataan bahwa WhatsApp dan email Anda aktif.';
     }
     const btn=f.querySelector('button.p');btn.disabled=true;
     try{const r=await api('POST','/orders',{items:S.cart.map(c=>c.scope==='report'?{module:c.module,scope:'report',doc_id:c.doc_id}:{module:c.module,months:c.months}),
-        for:S.hold.type==='tenant'?{type:'tenant'}:{type:S.hold.type,id:S.hold.id},paid,contact:(ph||em)?{phone:ph,email:em}:undefined});
+        contact:{phone:ph,email:em}});
       S.cart=[];S.direct=false;m.remove();await boot();
-      if(r.order.status==='paid'){if(backTo('ok'))return;note(`Pesanan ${r.order.id} lunas — lisensi aktif.`,0)}else payDlg(r.order,r.payment,r.notify)}
+      payDlg(r.order,r.payment,r.notify)}
     catch(x){E.textContent=x.message;btn.disabled=false}};
 };
 const copyTxt=async t=>{try{await navigator.clipboard.writeText(t);return true}catch(e){const i=document.createElement('input');i.value=t;document.body.append(i);i.select();try{document.execCommand('copy')}catch(_){}i.remove();return true}};
@@ -208,10 +196,10 @@ function payDlg(o,pay,notify){
     <div class="small mut">Bukti harus memperlihatkan <b>nominal</b>, status <b>BERHASIL</b>, serta <b>tanggal &amp; jam</b> transaksi. Sistem membacanya otomatis (OCR).</div>
    <div class="row" style="justify-content:flex-end"><button type="button" id="x">Nanti saja</button><button class="p" id="up">📤 Unggah &amp; verifikasi</button></div></div><span class="err small" id="e"></span></form>`;
   document.body.append(m);const f=m.querySelector('form');
-  m.querySelector('#x').onclick=()=>{m.remove();S.tab='saya';tabs();draw()};m.onclick=e=>{if(e.target===m)m.querySelector('#x').click()};
+  m.querySelector('#x').onclick=()=>{m.remove();boot()};m.onclick=e=>{if(e.target===m)m.querySelector('#x').click()};
   m.querySelector('#cp').onclick=async e=>{await copyTxt(String(pay.amount));e.target.textContent='✓ Tersalin'};
   const pst=f.querySelector('#pst'),pup=f.querySelector('#pup'),E=f.querySelector('#e');
-  const done=flag=>{m.remove();if(backTo(flag))return;S.tab='saya';tabs();draw()};
+  const done=flag=>{m.remove();if(backTo(flag))return;boot()};
   const show=(html)=>{pst.innerHTML=html};
   f.onsubmit=async e=>{e.preventDefault();E.textContent='';
     const file=f.proof.files[0];if(!file)return E.textContent='Pilih dulu berkas tangkapan layar bukti transfer.';
@@ -233,72 +221,5 @@ function payDlg(o,pay,notify){
 }
 async function openPay(id){try{const r=await api('GET',`/orders/${id}/payment`);payDlg(r.order,r.payment,null)}catch(e){note(e.message,1)}}
 
-// ------------------------------------------------------------------------------- LISENSI & PESANAN SAYA
-async function viewSaya(){
-  $('#view').innerHTML='<p class="mut">memuat…</p>';
-  try{S.lic=(await api('GET','/licenses')).licenses;S.ord=(await api('GET','/orders')).orders}catch(e){return note(e.message,1)}
-  const sc=l=>l.scope==='report'?`📄 Hanya laporan: <b>${esc(l.doc_title||'#'+l.doc_id)}</b>`:`Semua laporan, s.d. <b>${esc(dt(l.ends_at))}</b>`;
-  const st=l=>l.revoked_at?'<span class="badge l">dicabut</span>':l.expired?'<span class="badge l">kedaluwarsa</span>':l.active?'<span class="badge g">aktif</span>':'<span class="badge l">belum mulai</span>';
-  let h='<h4>Lisensi saya</h4>'+(S.lic.length?'<div class="grid">'+S.lic.map(l=>`<div class="card"><b>${esc(LBL(l.module_key))}</b> ${st(l)}<div class="small">${sc(l)}</div><div class="small mut">${esc(l.holder_label)} · ${l.source==='purchase'?'beli':'diberikan'}${l.order_id?' · pesanan #'+l.order_id:''}</div></div>`).join('')+'</div>':'<p class="mut">Belum ada lisensi.</p>');
-  const ST={pending:'<span class="badge l">menunggu pembayaran</span>',paid:'<span class="badge g">lunas</span>',cancelled:'<span class="badge">dibatalkan</span>'};
-  h+='<h4>Pesanan saya</h4>'+(S.ord.length?S.ord.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> ${ST[o.status]||o.status} <span class="mut small">${esc(dt(o.created_at))} · ${esc(o.holder_label||'')}</span>
-    <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>')}</div>
-    <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref: ${esc(o.payment_ref)}</span>`:''}${o.verify_state==='manual'&&o.status==='pending'?'<span class="badge l">🔎 butuh verifikasi manual — admin akan menghubungi Anda</span>':(o.claimed_at&&o.status==='pending'?'<span class="badge g">✔ sudah dilaporkan dibayar — menunggu verifikasi admin</span>':'')}
-      ${o.status==='pending'&&o.verify_state!=='manual'?`<button type="button" class="p small" data-pay="${o.id}">💳 Bayar / unggah bukti</button>`:''}${o.status==='pending'?`<button type="button" class="d small" data-cancel="${o.id}">Batalkan</button>`:''}</div></div>`).join(''):'<p class="mut">Belum ada pesanan.</p>');
-  document.querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>openPay(b.dataset.pay));
-  $('#view').innerHTML=h;
-  document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=async()=>{if(!confirm('Batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.cancel}/cancel`);viewSaya()}catch(e){note(e.message,1)}});
-}
-
-// ------------------------------------------------------------------------------- ADMIN
-async function viewAdmin(){
-  $('#view').innerHTML='<p class="mut">memuat…</p>';
-  try{S.adm={orders:(await api('GET','/orders?scope=all')).orders,lic:(await api('GET','/licenses?scope=all')).licenses}}catch(e){return note(e.message,1)}
-  const d=S.d,A=S.adm,pend=A.orders.filter(o=>o.status==='pending');
-  const waUrl=(o,paid)=>{if(!o.contact_phone)return '';const code='LIC-'+String(o.id).padStart(5,'0');
-    const txt=paid?`Halo, pembayaran pesanan ${code} sudah kami konfirmasi dan lisensi Anda sudah AKTIF (${o.items.map(i=>LBL(i.module_key)).join(', ')}). Silakan cek di ${location.origin}/store. Terima kasih.`
-      :`Halo, pesanan ${code} (${rp(o.total)}) di Toko Alat Hitung masih menunggu pembayaran. Mohon bayar via QRIS dengan nominal persis ${rp(o.total)} lalu tekan "Saya sudah bayar" di Toko. Terima kasih.`;
-    return `https://wa.me/${o.contact_phone}?text=${encodeURIComponent(txt)}`};
-  const proofLine=o=>(o.proofs||[]).length?`<div class="small">🧾 Bukti: ${o.proofs.map(p=>`<a href="/api/license/orders/${o.id}/proof/${p.id}" target="_blank" rel="noopener">#${p.attempt}</a> ${p.verdict==='ok'?'✅':p.verdict==='manual'?'🔎':'⚠'} OCR ${p.amount_found!=null?rp(p.amount_found):'nominal ?'}${p.status_found?' · '+esc(p.status_found):''}${p.tx_at?' · '+esc(p.tx_at.slice(0,16)):''}${p.reason?' — '+esc(p.reason):''}`).join('<br>')}</div>`:'';
-  const contactLine=o=>`<div class="small mut">📧 ${esc(o.contact_email||'-')} · 📱 ${esc(o.contact_phone||'-')} ${o.claimed_at&&o.status==='pending'?(o.verify_state==='manual'?'<span class="badge l">🔎 BUTUH VERIFIKASI MANUAL '+esc(dt(o.claimed_at))+'</span>':'<span class="badge g">💬 pembeli melaporkan sudah bayar '+esc(dt(o.claimed_at))+'</span>'):''}</div>`+proofLine(o);
-  const paidRecent=A.orders.filter(o=>o.status==='paid'&&o.contact_phone).slice(0,8);
-  let h=`<h4>Pesanan menunggu pembayaran (${pend.length})</h4>`+(pend.length?pend.map(o=>`<div class="card" style="margin-bottom:8px"><b>#${o.id}</b> <span class="mut small">${'LIC-'+String(o.id).padStart(5,'0')}</span> oleh <b>${esc(o.buyer_name)}</b> · ${esc(o.holder_label)} · ${esc(dt(o.created_at))}${contactLine(o)}
-     <div class="small">${o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>')}</div>
-     <div class="row"><b>${rp(o.total)}</b>${o.payment_ref?`<span class="small mut">ref pembeli: ${esc(o.payment_ref)}</span>`:''}</div>
-     <div class="row"><input class="fill" placeholder="Referensi pembayaran yang diterima" data-ref="${o.id}"><button type="button" class="p" data-ok="${o.id}">✔ Konfirmasi lunas</button>${waUrl(o,false)?`<a href="${waUrl(o,false)}" target="_blank" rel="noopener"><button type="button">📲 WA pembeli</button></a>`:''}<button type="button" class="d" data-no="${o.id}">Tolak</button></div></div>`).join(''):'<p class="mut">Tidak ada.</p>');
-  h+=`<h4>Pemberitahuan aktivasi (pesanan lunas terbaru)</h4>`+(paidRecent.length?paidRecent.map(o=>`<div class="card" style="margin-bottom:6px"><b>#${o.id}</b> · ${esc(o.buyer_name)} · ${rp(o.total)}${contactLine(o)}<div class="row"><a href="${waUrl(o,true)}" target="_blank" rel="noopener"><button type="button" class="p small">📲 Kirim WA: lisensi aktif</button></a><span class="small mut">Email aktivasi dikirim otomatis saat konfirmasi.</span></div></div>`).join(''):'<p class="mut">Belum ada.</p>');
-  h+=`<h4>Harga alat — HARGA DAFTAR (ORI) dalam Rupiah, kosong = belum dijual</h4><div class="small mut">Ditagihkan = harga daftar − diskon. Pembeli melihat harga ORI dicoret dan label diskon.</div><div class="scroll"><table><tr><th>Alat</th><th>Per laporan</th><th>6 bln</th><th>12 bln</th><th>24 bln</th><th>Diskon %</th></tr>`
-    +d.engines.map(e=>`<tr><td>${e.icon} ${esc(e.label)}</td>${['report','6','12','24'].map(k=>`<td><input type="number" min="0" step="100" style="width:104px" data-pk="${e.key}|${k}" value="${e.list_prices[k]??''}"></td>`).join('')}<td><input type="number" min="0" max="90" style="width:64px" data-pd="${e.key}" value="${e.discount_pct||0}"></td></tr>`).join('')
-    +`</table></div><div class="row"><button type="button" class="p" id="savePrice">Simpan harga</button></div>`;
-  h+=`<h4>Beri lisensi langsung (tanpa pesanan)</h4><form id="gForm" class="card"><div class="row">
-    <label class="fill small"><b>Alat</b><br><select name="module">${d.engines.map(e=>`<option value="${e.key}">${esc(e.label)}</option>`).join('')}</select></label>
-    <label class="fill small"><b>Jenis</b><br><select name="scope"><option value="time">Paket waktu (semua laporan)</option><option value="report">Sekali pakai per laporan</option></select></label>
-    <label class="fill small" id="gMon"><b>Bulan</b><br><input type="number" name="months" min="1" max="60" value="12"></label>
-    <label class="fill small hide" id="gDoc"><b>Laporan</b><br><select name="doc_id">${d.docs.map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join('')}</select></label></div>
-    <div class="row"><label class="fill small"><b>Untuk</b><br><select name="ht"><option value="user">Pengguna</option><option value="group">Grup</option><option value="tenant">Seluruh tenant</option></select></label>
-    <label class="fill small" id="gWho"><b>Pilih</b><br><select name="hid"></select></label>
-    <label class="fill small"><b>Catatan</b><br><input name="note" maxlength="255" placeholder="mis. uji coba / kompensasi"></label></div>
-    <button class="p">Terbitkan lisensi</button> <span id="gE" class="small err"></span></form>`;
-  const sc=l=>l.scope==='report'?`📄 ${esc(l.doc_title||'#'+l.doc_id)}`:`s.d. ${esc(dt(l.ends_at))}`;
-  h+=`<h4>Semua lisensi (${A.lic.length})</h4><div class="scroll"><table><tr><th>Alat</th><th>Pemegang</th><th>Berlaku</th><th>Status</th><th></th></tr>`
-    +A.lic.map(l=>`<tr><td>${esc(LBL(l.module_key))}</td><td>${esc(l.holder_label)}</td><td>${sc(l)}</td><td>${l.revoked_at?'dicabut':l.expired?'kedaluwarsa':l.active?'aktif':'—'}</td><td>${l.revoked_at?'':`<button type="button" class="d small" data-rv="${l.id}">Cabut</button>`}</td></tr>`).join('')+'</table></div>';
-  h+=`<h4>Mode</h4><div class="row"><span class="small mut">Mode lisensi: <b>${d.licensing?'AKTIF':'mati'}</b></span><button type="button" id="modeBtn">${d.licensing?'Matikan':'Nyalakan'}</button></div>`;
-  $('#view').innerHTML=h;
-  document.querySelectorAll('[data-ok]').forEach(b=>b.onclick=async()=>{const ref=document.querySelector(`[data-ref="${b.dataset.ok}"]`).value;
-    try{await api('POST',`/orders/${b.dataset.ok}/confirm`,{payment_ref:ref});note('Pesanan dikonfirmasi, lisensi aktif.',0);viewAdmin()}catch(e){note(e.message,1)}});
-  document.querySelectorAll('[data-no]').forEach(b=>b.onclick=async()=>{if(!confirm('Tolak/batalkan pesanan ini?'))return;try{await api('POST',`/orders/${b.dataset.no}/cancel`);viewAdmin()}catch(e){note(e.message,1)}});
-  document.querySelectorAll('[data-rv]').forEach(b=>b.onclick=async()=>{if(!confirm('Cabut lisensi ini? Pemegang langsung kehilangan akses.'))return;try{await api('POST',`/licenses/${b.dataset.rv}/revoke`);viewAdmin()}catch(e){note(e.message,1)}});
-  $('#savePrice').onclick=async()=>{const pr={};document.querySelectorAll('[data-pk]').forEach(i=>{const[k,p]=i.dataset.pk.split('|');(pr[k]=pr[k]||{})[p]=i.value===''?null:+i.value});
-    document.querySelectorAll('[data-pd]').forEach(i=>{(pr[i.dataset.pd]=pr[i.dataset.pd]||{}).discount=+i.value||0});
-    try{await api('PUT','/prices',{prices:pr});note('Harga disimpan.',0);await boot();S.tab='admin';tabs();viewAdmin()}catch(e){note(e.message,1)}};
-  const f=$('#gForm'),fill=()=>{const t=f.ht.value;$('#gWho').classList.toggle('hide',t==='tenant');
-    f.hid.innerHTML=(t==='group'?d.groups.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`):d.users.map(x=>`<option value="${x.id}">${esc((x.name||x.username)+' ('+x.username+')')}</option>`)).join('')};
-  f.ht.onchange=fill;fill();
-  f.scope.onchange=()=>{$('#gMon').classList.toggle('hide',f.scope.value==='report');$('#gDoc').classList.toggle('hide',f.scope.value!=='report')};
-  f.onsubmit=async e=>{e.preventDefault();$('#gE').textContent='';
-    try{await api('POST','/licenses/grant',{module:f.module.value,scope:f.scope.value,months:+f.months.value,doc_id:f.scope.value==='report'?+f.doc_id.value:undefined,
-        for:f.ht.value==='tenant'?{type:'tenant'}:{type:f.ht.value,id:+f.hid.value},note:f.note.value});note('Lisensi diterbitkan.',0);viewAdmin()}catch(x){$('#gE').textContent=x.message}};
-  $('#modeBtn').onclick=async()=>{try{await api('PUT','/mode',{on:!d.licensing});await boot();S.tab='admin';tabs();viewAdmin()}catch(e){note(e.message,1)}};
-}
 boot();
 </script></body></html>
