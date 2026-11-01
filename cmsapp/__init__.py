@@ -108,6 +108,14 @@ def create_app(cfg=Config) -> Flask:
         resp.headers["Cache-Control"] = "no-cache"
         return resp
 
+    @app.get("/alat")
+    def alat_page():
+        """Menu "Tools Simulator" (di bawah Data Desa): pustaka rumus AMDAL/UKL-UPL + simulasi lingkungan. Berkas yang sama dengan /data-desa,
+        mode halaman dipilih dari path (lihat PAGE di data-desa.html). Login dicek oleh /api/kd/*."""
+        resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "data-desa.html")
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     @app.get("/data-desa/sim.js")
     def data_desa_sim_js():
         resp = send_from_directory(os.path.join(os.path.dirname(__file__), "ui"), "sim-ui.js", mimetype="text/javascript")

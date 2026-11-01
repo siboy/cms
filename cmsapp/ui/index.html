@@ -343,7 +343,7 @@ body.jfab #ed{padding-bottom:84px}
 <button id="bproj" hidden>Proyek</button>
 <button id="bact" hidden>Aktivitas</button><button id="bgal" hidden>🖼 Galeri</button><button id="bshare" hidden>🔗 Bagikan</button><button id="bopt" hidden>⚙ Opsi ekspor</button><button id="bexp" hidden>Ekspor DOCX</button>
 </nav>
-<div id="kwrap"><button id="bkeb" title="Menu" hidden>⋮</button><div id="kmenu" hidden><button id="badm" hidden>Admin</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="bdocs" hidden>Dokumen</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button><button id="bpriv" hidden>🔐 Privilege</button><button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bstore" hidden title="Beli / lihat lisensi engine hitung & simulasi (per paket waktu atau per laporan)">🛒 Toko Engine</button><a id="bhow" href="/howto">📘 Howto</a><button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bout" hidden>Keluar</button></div></div>
+<div id="kwrap"><button id="bkeb" title="Menu" hidden>⋮</button><div id="kmenu" hidden><button id="badm" hidden>Admin</button><button id="bfiles" hidden>📁 Berkas Saya</button><button id="bdocs" hidden>Dokumen</button><button id="bdata" hidden title="Data desa Kemendagri: indikator, grafik, peta, proyeksi">📊 Data Desa</button><button id="balat" hidden title="Tools Simulator: pustaka rumus AMDAL/UKL-UPL & simulasi lingkungan (pencemaran air/udara, kebisingan)">🧮 Tools Simulator</button><button id="bpriv" hidden>🔐 Privilege</button><button id="btpl" hidden title="Template outline laporan AMDAL / UKL-UPL per jenis kegiatan — cari lalu salin jadi dokumen">📑 Template</button><button id="bstore" hidden title="Beli / lihat lisensi engine hitung & simulasi (per paket waktu atau per laporan)">🛒 Toko Engine</button><a id="bhow" href="/howto">📘 Howto</a><button id="bapk" hidden title="Unduh aplikasi Android (APK) — pasang di HP, lalu masukkan alamat server ini">📱 APK</button><button id="bout" hidden>Keluar</button></div></div>
 </header>
 <div id="kscrim" hidden></div><div id="app"></div><div id="bar" hidden></div>
 <script src="/offline.js?v=1"></script>
@@ -439,7 +439,7 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  const stok=qp.get('share');if(stok)return shareView(stok);
  try{me=(await api('GET','/me')).user;if(window.OFF)OFF.setUser(me.username)}catch(e){return loginView()}
  pruneDrafts();
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;api('GET','/modules').then(r=>{$('#bstore').hidden=!r.licensing}).catch(()=>{});$('#bapk').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#balat').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;api('GET','/modules').then(r=>{$('#bstore').hidden=!r.licensing}).catch(()=>{});$('#bapk').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));
  const dq=qp.get('doc');
  if(dq){await openDoc(+dq);const bq=qp.get('block');
@@ -505,6 +505,7 @@ $('#bact').onclick=()=>activityView();
 $('#bdocs').onclick=()=>docsView();
 $('#bproj').onclick=()=>projectsView();
 $('#bdata').onclick=()=>{location.href='/data-desa'};
+$('#balat').onclick=()=>{location.href='/alat'};
 $('#btpl').onclick=()=>{location.href='/templates'};
 $('#bstore').onclick=()=>{location.href='/store'+(typeof doc!=='undefined'&&doc?'?doc='+doc:'')};
 $('#bfiles').onclick=()=>meFilesView();
@@ -1809,16 +1810,19 @@ function toolsFor(b){if(!KDTOOLS||!['heading','caption'].includes(b.kind))return
  const t=(b.text||'').replace(/\\(.)/g,'$1').replace(/[*_+^~]/g,''),ex=(b.data&&b.data.tools)||[];   // data.tools = bagian yang di dokumen contoh memuat perhitungan (dari template)
  return KDTOOLS.filter(x=>ex.includes(x.id)||x.re.some(r=>r.test(t)))}
 /* alamat toko membawa 'back' = tautan dalam ke heading ini (+ buka ulang dialog alat), supaya pembeli tak kehilangan posisi di outline */
+/* alat rumus/simulasi dibuka di menu Tools Simulator (/alat); alat berbasis data wilayah di /data-desa. Selalu membawa 'back' ke heading ini. */
+function toolUrl(t,b){const back='/?doc='+doc+'&block='+b.id+'&tool=1';
+ return ((t.tab==='rumus'||t.tab==='sim')?'/alat':'/data-desa')+'?tool='+encodeURIComponent(t.id)+'&doc='+doc+'&after='+b.id+'&back='+encodeURIComponent(back)}
 function storeUrl(tid,b,buy){const back='/?doc='+doc+'&block='+b.id+'&tool=1';
  return '/store?engine='+encodeURIComponent(tid)+'&doc='+doc+'&back='+encodeURIComponent(back)+(buy?'&buy=1':'')}
 function toolDlg(b,tl){const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>🧮 Alat hitung / simulasi untuk “${esc((b.text||'').replace(/\\(.)/g,'$1').slice(0,70))}”</b>
-  <small style="color:var(--mut)">Dibuka di tab baru. Hasilnya bisa disisipkan sebagai blok (tabel/paragraf/gambar) tepat setelah blok ini. Ini alat penapisan awal — parameter dan baku mutu tetap isian Anda. Alat bertanda 🔒 harus dibeli dulu (paket waktu, atau sekali pakai untuk laporan ini saja).</small>
+  <small style="color:var(--mut)">Dibuka di halaman panduan. Hasilnya bisa disisipkan sebagai blok (tabel/paragraf/gambar) tepat setelah blok ini. Ini alat penapisan awal — parameter dan baku mutu tetap isian Anda. Alat bertanda 🔒 harus dibeli dulu (paket waktu, atau sekali pakai untuk laporan ini saja).</small>
   ${tl.map(t=>`<div style="border:1px solid var(--line);border-radius:6px;padding:8px;margin:6px 0"><b>${t.icon} ${esc(t.label)}</b><div style="font-size:.85em;color:var(--mut);margin:2px 0 6px">${esc(t.why)}</div>
    ${t.locked?`<div style="font-size:12.5px;margin-bottom:6px">🔒 Alat ini belum Anda miliki untuk laporan ini (beli per laporan atau paket waktu).</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><a class=btnlink href="${storeUrl(t.id,b,1)}">⚡ Beli langsung</a><a class=btnlink href="${storeUrl(t.id,b,0)}">🛒 Lihat paket lain</a></div>
     <div style="font-size:11.5px;color:var(--mut);margin-top:4px">Setelah bayar, Anda otomatis kembali ke bagian ini.</div>`
-    :`<a class=btnlink target=_blank rel=noopener href="/data-desa?tool=${encodeURIComponent(t.id)}&doc=${doc}&after=${b.id}">Buka &amp; sisipkan ke dokumen ↗</a>`}</div>`).join('')}
+    :`<a class=btnlink href="${toolUrl(t,b)}">▶ Buka &amp; simulasikan</a><div style="font-size:11.5px;color:var(--mut);margin-top:4px">Anda dipandu langkah demi langkah: isi data → hitung → sisipkan ke bagian ini → kembali ke laporan.</div>`}</div>`).join('')}
   <div style="display:flex;justify-content:flex-end"><button type=button id=x>Tutup</button></div></div>`;
  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()}}
 const GENLIST_LABELS={toc:'Daftar Isi',tof_tabel:'Daftar Tabel',tof_gambar:'Daftar Gambar'};

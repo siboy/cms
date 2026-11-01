@@ -63,9 +63,20 @@ table.t th:first-child,table.t td:first-child{text-align:left;white-space:normal
 details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:6px}details.mt summary{cursor:pointer;font-weight:600}
 .badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--acc-soft);color:var(--acc)}
 .lk>*:not(.lockb){opacity:.28;pointer-events:none;user-select:none}.lockb{background:var(--warn-bg,#fef3c7);color:var(--warn,#b45309);border:1px solid var(--warn,#b45309);border-radius:8px;padding:10px 14px;margin:8px 0}.lkicon{opacity:.75}
+
+.gd{border:2px solid var(--acc);border-radius:14px;background:var(--card);padding:12px 14px;margin-bottom:12px}.gd h2{margin:0 0 2px;font-size:17px}
+.gsteps{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.gst{flex:1 1 140px;display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:7px 9px;background:var(--bg);cursor:pointer;font-size:12.5px}
+.gn{flex:none;width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--fg);display:inline-grid;place-items:center;font-weight:700;font-size:12px}
+.gst.cur{border-color:var(--acc);background:var(--acc-soft)}.gst.cur .gn{background:var(--acc);color:#fff}.gst.done{border-color:var(--ok)}.gst.done .gn{background:var(--ok);color:#fff}
+.ghint{background:var(--acc-soft);border-radius:8px;padding:8px 10px;font-size:13px}.gok{background:#15803d22;color:var(--ok);border-radius:8px;padding:10px 12px;margin-top:8px}
+.stp{display:flex;gap:8px;align-items:center;font-weight:700;margin:14px 0 6px}
+body.toolmode #simTabs,body.toolmode #rfSearch,body.toolmode #rfCats,body.toolmode #t-rumus>details.guide{display:none}
+body.toolmode.one #rfList,body.toolmode.one #rfStep1{display:none}body.toolmode.one #t-rumus .grid2{grid-template-columns:minmax(0,1fr)}
 </style></head><body>
-<header><b>📊 Data Desa Kemendagri</b><span id="who" class="mut small"></span><a href="/">← sdrive</a></header>
+<header><b id="pgTitle">📊 Data Desa Kemendagri</b><span id="who" class="mut small"></span><a id="xlink" href="/alat">🧮 Tools Simulator</a><a href="/">← sdrive</a></header>
 <main>
+<div id="guide" class="gd hide"></div>
 <div id="ctxBar" class="note hide" style="margin-bottom:10px"><div id="ctxInfo"></div><div id="ctxTarget" class="row" style="margin-top:6px;gap:12px"></div></div>
 <div id="status"></div>
 <div class="tabs" id="tabs">
@@ -220,7 +231,7 @@ details.mt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;margi
  <div class="note">Rumus baku yang lazim dipakai di dokumen lingkungan (AMDAL, UKL-UPL, Andalalin). Rumusnya baku dan tercantum rujukannya; <b>nilai parameter yang bergantung wilayah/peraturan</b> (faktor emisi, baku mutu, standar pemakaian air, sampah per kapita) adalah isian Anda — nilai awal hanyalah rentang umum, <b>verifikasi dengan peraturan/kajian yang berlaku</b>. Model dispersi/hidrologi di sini bersifat <i>penapisan awal</i>, bukan pengganti model rinci (AERMOD, HEC-HMS, dst.).</div>
  <div class="grid2">
   <div>
-   <div class="row" style="margin-bottom:6px"><input id="rfQ" class="fill" placeholder="cari rumus (mis. rasional, bising, usle, npv)…"></div>
+   <div class="row" id="rfSearch" style="margin-bottom:6px"><input id="rfQ" class="fill" placeholder="cari rumus (mis. rasional, bising, usle, npv)…"></div>
    <div id="rfCats" class="row" style="margin-bottom:8px"></div>
    <div id="rfList"></div>
   </div>
@@ -269,6 +280,15 @@ const nameOf=code=>(regions.find(r=>r.code===code)||{}).name||code;
 // ------------------------------------------------------------------ tab
 let MOD={};            // modul fitur yang aktif untuk tenant ini (diatur OPERATOR; GET /api/modules)
 const modOn=k=>!k||MOD.on===undefined||MOD.on.has(k);
+/* DUA HALAMAN, SATU BERKAS: /data-desa = data & proyeksi (tab 1-5); /alat = galeri alat hitung (pustaka rumus) & simulasi lingkungan (tab 1-2). */
+const PAGE=location.pathname.indexOf('/alat')===0?'alat':'data';
+(function applyPage(){
+  const keep=PAGE==='alat'?['rumus','sim']:['pilih','grafik','peta','proyeksi','model'],lab={rumus:'Pustaka rumus AMDAL/UKL-UPL',sim:'Simulasi lingkungan'};
+  document.querySelectorAll('#tabs button').forEach(b=>{const i=keep.indexOf(b.dataset.t);if(i<0){b.remove();return}if(PAGE==='alat')b.textContent=(i+1)+' · '+lab[b.dataset.t]});
+  if(PAGE==='alat'){document.title='Tools Simulator — sdrive';document.getElementById('pgTitle').textContent='🧮 Tools Simulator';
+    const x=document.getElementById('xlink');x.href='/data-desa'+(location.search||'');x.textContent='📊 Data Desa'}
+  else document.getElementById('xlink').href='/alat'+(location.search||'');
+})();
 const TABMOD={pilih:'data_desa',grafik:'data_desa',peta:'data_desa',proyeksi:'proyeksi',model:'proyeksi'};
 function lockBanner(sec,key){
   let b=sec.querySelector(':scope>.lockb');
@@ -286,6 +306,7 @@ function tab(t){
   ['pilih','grafik','peta','proyeksi','model','rumus','sim'].forEach(x=>$('#t-'+x).classList.toggle('hide',x!==t));
   const tm=TABMOD[t];if(tm&&lockBanner($('#t-'+t),tm))return;
   if(t==='grafik')loadGraf(); if(t==='peta')initMap(); if(t==='proyeksi')initProj(); if(t==='model')initModel(); if(t==='rumus')initRumus(); if(t==='sim')initSim();
+  if(typeof G!=='undefined'&&G.t)G.on('tab',t);
 }
 $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)tab(b.dataset.t)};
 $('#goGraf').onclick=()=>tab('grafik');
@@ -781,7 +802,7 @@ $('#mCsv').onclick=()=>{if(!MRES)return;const r=MRES,rows=[['tahun','jenis','nil
 
 
 // ------------------------------------------------------------------ pustaka rumus AMDAL / UKL-UPL
-let RF=null,RFcat='',RFsel=null;
+let RF=null,RFcat='',RFsel=null,TOOLSET=null;   // TOOLSET = id rumus milik alat yang dibuka dari editor (null = seluruh pustaka)
 async function initRumus(){
   if(!RF){try{RF=await api('/formulas')}catch(e){$('#rfList').innerHTML=`<div class="note">${esc(e.message)}</div>`;return}}
   renderRfCats();renderRfList();
@@ -791,7 +812,7 @@ $('#rfCats').onclick=e=>{const b=e.target.closest('button[data-c]');if(b){RFcat=
 $('#rfQ').oninput=()=>RF&&renderRfList();
 function renderRfList(){
   const q=$('#rfQ').value.trim().toLowerCase();
-  const items=RF.items.filter(f=>(!RFcat||f.category===RFcat)&&(!q||(f.title+' '+f.id+' '+f.formula+' '+f.category).toLowerCase().includes(q)));
+  const items=RF.items.filter(f=>(!TOOLSET||TOOLSET.includes(f.id))&&(!RFcat||f.category===RFcat)&&(!q||(f.title+' '+f.id+' '+f.formula+' '+f.category).toLowerCase().includes(q)));
   $('#rfList').innerHTML=items.map(f=>`<div class="fr ${RFsel===f.id?'cur':''}" data-id="${f.id}" ${f.locked?'style="opacity:.6"':''}><b>${f.locked?'🔒 ':''}${esc(f.title)}</b><code>${esc(f.formula)}</code><div class="small mut">${esc(f.category)} · ${f.docs.map(esc).join(', ')}</div></div>`).join('')||'<span class="mut">Tidak ada rumus cocok.</span>';
 }
 $('#rfList').onclick=e=>{const c=e.target.closest('.fr');if(c){RFsel=c.dataset.id;renderRfList();renderRfBox()}};
@@ -803,7 +824,7 @@ function renderRfBox(){
       :v.type==='list'?`<textarea id="${id}" rows="2">${esc(d)}</textarea>`:`<input type="number" step="any" id="${id}" value="${esc(d)}" placeholder="isi">`;
     return `<label style="display:block;margin-bottom:6px"><span class="small">${esc(v.label)} ${v.unit?`<span class="mut">(${esc(v.unit)})</span>`:''}</span>${ctl}${v.hint?`<div class="small mut">${esc(v.hint)}</div>`:''}</label>`}).join('');
   $('#rfBox').innerHTML=`<h3>${esc(f.title)}</h3><div class="fx"><code style="font-size:13px">${esc(f.formula)}</code></div>
-   <div style="margin-top:10px">${inp}</div><div class="row"><button class="b p" id="rfGo">Hitung</button><span id="rfMsg" class="small"></span></div><div id="rfOut"></div>
+   <div style="margin-top:10px" id="rfInp">${inp}</div><div class="row" id="rfRow"><button class="b p" id="rfGo">Hitung</button><span id="rfMsg" class="small"></span></div><div id="rfOut"></div>
    <details class="mt" style="margin-top:10px" open><summary>📖 Cara pakai</summary><div class="small" style="margin-top:6px"><b>Kapan dipakai:</b> ${esc(f.howto.use)}</div>
     <ol class="small" style="margin:6px 0 6px 18px;padding:0">${f.howto.steps.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>
     ${(f.howto.data||[]).length?`<div class="small" style="margin-top:8px"><b>📋 Data yang perlu Anda siapkan:</b><ul style="margin:4px 0 4px 18px;padding:0">${f.howto.data.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
@@ -812,9 +833,15 @@ function renderRfBox(){
    <div class="small mut" style="margin-top:8px"><b>Rujukan:</b> ${esc(f.ref)}${f.note?`<br><b>Catatan:</b> ${esc(f.note)}`:''}</div>
    ${f.expr?`<div class="small" style="margin-top:8px"><b>Di mesin rumus (tab 4 &amp; 5):</b> <code>${esc(f.expr)}</code> <button class="b small" id="rfCopy">Salin</button> <button class="b small" id="rfAdd">Jadikan rumus skenario</button></div>`:''}`;
   $('#rfGo').onclick=rfCalc;
+  if(typeof G!=='undefined'&&G.t){   // mode panduan: judul langkah 2-3 + data yang perlu disiapkan
+    const dn=(f.howto.data||[]).length?`<div class="small" style="margin:0 0 6px"><b>📋 Siapkan:</b> ${f.howto.data.map(esc).join('; ')}.</div>`:'';
+    $('#rfInp').insertAdjacentHTML('beforebegin',G.head(2,'Isi data masukan')+`<div class="small mut" style="margin-bottom:6px">Angka yang sudah terisi hanyalah <b>contoh</b> — ganti dengan data proyek Anda.</div>`+dn);
+    $('#rfRow').insertAdjacentHTML('beforebegin',G.head(3,'Hitung'));
+    $('#rfBox').addEventListener('input',()=>G.on('edit'));$('#rfBox').addEventListener('change',()=>G.on('edit'));
+    G.on('select')}
   if($('#rfCopy'))$('#rfCopy').onclick=async()=>{try{await navigator.clipboard.writeText(f.expr);$('#rfMsg').textContent='disalin'}catch(e){prompt('Salin:',f.expr)}};
   if($('#rfAdd'))$('#rfAdd').onclick=()=>{ if(!drivers)drivers=defaultDrivers();
-    drivers.push({id:'f'+Date.now().toString(36),type:'formula',name:f.title,enabled:true,formula:f.expr,baseline:0,target:1,phase:'ramp',weight:1,open:true,targets:[]});drvSave();tab('proyeksi')};
+    drivers.push({id:'f'+Date.now().toString(36),type:'formula',name:f.title,enabled:true,formula:f.expr,baseline:0,target:1,phase:'ramp',weight:1,open:true,targets:[]});drvSave();if(PAGE==='alat'){location.href='/data-desa?tab=proyeksi';return}tab('proyeksi')};
 }
 async function rfCalc(){
   const f=RF.items.find(x=>x.id===RFsel),inputs={};
@@ -827,7 +854,8 @@ async function rfCalc(){
       card=chartCard(sr.title,sr.unit?'satuan: '+sr.unit:'',{series:sr.ys.map((y,i)=>({name:y.name,color:P[i%P.length],points:sr.x.map((x,j)=>({x,y:y.values[j]}))})),xs,yfmt:cmp,tfmt:v=>fmt(v,0),zero:true});
       RFLAST.chartId=card.id;extra=card.html}
     if(r.table)extra+=`<div class="tw" style="margin-top:8px"><table class="t"><tr>${r.table.header.map(h=>`<th>${esc(h)}</th>`).join('')}</tr>${r.table.rows.map(rw=>`<tr>${rw.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>`;
-    $('#rfOut').innerHTML=`<table class="t" style="margin-top:8px">${r.outputs.map(o=>`<tr><td>${esc(o.label)}</td><td><b>${fmt(o.value,Math.abs(o.value)<10?4:2)}</b> <span class="mut">${esc(o.unit)}</span></td></tr>`).join('')}</table>${extra}${insBtn('rf')}`;
+    $('#rfOut').innerHTML=`<table class="t" style="margin-top:8px">${r.outputs.map(o=>`<tr><td>${esc(o.label)}</td><td><b>${fmt(o.value,Math.abs(o.value)<10?4:2)}</b> <span class="mut">${esc(o.unit)}</span></td></tr>`).join('')}</table>${extra}${typeof G!=='undefined'&&G.t?G.head(4,'Sisipkan hasil ke laporan')+(CTX.on?'':'<div class="small mut">Buka alat ini lewat tombol <b>Buka &amp; simulasikan</b> di editor agar hasil bisa disisipkan ke bagian laporan.</div>'):''}${insBtn('rf')}`;
+    if(typeof G!=='undefined'&&G.t)G.on('calc');
     if(card)mount([card])}
   catch(e){$('#rfMsg').innerHTML=`<span class="err">${esc(e.message)}</span>`}
 }
@@ -874,7 +902,7 @@ function ctxBar(){
   if(!CTX.on)return;
   const t=(window.TOOLS||[]).find(x=>x.id===CTX.tool);
   $('#ctxBar').classList.remove('hide');
-  $('#ctxInfo').innerHTML=`🧩 <b>Mode sisipkan ke dokumen #${CTX.doc}</b>${t?` — ${esc(t.icon)} ${esc(t.label)}`:''}. Sudah disisipkan: <b>${CTX.n}</b> blok. Editor di tab sebelumnya ikut diperbarui otomatis.${t&&t.why?`<div class="small mut">${esc(t.why)}</div>`:''}
+  $('#ctxInfo').innerHTML=`🧩 <b>Mode sisipkan ke dokumen #${CTX.doc}</b>${t?` — ${esc(t.icon)} ${esc(t.label)}`:''}. Sudah disisipkan: <b>${CTX.n}</b> blok. Hasilnya langsung ada di editor saat Anda kembali ke laporan.${t&&t.why?`<div class="small mut">${esc(t.why)}</div>`:''}
    <div class="small mut">Alat penapisan awal: nilai parameter (faktor emisi, baku mutu, standar pemakaian) tetap Anda tetapkan dan rujuk ke peraturan yang berlaku.</div>`;
 }
 // ---- tujuan sisip: bagian mana & posisinya
@@ -975,7 +1003,7 @@ async function doInsert(btn,build){
   try{LASTMETA=null;const r=await insertParts(await build(getOpts(btn))),n=r.n;let rec='';
     if(CTX.tool&&LASTMETA){try{const j=await docPost('/sim-runs',{doc_id:CTX.doc,origin_block_id:CTX.base,tool_id:CTX.tool,calc_id:LASTMETA.calc_id,title:LASTMETA.title,summary:LASTMETA.summary,block_ids:r.ids});
       if((j.recorded||[]).length)rec=' · tercatat di tab Simulasi proyek'}catch(e){}}
-    msg.innerHTML=`<span class="pos">✓ ${n} blok disisipkan${rec}</span>`}
+    msg.innerHTML=`<span class="pos">✓ ${n} blok disisipkan${rec}</span>`;if(typeof G!=='undefined'&&G.t)G.on('inserted',n)}
   catch(e){msg.innerHTML=`<span class="err">${esc(e.message)}</span>`}
   btn.disabled=false;
 }
@@ -985,34 +1013,110 @@ $('#pIns').onclick=e=>doInsert(e.target,partsProj);
 $('#mIns').onclick=e=>doInsert(e.target,partsModel);
 window.simInsertHtml=()=>CTX.on?`<span class="insbox">${optsHtml('sim')}<button class="b small p" data-ins="sim" title="Sisipkan ke dokumen sesuai bentuk yang dicentang"> 📥 Sisipkan ke dokumen</button><span class="small mut" data-insmsg></span></span>`:'';
 
+/* ---- panduan langkah: alat yang dibeli dibuka dari editor -> satu halaman bernomor 1,2,3,... dari pilih/isi data sampai sisipkan hasil */
+const BACK=(b=>/^\/(?!\/)/.test(b)?b:'')(QS.get('back')||'');
+const G={t:null,steps:[],cur:0,fin:false,
+  head:(n,txt)=>G.t?`<div class="stp"><span class="gn">${n}</span>${txt}</div>`:'',
+  backUrl:()=>BACK||(CTX.doc?`/?doc=${CTX.doc}&block=${CTX.base}&tool=1`:'/'),
+  def(t){
+    const multi=t.tab==='rumus'&&(t.calc||[]).length>1;
+    if(t.tab==='rumus')return [...(multi?[{l:'Pilih perhitungan',el:'#rfList'}]:[]),{l:'Isi data masukan',el:'#rfBox'},{l:'Hitung',el:'#rfRow'},{l:'Sisipkan ke laporan',el:'#rfOut'}];
+    if(t.tab==='sim')return [{l:'Pilih skenario awal',el:'#simPresets'},{l:'Atur parameter',el:'#simForm'},{l:'Jalankan simulasi',el:'#simRun'},{l:'Sisipkan ke laporan',el:'#simOut'}];
+    const m=t.tab==='model';
+    return [{l:'Pilih wilayah &amp; indikator',el:'#t-pilih'},{l:m?'Atur model':'Atur skenario',el:m?'#t-model':'#t-proyeksi'},{l:'Hitung',el:m?'#mRun':'#runProj'},{l:'Sisipkan ke laporan',el:m?'#mOut':'#pOut'}];
+  },
+  hint(i){
+    const k=G.steps[i].l.replace(/&amp;/g,'&'),t=G.t;
+    if(k==='Pilih perhitungan')return `Alat ini punya ${(t.calc||[]).length} perhitungan. Klik salah satu kartu di bawah — masing-masing menghasilkan angka berbeda.`;
+    if(k==='Isi data masukan'){const f=RF&&RF.items.find(x=>x.id===RFsel),d=f&&(f.howto.data||[]);return `Isi kolom di bawah dengan data proyek Anda (angka yang sudah ada hanya contoh).${d&&d.length?' Yang perlu disiapkan: '+d.map(esc).join('; ')+'.':''}`}
+    if(k==='Hitung')return t.tab==='rumus'?'Klik tombol <b>Hitung</b>. Hasil (angka, tabel, grafik) muncul tepat di bawahnya.':'Klik tombol hitung/jalankan pada langkah ini; hasil muncul di bawahnya.';
+    if(k==='Pilih skenario awal')return 'Pilih satu <b>Mulai cepat</b> (contoh skenario) agar parameter terisi, atau langsung atur parameter di langkah berikutnya.';
+    if(k==='Atur parameter'||k==='Atur skenario'||k==='Atur model')return t.tab==='sim'?'Ubah parameter sumber, cuaca, dan mitigasi sesuai kondisi proyek Anda (nilai peraturan tetap isian Anda).':'Atur skenario/asumsi di bawah sesuai proyek Anda.';
+    if(k==='Jalankan simulasi')return 'Klik <b>▶ Jalankan simulasi</b>. Peta hasil beranimasi akan tampil.';
+    if(k==='Pilih wilayah & indikator')return 'Pilih wilayah (dan indikator) di halaman ini, lalu lanjut ke langkah berikutnya.';
+    return CTX.on?'Pilih <b>bagian laporan tujuan</b> dan bentuk yang disisipkan (tabel, grafik, narasi), lalu klik <b>📥 Sisipkan ke dokumen</b>.':'Buka alat ini lewat tombol <b>Buka &amp; simulasikan</b> di editor agar hasil bisa disisipkan.';
+  },
+  init(t){
+    G.t=t;G.steps=G.def(t);
+    const d=document.getElementById('guide');d.classList.remove('hide');
+    d.innerHTML=`<h2>${esc(t.icon)} ${esc(t.label)} <span class="badge">✅ sudah Anda miliki</span></h2>
+     <div class="small mut">${esc(t.why||'')}</div>
+     <div class="gsteps" id="gSteps"></div><div class="ghint" id="gHint"></div><div id="gDone"></div>
+     <div class="row" style="margin-top:8px"><a class="b" href="${esc(G.backUrl())}">← Kembali ke laporan</a><a class="b" href="/alat">Lihat semua alat</a></div>`;
+    d.querySelector('#gSteps').onclick=e=>{const c=e.target.closest('[data-g]');if(c)G.go(+c.dataset.g,true)};
+    document.body.classList.add('toolmode');if(t.tab==='rumus'&&(t.calc||[]).length<2)document.body.classList.add('one');
+    G.go(0,true);
+  },
+  go(i,scroll){
+    i=Math.max(0,Math.min(G.steps.length-1,i));G.cur=i;
+    document.getElementById('gSteps').innerHTML=G.steps.map((s,k)=>`<div class="gst ${k<i||G.fin?'done':k===i?'cur':''}" data-g="${k}"><span class="gn">${k<i||G.fin?'✓':k+1}</span><span>${s.l}</span></div>`).join('');
+    document.getElementById('gHint').innerHTML=`<b>Langkah ${i+1} dari ${G.steps.length}:</b> ${G.hint(i)}`;
+    if(scroll){const el=document.querySelector(G.steps[i].el);if(el&&!el.closest('.hide'))setTimeout(()=>el.scrollIntoView({behavior:'smooth',block:'center'}),60)}
+  },
+  on(ev,arg){
+    if(!G.t)return;const last=G.steps.length-1,isi=G.t.tab==='rumus'&&G.steps.length===4?1:0;
+    if(G.t.tab==='rumus'){
+      if(ev==='select')G.go(isi,true);
+      else if(ev==='edit'&&G.cur<isi)G.go(isi);
+      else if(ev==='calc')G.go(last,true);
+    }else if(G.t.tab==='sim'){
+      if(ev==='preset'&&G.cur<1)G.go(1,true);else if(ev==='edit'&&G.cur<1)G.go(1);else if(ev==='run')G.go(2);else if(ev==='result')G.go(last,true);
+    }else{
+      if(ev==='tab'){if(arg==='pilih'&&G.cur>0)G.go(0);else if(arg===G.t.tab&&G.cur<1)G.go(1)}
+      else if(ev==='run')G.go(2);else if(ev==='result')G.go(last,true);
+    }
+    if(ev==='inserted'){G.fin=true;G.go(last);
+      document.getElementById('gDone').innerHTML=`<div class="gok"><b>✅ ${arg} blok sudah disisipkan ke laporan.</b> Anda bisa mengubah angka lalu menyisipkan lagi, atau kembali ke laporan untuk melihat hasilnya.
+       <div class="row" style="margin-top:8px"><a class="b p" href="${esc(G.backUrl())}" style="text-decoration:none">← Kembali ke laporan</a></div></div>`;
+      document.getElementById('gDone').scrollIntoView({behavior:'smooth',block:'center'})}
+    else if(ev==='calc'||ev==='result'){G.fin=false;document.getElementById('gDone').innerHTML=''}
+  }};
+function guideSimHooks(){
+  const sim=document.getElementById('t-sim');
+  sim.addEventListener('click',e=>{if(e.target.closest('#simPresets button'))G.on('preset');else if(e.target.closest('#simGo'))G.on('run')});
+  sim.addEventListener('input',e=>{if(e.target.closest('#simForm'))G.on('edit')});sim.addEventListener('change',e=>{if(e.target.closest('#simForm'))G.on('edit')});
+  new MutationObserver(()=>{if(document.querySelector('#simOut #vPlay'))G.on('result')}).observe(document.getElementById('simOut'),{childList:true,subtree:true});
+}
+function guideProjHooks(t){
+  const m=t.tab==='model',run=document.getElementById(m?'mRun':'runProj'),out=document.getElementById(m?'mOut':'pOut');
+  run.addEventListener('click',()=>G.on('run'));
+  new MutationObserver(()=>{if(out.querySelector('.cc,table'))G.on('result')}).observe(out,{childList:true,subtree:true});
+}
 async function ctxInit(){
-  if(!CTX.on)return;
-  $$('.ins').forEach(b=>b.classList.remove('hide'));
-  $('#pOpts').innerHTML=optsHtml('proj');$('#mOpts').innerHTML=optsHtml('model');
+  if(!CTX.tool&&!CTX.on)return;
+  if(CTX.on){$$('.ins').forEach(b=>b.classList.remove('hide'));$('#pOpts').innerHTML=optsHtml('proj');$('#mOpts').innerHTML=optsHtml('model')}
   try{window.TOOLS=(await api('/tools')).tools}catch(e){window.TOOLS=[]}
-  ctxBar();ctxTargets();
+  if(CTX.on){ctxBar();ctxTargets()}
   const t=window.TOOLS.find(x=>x.id===CTX.tool);if(!t)return;
-  if(t.locked){$('#ctxBar').insertAdjacentHTML('beforeend',`<div class="lockb" style="margin-top:8px">🔒 Alat <b>“${esc(t.label||'')}”</b> belum Anda miliki${CTX.doc?' untuk laporan ini':''}. <a href="${storeUrl(t.id)}">🛒 Beli alat ini</a> atau minta admin membelikan.</div>`);return}
-  for(let i=0;i<60&&!META;i++)await new Promise(r=>setTimeout(r,100));
-  if(t.tab==='sim'&&t.sim)SIM.cur=t.sim;
-  if((t.tab==='proyeksi'||t.tab==='model')&&!regions.length){tab('pilih');
-    $('#ctxBar').insertAdjacentHTML('beforeend',`<div class="small" style="margin-top:6px"><b>Langkah:</b> pilih wilayah &amp; indikator di tab 1, lalu buka tab ${t.tab==='proyeksi'?'4 (Proyeksi cepat)':'5 (Model multi-faktor)'} dan klik hitung.</div>`);return}
-  tab(t.tab);
-  if(t.tab==='rumus'&&t.calc.length){await initRumus();RFsel=t.calc[0];RFcat='';renderRfCats();renderRfList();renderRfBox();
-    $('#ctxBar').insertAdjacentHTML('beforeend',`<div class="small" style="margin-top:6px">Rumus terkait: ${t.calc.map(id=>{const f=RF.items.find(x=>x.id===id);return f?`<a href="#" data-rfgo="${esc(id)}">${esc(f.title)}</a>`:''}).filter(Boolean).join(' · ')}</div>`);
-    $('#ctxBar').onclick=e=>{const a=e.target.closest('[data-rfgo]');if(a){e.preventDefault();RFsel=a.dataset.rfgo;renderRfList();renderRfBox()}}}
-  if(t.tab==='sim'&&t.calc&&t.calc.length)$('#ctxBar').insertAdjacentHTML('beforeend',`<div class="small mut" style="margin-top:6px">Alternatif hitung cepat di tab 6: ${t.calc.slice(0,3).map(esc).join(', ')}.</div>`);
+  const want=(t.tab==='rumus'||t.tab==='sim')?'alat':'data';       // alat dibuka di halaman yang tepat (tautan lama /data-desa?tool=... ikut diarahkan)
+  if(want!==PAGE){location.replace((want==='alat'?'/alat':'/data-desa')+location.search);return}
+  document.getElementById('tabs').classList.add('hide');
+  if(t.locked){const g=document.getElementById('guide');g.classList.remove('hide');
+    g.innerHTML=`<h2>${esc(t.icon)} ${esc(t.label)}</h2><div class="lockb">🔒 Alat ini belum Anda miliki${CTX.doc?' untuk laporan ini':''}. <a href="${storeUrl(t.id)}${BACK?'&back='+encodeURIComponent(BACK)+'&buy=1':''}">⚡ Beli langsung</a> atau minta admin membelikan.</div>
+      <div class="row"><a class="b" href="${esc(G.backUrl())}">← Kembali ke laporan</a></div>`;return}
+  G.init(t);
+  if(PAGE==='data')for(let i=0;i<60&&!META;i++)await new Promise(r=>setTimeout(r,100));
+  if(t.tab==='sim'){if(t.sim)SIM.cur=t.sim;tab('sim');guideSimHooks();return}
+  if(t.tab==='rumus'){TOOLSET=t.calc||[];tab('rumus');await initRumus();
+    $('#rfList').insertAdjacentHTML('beforebegin',`<div id="rfStep1">${G.head(1,'Pilih perhitungan')}</div>`);
+    RFsel=TOOLSET.find(id=>RF.items.some(x=>x.id===id&&!x.locked))||TOOLSET[0];RFcat='';renderRfList();renderRfBox();
+    if(TOOLSET.length>1)G.go(0,true);return}
+  guideProjHooks(t);
+  if(!regions.length){tab('pilih');G.go(0);return}
+  tab(t.tab);G.go(1);
 }
 window.addEventListener('load',ctxInit);
 
 // ------------------------------------------------------------------ init
 (async function(){
   await loadModules();
+  if(PAGE==='alat'){tab(QS.get('tab')==='sim'?'sim':'rumus');return}
   try{META=await api('/meta')}catch(e){$('#status').innerHTML=`<div class="note">${esc(e.message)}</div>`;return}
   if(!META.configured){$('#status').innerHTML=`<div class="note"><b>Sumber data belum terhubung.</b> ${esc(META.error||'')}<br>Set CMS_NAS_HOST, CMS_NAS_USER, CMS_NAS_PASS (NAS Synology) atau CMS_KD_LOCAL_DIR pada server, lalu muat ulang.</div>`;return}
   const per=META.periods;
   $('#avail').innerHTML=`<table class="t"><tr><th>Periode</th><th>Tingkat tersedia</th></tr>${per.map(p=>`<tr><td>${esc(p.label)}</td><td style="text-align:left">${p.levels.map(l=>META.levels.find(x=>x.id===l)?.label||l).join(', ')}</td></tr>`).join('')}</table><div class="mut" style="margin-top:6px">Wilayah dengan riwayat lebih panjang = tingkat yang tersedia di lebih banyak periode. Semester yang belum dikumpulkan ke NAS otomatis muncul begitu berkasnya ditambahkan.</div>`;
   keys=keys.filter(k=>META.indicators.some(i=>i.key===k));
+  if(QS.get('tab')&&!CTX.tool)setTimeout(()=>{if(document.querySelector(`#tabs [data-t="${QS.get('tab')}"]`))tab(QS.get('tab'))},0);
   renderChips();renderInd();initRegionSelects();
 })();
 </script>
