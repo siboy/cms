@@ -102,9 +102,13 @@ def _items_html(o: dict) -> str:
     from html import escape
     rows = []
     for i in o["items"]:
-        what = f"sekali pakai: {escape(i.get('doc_title') or '#' + str(i.get('doc_id')))}" if i["scope"] == "report" else f"paket {i['months']} bulan"
+        if i["scope"] == "copy":
+            what = "sekali impor ke 1 dokumen"
+        else:
+            what = f"sekali pakai: {escape(i.get('doc_title') or '#' + str(i.get('doc_id')))}" if i["scope"] == "report" else f"paket {i['months']} bulan"
         lp = f" <s>{_rp(i['list_price'])}</s>" if i.get("list_price") and i["list_price"] != i["price"] else ""
-        rows.append(f"<li>{escape(mods.tool_label(i['module_key']))} — {what} ({lp} <b>{_rp(i['price'])}</b>)</li>")
+        label = ("Template: " + lic.tpl_title(lic.tpl_id(i["module_key"]))) if lic.is_tpl(i["module_key"]) else mods.tool_label(i["module_key"])
+        rows.append(f"<li>{escape(label)} — {what} ({lp} <b>{_rp(i['price'])}</b>)</li>")
     return "<ul>" + "".join(rows) + "</ul>"
 
 
@@ -192,10 +196,24 @@ def store_view():
                    "prices": {m: lic.effective(p.get(m), disc) for m in ("6", "12", "24", "report")}, "owned": mine.get(k), "operator": e["module"] in mods.enabled(),
                    "pending_order": pending.get(k), "report_licenses": rep_own.get(k, []),
                    "owned_here": bool(ctx_doc) and k in lic.active_keys(s, g.user["id"], doc_id=ctx_doc)})
-    out = {"licensing": lic.enabled(s), "engines": en, "periods": list(lic.PERIODS), "doc": ctx_doc,
+    # template outline (dijual per impor): item yang diminta lewat ?item=tpl:<id> + label untuk item pesanan menunggu
+    tpl_items, labels = [], {}
+    want = [request.args.get("item", "")] if lic.is_tpl(request.args.get("item")) else []
+    pend_orders = lic.list_orders(s, buyer_id=g.user["id"], status="pending")
+    keys_ = set(want) | {it["module_key"] for o in pend_orders for it in o["items"] if lic.is_tpl(it["module_key"])}
+    credits = lic.copy_credits(s, g.user["id"])
+    for k in sorted(keys_):
+        tid = lic.tpl_id(k)
+        if not lic.tpl_exists(tid):
+            continue
+        labels[k] = "Template: " + lic.tpl_title(tid)
+        if k in want:
+            tpl_items.append({"key": k, "label": lic.tpl_title(tid), "icon": "📑", "group": "Template outline laporan", "tpl": True, "price": lic.tpl_price(s),
+                              "desc": "Satu pembayaran = satu kali impor outline ini ke dokumen baru. Impor berikutnya membayar lagi.", "credits": credits.get(tid, 0)})
+    out = {"tpl_items": tpl_items, "labels": labels, "tpl_price": lic.tpl_price(s), "licensing": lic.enabled(s), "engines": en, "periods": list(lic.PERIODS), "doc": ctx_doc,
            "pending_orders": [{"id": o["id"], "total": o["total"], "created_at": o["created_at"], "verify_state": o.get("verify_state"),
                                "code": lic.order_code(o["id"]), "items": [it["module_key"] for it in o["items"]]}
-                              for o in lic.list_orders(s, buyer_id=g.user["id"], status="pending")],
+                              for o in pend_orders],
            "docs": _my_docs(s), "me": {"id": g.user["id"], "username": g.user["username"], "role": g.user.get("role"),
                                        "email": g.user.get("email") or "", "phone_wa": g.user.get("phone_wa") or ""},
            "payment": {"method": "qris", "merchant": lic.QRIS_MERCHANT, "nmid": lic.QRIS_NMID}}

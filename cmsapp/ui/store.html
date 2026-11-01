@@ -64,8 +64,9 @@ async function api(method,path,body){
 /* BACK = tautan dalam ke posisi editor asal (hanya jalur relatif satu-situs). buy=1 = alur beli langsung satu alat */
 const BACK=(b=>/^\/(?!\/)/.test(b)?b:'')(QS.get('back')||'');
 const backTo=flag=>{if(!BACK)return false;location.href=BACK+(flag?'&bought='+flag:'');return true};
-const S={direct:false,buy:!!BACK&&QS.get('buy')==='1'&&!!QS.get('engine'),d:null,tab:'toko',cart:[],hold:{type:'user',id:null},doc:+QS.get('doc')||0,hl:QS.get('engine')||'',lic:[],ord:[],adm:null};
-const LBL=k=>(S.d.engines.find(e=>e.key===k)||{label:k}).label;
+const S={direct:false,buy:!!BACK&&QS.get('buy')==='1'&&!!(QS.get('engine')||QS.get('item')),d:null,tab:'toko',cart:[],hold:{type:'user',id:null},doc:+QS.get('doc')||0,hl:QS.get('engine')||QS.get('item')||'',lic:[],ord:[],adm:null};
+const ALLI=()=>S.d.engines.concat(S.d.tpl_items||[]);
+const LBL=k=>((ALLI().find(e=>e.key===k)||{}).label)||((S.d.labels||{})[k])||k;
 const note=(t,bad)=>{$('#msg').innerHTML=t?`<div class="note" style="${bad?'':'background:#15803d22;color:var(--ok)'}">${esc(t)}</div>`:'';if(t)window.scrollTo({top:0,behavior:'smooth'})};
 
 async function boot(){
@@ -93,19 +94,24 @@ function ownBadges(e){
 }
 function viewToko(){
   const d=S.d;let h='';S.hold={type:'user',id:d.me.id};
-  if(S.buy&&!d.engines.some(e=>e.key===S.hl))S.buy=false;
-  const only=S.buy?d.engines.filter(e=>e.key===S.hl):d.engines;
+  if(S.buy&&!ALLI().some(e=>e.key===S.hl))S.buy=false;
+  const only=S.buy?ALLI().filter(e=>e.key===S.hl):d.engines;
   if(S.buy&&only.length){S.docSel=S.doc||S.docSel;
     h+=`<div class="note" style="background:var(--soft);color:var(--acc)">⚡ <b>Beli langsung</b> — pilih paket, bayar, lalu Anda otomatis kembali ke bagian laporan tadi. <a href="#" id="allTools">Lihat semua alat</a></div>`;
   }else if(!d.licensing)h+=`<div class="note">Mode lisensi per-alat <b>belum aktif</b> di tenant ini, sehingga akses alat mengikuti pengaturan operator platform.</div>`;
   const pend=d.pending_orders||[];
   if(pend.length)h+=`<div class="card" style="margin-bottom:10px;border-color:var(--warn)"><b>⏳ Pesanan menunggu pembayaran</b>${pend.map(o=>`<div class="row"><span class="small"><b>${esc(o.code)}</b> · ${rp(o.total)} · ${o.items.map(k=>esc(LBL(k))).join(', ')}</span>${o.verify_state==='manual'?'<span class="badge l">🔎 butuh verifikasi manual — operator akan menghubungi Anda</span>':`<button type="button" class="p small" data-pay="${o.id}">💳 Bayar / unggah bukti</button>`}<button type="button" class="d small" data-cancel="${o.id}">Batalkan</button></div>`).join('')}</div>`;
+  if(!S.buy)h+=`<div class="card" style="margin-bottom:10px"><b>📑 Template outline laporan</b> <span class="small mut">— dijual per outline: <b>${rp(d.tpl_price)}</b> untuk <b>sekali impor</b> ke dokumen baru (tiap impor bayar lagi). Beli lewat halaman <a href="/templates">Template</a> (ada tombol “⚡ Beli langsung” di tiap template).</span></div>`;
   if(!S.buy)h+=`<div class="card" style="margin-bottom:10px"><b>Cara kerja</b>
    <div class="small mut">Tiap alat hitung/simulasi dibeli terpisah dengan harga sendiri (sesuai kesulitan hitung dan hasil yang ditawarkan). Pilih <b>Paket waktu</b> (berlaku untuk semua laporan selama 6/12/24 bulan) atau <b>Sekali pakai per laporan</b> (hanya untuk satu laporan; laporan lain harus beli lagi).
    Admin dapat membelikan untuk Anda, grup, atau seluruh tenant. Judul bagian, petunjuk, dan penanda 🧮 di dokumen tetap terlihat; yang terkunci hanya pemakaian hitung/simulasinya.</div></div>`;
   if(!S.buy)h+=`<div class="row">
    <label class="fill small"><b>Laporan (utk paket per-laporan)</b><br><select id="docSel">${d.docs.length?d.docs.map(x=>`<option value="${x.id}" ${x.id===S.docSel?'selected':''}>${esc(x.title)}</option>`).join(''):'<option value="">(belum ada laporan)</option>'}</select></label></div>`;
   h+='<div class="grid">'+only.map(e=>{
+    if(e.tpl)return `<div class="card hl" id="c_${esc(e.key)}"><div class="grp">${esc(e.group)}</div><h3>${e.icon} ${esc(e.label)}</h3>
+     <div>${e.credits?`<span class="badge g">🎟 ${e.credits} kali impor tersedia</span>`:'<span class="badge l">🔒 Belum dibeli</span>'}</div><p class="small mut">${esc(e.desc)}</p>
+     <label class="opt"><input type="radio" name="o_${esc(e.key)}" value="copy" checked><span>📥 Sekali impor — 1 dokumen</span><span class="pr">${rp(e.price)}</span></label>
+     <div class="row"><button type="button" class="p now" data-k="${esc(e.key)}">⚡ Beli langsung</button></div></div>`;
     const p=e.prices,lp=e.list_prices,has=['6','12','24','report'].some(k=>p[k]!=null);
     const opt=(k,l,val)=>p[k]==null?`<div class="opt na"><input type="radio" disabled><span>${l}</span><span class="pr mut">belum dihargai</span></div>`
       :`<label class="opt"><input type="radio" name="o_${e.key}" value="${val}"><span>${l}</span><span class="pr">${e.discount_pct&&lp[k]!=null&&lp[k]!==p[k]?`<s>${rp(lp[k])}</s>`:''}${rp(p[k])}</span></label>`;
@@ -122,12 +128,14 @@ function viewToko(){
   document.querySelectorAll('.now').forEach(b=>b.onclick=()=>buyNow(b.dataset.k));
   if($('#allTools'))$('#allTools').onclick=e=>{e.preventDefault();S.buy=false;draw()};
   if(S.buy){const f=document.querySelector(`input[name="o_${S.hl}"][value="report"]`)||document.querySelector(`input[name="o_${S.hl}"]`);if(f)f.checked=true}   // bawaan: sekali pakai untuk laporan ini
-  if(S.hl){$('#c_'+S.hl)?.scrollIntoView({block:'center'});}
+  if(S.hl){const el=document.getElementById('c_'+S.hl);if(el)el.scrollIntoView({block:'center'})}
 }
 function addToCart(key){
   const r=document.querySelector(`input[name="o_${key}"]:checked`);
   if(!r)return note('Pilih paket dulu (sekali pakai per laporan, atau 6/12/24 bulan).',1);
-  const e=S.d.engines.find(x=>x.key===key);
+  const e=ALLI().find(x=>x.key===key);
+  if(r.value==='copy'){if(S.cart.some(c=>c.module===key&&c.scope==='copy'))return note('Sudah ada di keranjang.',1);
+    S.cart.push({module:key,scope:'copy',label:`${e.label} — sekali impor`,price:e.price,list:e.price});note('Ditambahkan ke keranjang.',0);return cartBar()}
   if(r.value==='report'){
     if(!S.docSel)return note('Pilih laporan dulu untuk paket sekali pakai.',1);
     const t=(S.d.docs.find(x=>x.id===S.docSel)||{}).title||'#'+S.docSel;
@@ -147,7 +155,7 @@ function cartBar(){
 function holdLabel(){return 'saya sendiri'}
 $('#cclear').onclick=()=>{S.cart=[];cartBar()};
 const PHONE_RE=/^(\+?62|0)8\d{8,12}$/,MAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
-function itemsHtml(items){return items.map(i=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0"><span>${esc(LBL(i.module_key||i.module))} — ${i.scope==='report'?'sekali pakai'+(i.doc_title?': '+esc(i.doc_title):''):i.months+' bln'}</span><span>${i.list_price&&i.list_price!==i.price?`<s class="mut">${rp(i.list_price)}</s> `:''}<b>${rp(i.price)}</b></span></div>`).join('')}
+function itemsHtml(items){return items.map(i=>`<div class="small" style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:3px 0"><span>${esc(LBL(i.module_key||i.module))} — ${i.scope==='copy'?'sekali impor':i.scope==='report'?'sekali pakai'+(i.doc_title?': '+esc(i.doc_title):''):i.months+' bln'}</span><span>${i.list_price&&i.list_price!==i.price?`<s class="mut">${rp(i.list_price)}</s> `:''}<b>${rp(i.price)}</b></span></div>`).join('')}
 $('#cgo').onclick=()=>{
   const d=S.d,tot=S.cart.reduce((a,c)=>a+(c.price||0),0);
   const m=document.createElement('div');m.className='mask';
@@ -172,7 +180,7 @@ $('#cgo').onclick=()=>{
       if(!f.ok.checked)return E.textContent='Centang pernyataan bahwa WhatsApp dan email Anda aktif.';
     }
     const btn=f.querySelector('button.p');btn.disabled=true;
-    try{const r=await api('POST','/orders',{items:S.cart.map(c=>c.scope==='report'?{module:c.module,scope:'report',doc_id:c.doc_id}:{module:c.module,months:c.months}),
+    try{const r=await api('POST','/orders',{items:S.cart.map(c=>c.scope==='copy'?{module:c.module,scope:'copy'}:c.scope==='report'?{module:c.module,scope:'report',doc_id:c.doc_id}:{module:c.module,months:c.months}),
         contact:{phone:ph,email:em}});
       S.cart=[];S.direct=false;m.remove();await boot();
       payDlg(r.order,r.payment,r.notify)}

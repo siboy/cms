@@ -29,7 +29,9 @@ def overview(s) -> dict:
         groups = s._all(c, "SELECT id, name FROM cms_groups ORDER BY name")
         docs = [{"id": r["id"], "title": r["filename"] or f"Laporan #{r['id']}"} for r in s._all(c, "SELECT id, filename FROM cms_documents ORDER BY id DESC LIMIT 300")]
     orders = lic.list_orders(s)
-    return {"licensing": lic.enabled(s), "licensing_locked": bool((os.environ.get("CMS_LICENSING") or "").strip()), "engines": engines,
+    from utils import tpl_catalog as tc
+    tpls = [{"id": t["id"], "title": t["title"], "kind": t.get("kind")} for t in (tc.load_bundle().get("templates") or [])]
+    return {"tpl_price": lic.tpl_price(s), "templates": tpls, "licensing": lic.enabled(s), "licensing_locked": bool((os.environ.get("CMS_LICENSING") or "").strip()), "engines": engines,
             "orders": orders, "licenses": lic.list_licenses(s), "users": users, "groups": groups, "docs": docs,
             "pending": sum(1 for o in orders if o["status"] == "pending"), "manual": sum(1 for o in orders if o["status"] == "pending" and o.get("verify_state") == "manual")}
 
@@ -42,11 +44,19 @@ def set_prices(s, prices: dict, by: str = BY) -> dict:
     return {"ok": True}
 
 
+def set_tpl_price(s, price, by: str = BY) -> dict:
+    v = lic.set_tpl_price(s, price, by)
+    s.log_activity(by, "license.tpl_price", summary=f"harga template per impor = Rp {v}")
+    return {"ok": True, "tpl_price": v}
+
+
 def grant(s, d: dict, by: str = BY) -> dict:
-    """Beri lisensi langsung (kerja sama / penunjukan khusus) -- langsung aktif tanpa pembayaran."""
+    """Beri lisensi langsung (kerja sama / penunjukan khusus) -- langsung aktif tanpa pembayaran.
+    module 'tpl:<id>' = satu KREDIT IMPOR template untuk satu pengguna (scope 'copy')."""
     tgt = d.get("for") or {}
+    scope = "copy" if lic.is_tpl(d.get("module")) else ("report" if d.get("scope") == "report" else "time")
     row = lic.grant(s, d.get("module", ""), tgt.get("type", "user"), tgt.get("id"), int(d.get("months") or 0), by, str(d.get("note") or ""),
-                    scope="report" if d.get("scope") == "report" else "time", doc_id=d.get("doc_id"))
+                    scope=scope, doc_id=d.get("doc_id"))
     s.log_activity(by, "license.grant", target_type="license", target_id=row["id"], summary=f'{row["module_key"]} {tgt.get("type")} #{tgt.get("id")} s.d. {row["ends_at"]}')
     return {"license": row}
 
@@ -84,6 +94,7 @@ def proof_image_b64(s, oid: int, pid: int) -> dict:
 ACTIONS = {
     "overview": lambda s, a: overview(s),
     "set_prices": lambda s, a: set_prices(s, a.get("prices") or {}),
+    "set_tpl_price": lambda s, a: set_tpl_price(s, a.get("price")),
     "grant": lambda s, a: grant(s, a),
     "revoke": lambda s, a: revoke(s, a["id"]),
     "confirm": lambda s, a: confirm(s, a["order_id"], a.get("payment_ref", "")),

@@ -42,7 +42,7 @@ button{cursor:pointer;background:var(--card)}button:hover{border-color:var(--acc
 .dlg .opts{flex-direction:column;gap:10px}
 .dlg .opts label{flex-direction:row;align-items:center;gap:10px;font-size:13.5px;line-height:1.35}
 .dlg .opts input[type=checkbox]{flex:none;width:20px;height:20px;margin:0;padding:0;accent-color:var(--acc)}
-.card.lock{opacity:.55;cursor:not-allowed}.card.lock:hover{border-color:var(--line)}.badge.lk{background:#b45309;color:#fff}.badge.fr{background:#2da44e;color:#fff}.licbox{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 10px;background:var(--card)}.licbox.off{border-color:#b45309}.licbox input{min-width:240px}
+.card.lock{opacity:.72;cursor:pointer}.card.lock:hover{border-color:var(--acc)}.badge.lk{background:#b45309;color:#fff}.badge.fr{background:#2da44e;color:#fff}.licbox{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 10px;background:var(--card)}.licbox.off{border-color:#b45309}.licbox input{min-width:240px}
 /* pratinjau template = detail kartu (desktop) / POPUP layar penuh (HP): daftar 1 kolom, jadi pratinjau tidak boleh nyempil di bawah daftar */
 .dtop{display:flex;gap:8px;align-items:flex-start}.dtop h2{flex:1;margin:0 0 4px}.dx,.mobonly{display:none}
 .dfoot{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:8px 0}
@@ -98,6 +98,7 @@ async function api(method,path,body){
   if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
   return j;
 }
+const rp=n=>'Rp '+Number(n||0).toLocaleString('id-ID');
 const st={q:'',kind:'',cat:'',cur:null,min:0,me:null,lic:null,project:+(new URLSearchParams(location.search).get('project'))||0};
 let timer;
 function can(k){return !!(st.me&&(st.me.is_super||(st.me.perms||[]).includes(k)))}
@@ -107,6 +108,10 @@ async function boot(){
   $('#who').textContent=st.me.username;
   if(!can('template_use')){$('#msg').innerHTML='<div class="note">Akun Anda belum berhak memakai fitur Template. Minta admin mengaktifkan izin "Pakai Template Laporan" di halaman Privilege.</div>';return}
   await load();
+  const q=new URLSearchParams(location.search),bt=q.get('bought');
+  if(bt==='ok')$('#msg').innerHTML='<div class="note" style="background:#15803d22;color:var(--ok)">✅ Pembayaran terverifikasi — template terbuka, Anda punya 1 kali impor.</div>';
+  else if(bt==='wait')$('#msg').innerHTML='<div class="note">Pembayaran dilaporkan. Template terbuka setelah operator memverifikasi bukti Anda.</div>';
+  if(q.get('open')&&bt!=='wait')open(q.get('open'));
 }
 function renderLic(){
   const l=st.lic,box=$('#lic');if(!l){box.innerHTML='';return}
@@ -115,12 +120,9 @@ function renderLic(){
     if($('#licOff'))$('#licOff').onclick=async()=>{if(!confirm('Nonaktifkan fitur Template? Pengguna hanya bisa melihat pratinjau 3 template contoh.'))return;
       try{st.lic=(await api('POST','/templates/license',{active:false})).license;renderLic();load()}catch(e){alert(e.message)}};
     return}
-  box.innerHTML=`<div class="licbox off">🔒 <b>Fitur Template belum diaktifkan.</b> Anda hanya dapat <b>melihat pratinjau ${l.demo_ids.length} template contoh</b> (bertanda “Pratinjau gratis”); template lain terkunci dan <b>tidak bisa diimpor</b> ke dokumen.
-    <div class="small mut" style="margin-top:4px">Untuk membuka semua template dan mengimpor, fitur perlu <b>dibeli (pembayaran)</b> lalu <b>diaktifkan oleh operator platform</b>.</div>
-    <div class="small" style="margin-top:6px">Aktivasi dilakukan oleh penyedia layanan (operator) setelah pembayaran — hubungi mereka untuk berlangganan.</div></div>`;
-  if($('#licOn'))$('#licOn').onclick=async()=>{const ref=$('#licRef').value.trim();if(ref.length<3)return alert('Isi referensi pembayaran dulu.');
-    if(!confirm('Aktifkan fitur Template? Pastikan pembayaran sudah terkonfirmasi.'))return;
-    try{st.lic=(await api('POST','/templates/license',{active:true,payment_ref:ref})).license;renderLic();load();if(st.cur)open(st.cur)}catch(e){alert(e.message)}};
+  box.innerHTML=`<div class="licbox off">📑 <b>Template dijual per outline</b> — <b>${rp(l.price)}</b> untuk <b>sekali impor</b> ke satu dokumen; setiap impor berikutnya bayar lagi.
+    ${l.credits_total?` 🎟 Anda punya <b>${l.credits_total}</b> kali impor tersedia.`:''}
+    <div class="small mut" style="margin-top:4px">${(l.demo_ids||[]).length} template contoh (bertanda “Pratinjau gratis”) bisa dilihat isinya tanpa membeli; template lain terbuka setelah dibeli. Pembayaran lewat QRIS, bukti dibaca otomatis.</div></div>`;
 }
 async function load(){
   const p=new URLSearchParams({q:st.q,kind:st.kind,category:st.cat});
@@ -133,7 +135,7 @@ async function load(){
   document.querySelectorAll('#kinds .chip').forEach(b=>b.classList.toggle('cur',b.dataset.k===st.kind));
   $('#msg').innerHTML=r.total?'':'<div class="note">Katalog template belum dibangun di server ini (jalankan <code>scripts/tpl_build.py</code>).</div>';
   $('#list').innerHTML=r.items.map(t=>`<div class="card${st.cur===t.id?' cur':''}${t.locked?' lock':''}" data-id="${esc(t.id)}" data-lock="${t.locked?1:''}"><b>${t.locked?'🔒 ':''}${esc(t.title)}</b>
-   <div class="meta">${t.locked?'<span class="badge lk">Terkunci</span>':(st.lic&&!st.lic.active?'<span class="badge fr">Pratinjau gratis</span>':'')}<span class="badge">${esc(t.kind_label)}</span><span class="badge">${t.n_chapters} bab · ${t.n_nodes} bagian</span>
+   <div class="meta">${t.locked?`<span class="badge lk">${rp(t.price)} / impor</span>`:t.credits?`<span class="badge fr">🎟 ${t.credits}× impor tersedia</span>`:(st.lic&&!st.lic.active&&t.demo?'<span class="badge fr">Pratinjau gratis</span>':'')}<span class="badge">${esc(t.kind_label)}</span><span class="badge">${t.n_chapters} bab · ${t.n_nodes} bagian</span>
    <span class="badge ${t.source==='konsensus'?'gr':''}">${t.source==='aturan'?'sesuai aturan (PP 22/2021)':t.source==='baku'?'kerangka baku':'konsensus '+t.n_docs+' dokumen'}</span></div></div>`).join('')
    ||'<p class="mut">Tidak ada template yang cocok. Coba kata kunci lain (mis. “tambang”, “jalan”, “pabrik”).</p>';
   if(!st.cur&&r.items.length&&r.items.length<=1&&!isMob())open(r.items[0].id);
@@ -235,7 +237,16 @@ $('#btTapis').onclick=()=>{const b=$('#tapis');b.classList.toggle('hide');if(!b.
 $('#kinds').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;st.kind=b.dataset.k;load()};
 $('#cat').onchange=e=>{st.cat=e.target.value;load()};
 $('#q').oninput=e=>{clearTimeout(timer);timer=setTimeout(()=>{st.q=e.target.value.trim();load()},200)};
-$('#list').onclick=e=>{const c=e.target.closest('.card');if(!c)return;if(c.dataset.lock){$('#msg').innerHTML='<div class="note">🔒 Template ini terkunci. Aktifkan fitur Template (pembelian + aktivasi oleh operator) untuk membuka semua template dan mengimpor.</div>';return}$('#msg').innerHTML='';open(c.dataset.id)};
+$('#list').onclick=e=>{const c=e.target.closest('.card');if(!c)return;if(c.dataset.lock){buyDlg(c.dataset.id,(c.querySelector('b')||{}).textContent.replace('🔒 ',''));return}$('#msg').innerHTML='';open(c.dataset.id)};
+/* beli per outline: Toko membawa 'back' ke halaman ini (template terbuka lagi) -> setelah bayar langsung bisa dipratinjau & diimpor */
+function buyUrl(id){return '/store?item='+encodeURIComponent('tpl:'+id)+'&buy=1&back='+encodeURIComponent('/templates?open='+encodeURIComponent(id))}
+function buyDlg(id,title){
+  const m=document.createElement('div');m.className='mask';
+  m.innerHTML=`<div class="dlg"><b>🛒 Beli template “${esc(title||id)}”</b>
+   <div>Harga <b>${rp(st.lic&&st.lic.price)}</b> untuk <b>sekali impor</b> ke satu dokumen. Setiap impor berikutnya (template yang sama atau lain) dibayar lagi.</div>
+   <div class="small mut">Alur: Beli langsung → bayar QRIS &amp; unggah bukti (dibaca otomatis) → Anda kembali ke template ini → lihat isinya dan klik Salin.</div>
+   <div class="row" style="justify-content:flex-end"><button type="button" id="x">Batal</button><a href="${buyUrl(id)}"><button type="button" class="p">⚡ Beli langsung</button></a></div></div>`;
+  document.body.append(m);m.querySelector('#x').onclick=()=>m.remove();m.onclick=e=>{if(e.target===m)m.remove()};}
 
 let TOOLS={};
 function htHtml(n){return (n.ht||[]).length?`<div class="tl">📊 <b>Di dokumen contoh sejenis, bagian ini memuat perhitungan:</b> ${n.ht.map(h=>TOOLS[h.tool]?`<span class="chip" title="${esc(TOOLS[h.tool].why)}">${TOOLS[h.tool].icon} ${esc(TOOLS[h.tool].label)} <span class="sh">· ${h.n} dari ${h.of} dokumen</span></span>`:'').join(' ')}</div>`:''}
@@ -268,10 +279,10 @@ async function open(id){
      <span class="ic">${n.khusus?'<span title="Sub-bagian khusus tambahan (terkurasi) — sesuaikan dengan pedoman yang berlaku">⛏ </span>':''}${(n.tools||[]).length?'🧮 ':''}${n.g?'💡':''}${(n.b||[]).length?' 📝'+n.b.length:''}</span>${n.s<100?`<span class="s">${n.s}%</span>`:''}</div>
      <div class="x hide" id="x${i}">${blocksHtml(n)}</div>`).join('')}</div>
    <div class="mut small" style="margin:6px 0">${t.nodes.length} bagian${t.n_nodes_all>t.nodes.length?' (dari '+t.n_nodes_all+')':''} — setelah disalin, semuanya blok biasa: edit, geser, atau hapus di editor.</div>
-   ${st.lic&&!st.lic.active?'<div class="note">Ini pratinjau contoh. Mengimpor template ke dokumen memerlukan fitur Template yang aktif (pembelian + aktivasi oleh operator).</div>':''}
+   ${st.lic&&!st.lic.active?(r.credits>0?`<div class="note" style="background:#15803d22;color:var(--ok)">🎟 Anda punya <b>${r.credits}</b> kali impor untuk template ini. Mengimpor memakai 1 kali; impor berikutnya perlu dibeli lagi.</div>`:`<div class="note">Ini pratinjau contoh gratis. Mengimpor ke dokumen: <b>${rp(r.price)}</b> per impor (sekali impor).</div>`):''}
    <div class="note">${esc(r.disclaimer||'Template hanya kerangka dan contoh isi; penyusun tetap wajib menyesuaikan dengan peraturan yang berlaku dan karakter rencana kegiatan.')} Teks contoh disusun dari pola dokumen yang sudah diajukan; nama pemrakarsa &amp; wilayah diganti placeholder <code>[…]</code>.</div></div>
    <div class="dfoot"><button type="button" class="mobonly" id="dback">← Pilih contoh lain</button>
-   ${st.lic&&!st.lic.active?'<button class="p" id="cp" disabled title="Impor terkunci sampai fitur diaktifkan">🔒 Impor terkunci</button>':'<button class="p" id="cp" title="Buat dokumen baru berisi outline + petunjuk penulisan tiap bagian">📥 Salin outline &amp; petunjuk</button>'}</div>`;
+   ${st.lic&&!st.lic.active&&!(r.credits>0)?`<button class="p" id="cp" data-buy="1">🛒 Beli untuk impor — ${rp(r.price)}</button>`:'<button class="p" id="cp" title="Buat dokumen baru berisi outline + petunjuk penulisan tiap bagian">📥 Salin outline &amp; petunjuk'+(st.lic&&!st.lic.active?' (pakai 1 kali impor)':'')+'</button>'}</div>`;
   if(isMob()){$('#detail').classList.add('modal');$('#dmask').classList.remove('hide');document.body.style.overflow='hidden';if(!dmPushed){history.pushState({dm:1},'');dmPushed=true}}
   if(keepSc&&$('.dbody'))$('.dbody').scrollTop=keepSc;
   $('#dclose').onclick=()=>closeDetail();$('#dback').onclick=()=>closeDetail();
@@ -280,7 +291,7 @@ async function open(id){
     const row=document.querySelector(`.tree .n[data-i="${i}"] .tw`);if(row)row.textContent=x.classList.contains('hide')?'▸':'▾'};
   $('.tree').onclick=e=>{const n=e.target.closest('.n');if(n)tog(n.dataset.i)};
   let allOpen=false;$('#ex').onclick=()=>{allOpen=!allOpen;t.nodes.forEach((_,i)=>tog(i,allOpen));$('#ex').textContent=allOpen?'Tutup semua':'Buka semua'};
-  if(!$('#cp').disabled)$('#cp').onclick=()=>copyDlg(t);
+  $('#cp').onclick=()=>$('#cp').dataset.buy?buyDlg(t.id,t.title):copyDlg(t);
 }
 async function copyDlg(t){
   let projects=[];
@@ -292,6 +303,7 @@ async function copyDlg(t){
    <label>Jenis laporan<select name="rt"><option value="draft">Draft</option><option value="interim">Interim</option><option value="final">Final</option></select></label>`:''}
    <div class="opts"><label><input type="checkbox" name="gd" checked> Sertakan 💡 petunjuk (catatan di bawah tiap judul)</label>
     <label><input type="checkbox" name="ct" checked> Sertakan 📝 teks baku &amp; kerangka tabel</label></div>
+   ${st.lic&&!st.lic.active?'<div class="note">Impor ini memakai <b>1 kali impor</b> yang sudah Anda beli. Untuk dokumen berikutnya, template perlu dibeli lagi.</div>':''}
    <span class="small mut">Dibuat dokumen baru berisi ${t.nodes.length} judul bagian. Catatan petunjuk tidak ikut ekspor DOCX (bisa diubah di Opsi ekspor dokumen). Anda otomatis jadi pengunggahnya.</span>
    <div class="row" style="justify-content:flex-end"><button type="button" id="x">Batal</button><button class="p">Salin</button></div><span class="err small" id="e"></span></form>`;
   document.body.append(m);const f=m.querySelector('form');m.querySelector('#x').onclick=()=>m.remove();

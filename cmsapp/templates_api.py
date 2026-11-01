@@ -10,6 +10,7 @@ import os
 from flask import Blueprint, g, jsonify, request
 
 from cmsapp import auth
+from utils import licensing as licn      # (variabel lokal 'lic' di bawah = keadaan lisensi modul; jangan tertukar)
 from utils import modules as mods
 from utils import tpl_catalog as tc
 
@@ -18,8 +19,10 @@ S = auth.store
 PERM = "template_use"
 
 
-# ---- fitur Template = modul "templates" (utils/modules.py), diaktifkan OPERATOR lewat cmspanel (env CMS_MODULES). Terkunci = hanya
-# pratinjau DEMO_IDS (3 template contoh), impor ditolak. Pengguna/superadmin tenant tidak bisa mengaktifkan sendiri.
+# ---- Template DIJUAL PER OUTLINE: satu pembayaran (Rp 12.500, diatur superadmin di cmspanel) = SATU kali impor template itu ke dokumen baru;
+# tiap impor berikutnya membayar lagi. Kredit = lisensi scope 'copy' (utils/licensing). Modul "templates" (utils/modules.py, diaktifkan OPERATOR lewat
+# cmspanel/env CMS_MODULES) tetap jadi pintu belakang kerja sama: aktif = semua template boleh diimpor tanpa kredit. Tanpa keduanya: hanya pratinjau
+# DEMO_IDS (3 template contoh), impor ditolak.
 DEMO_IDS = [x.strip() for x in (os.environ.get("CMS_TPL_DEMO") or "ka-umum,ukl_upl-pertambangan,andal-pertambangan").split(",") if x.strip()]
 
 
@@ -28,9 +31,18 @@ def license_state() -> dict:
             "payment_ref": None, "activated_by": None, "activated_at": None}
 
 
+def _credits(tid: str | None = None):
+    return licn.copy_credits(S(), g.user["id"], tid)
+
+
 def _locked(tid: str | None = None) -> bool:
-    lic = license_state()
-    return not lic["active"] and (tid is None or tid not in lic["demo_ids"])
+    """Terkunci untuk pengguna ini: modul tak aktif DAN (bukan template contoh) DAN tak punya kredit impor template itu."""
+    ls = license_state()
+    if ls["active"]:
+        return False
+    if tid is not None and (tid in ls["demo_ids"] or _credits(tid) > 0):
+        return False
+    return True
 
 
 def body() -> dict:
@@ -63,8 +75,13 @@ def list_templates():
     items = tc.search(q, kind, cat)
     data = tc.load_bundle()
     lic = license_state()
-    for it in items:                                    # terkunci: hanya DEMO_IDS yang bisa dibuka (pratinjau); lainnya tampil tapi tak bisa diklik
-        it["locked"] = not lic["active"] and it["id"] not in lic["demo_ids"]
+    cr = _credits()
+    price = licn.tpl_price(S())
+    for it in items:                                    # terkunci: hanya DEMO_IDS / yang sudah dibeli (kredit) yang bisa dibuka; lainnya tampil + harga
+        it["credits"] = cr.get(it["id"], 0)
+        it["price"] = price
+        it["locked"] = not lic["active"] and it["id"] not in lic["demo_ids"] and it["credits"] == 0
+        it["demo"] = it["id"] in lic["demo_ids"]
     return jsonify(
         items=items, total=len(data["templates"]), generated=data.get("generated"), license=_public_license(lic),
         kinds=[{"key": k, "label": v} for k, v in tc.KINDS.items()],
@@ -146,14 +163,16 @@ def get_template(tid):
     if not t:
         raise KeyError(f"template {tid} tidak ada")
     if _locked(tid):
-        return jsonify(error="Template ini terkunci. Fitur Template belum dibeli/diaktifkan — hanya 3 template contoh yang bisa dipratinjau.", code="locked"), 403
+        return jsonify(error=f"Template ini dijual per outline: Rp {licn.tpl_price(S()):,} sekali impor. Beli dulu untuk melihat isi lengkapnya — 3 template contoh bisa dipratinjau gratis.".replace(",", "."),
+                       code="locked", price=licn.tpl_price(S())), 403
     ms = _min_share()
     nodes = tc.annotate(tc.nodes_for(t, ms), t["category"], t["kind"])
     from utils import tpl_tools
     return jsonify(template={**{k: v for k, v in t.items() if k != "nodes"}, "nodes": nodes,
                              "n_nodes_all": len(t["nodes"])}, min_share=ms,
                    tools={x["id"]: {"label": x["label"], "icon": x["icon"], "why": x["why"]} for x in tpl_tools.TOOLS},
-                   disclaimer=tc.load_guidance().get("disclaimer", ""), license=_public_license(license_state()))
+                   disclaimer=tc.load_guidance().get("disclaimer", ""), license=_public_license(license_state()),
+                   credits=_credits(tid), price=licn.tpl_price(S()))
 
 
 @bp.post("/<tid>/copy")
@@ -164,8 +183,25 @@ def copy_template(tid):
     t = tc.get(tid)
     if not t:
         raise KeyError(f"template {tid} tidak ada")
-    if _locked():
-        return jsonify(error="Fitur Template belum diaktifkan, jadi belum bisa mengimpor ke dokumen. Pembelian (pembayaran) dan aktivasi dilakukan superadmin.", code="locked"), 403
+    via_module = license_state()["active"]
+    credit = None
+    if not via_module:                                  # dijual per impor: pakai (pesan) SATU kredit; tanpa kredit -> harus bayar dulu
+        credit = licn.reserve_copy(S(), g.user["id"], tid)
+        if credit is None:
+            price = licn.tpl_price(S())
+            return jsonify(error=f"Impor template ini perlu pembayaran Rp {price:,} per dokumen (sekali impor).".replace(",", "."), code="need_purchase", price=price), 403
+    try:
+        resp = _do_copy(t, tid, credit)
+    except Exception:
+        if credit is not None:
+            licn.release_copy(S(), credit)               # gagal -> kredit dikembalikan
+        raise
+    if credit is not None and isinstance(resp, tuple) and resp[1] >= 400:
+        licn.release_copy(S(), credit)                   # ditolak (mis. izin proyek) -> kredit dikembalikan
+    return resp
+
+
+def _do_copy(t: dict, tid: str, credit):
     d = body()
     guide, content = bool(d.get("include_guide", True)), bool(d.get("include_content", True))
     nodes = tc.annotate(tc.nodes_for(t, _min_share(d)), t["category"], t["kind"])
@@ -180,15 +216,19 @@ def copy_template(tid):
     title = (d.get("title") or t["title"]).strip()[:200]
     user = g.user["username"]
     doc_id = S().create_document_from_outline(title, nodes, user=user, guide=guide, content=content)
+    if credit is not None:
+        licn.finish_copy(S(), credit, doc_id, title)
     if pid:
         S().link_document(int(pid), doc_id, d.get("report_type") or "draft", d.get("label", ""))
     S().log_activity(user, "doc.template", target_type="document", target_id=doc_id, doc_id=doc_id,
                      project_id=int(pid) if pid else None, summary=f'dari template {tid} ({len(nodes)} bagian)')
-    return jsonify(ok=True, doc_id=doc_id, n_headings=len(nodes)), 201
+    return jsonify(ok=True, doc_id=doc_id, n_headings=len(nodes), used_credit=credit is not None,
+                   credits_left=licn.copy_credits(S(), g.user["id"], tid)), 201
 
 
 def _public_license(lic: dict) -> dict:
-    return {**lic, "can_manage": False, "can_import": lic["active"]}      # aktivasi hanya oleh operator (cmspanel), bukan di tenant
+    cr = _credits()
+    return {**lic, "can_manage": False, "can_import": lic["active"], "price": licn.tpl_price(S()), "credits_total": sum(cr.values()), "per_import": True}
 
 
 @bp.get("/license")

@@ -531,7 +531,7 @@ def api_add_admin(slug):
 # ---------------------------------------------------------------- Lisensi & harga Toko Engine (HANYA superadmin platform)
 # Harga, konfirmasi pembayaran, lisensi langsung (kerja sama / penunjukan khusus), pencabutan, dan mode lisensi dikelola DI SINI -- tidak ada
 # di aplikasi tenant. Dijalankan di dalam container app tenant lewat scripts/license_op.py (utils/license_ops.py); tak ada endpoint baru di tenant.
-LICENSE_ACTIONS = {"overview", "set_prices", "grant", "revoke", "confirm", "cancel", "mode"}
+LICENSE_ACTIONS = {"overview", "set_prices", "set_tpl_price", "grant", "revoke", "confirm", "cancel", "mode"}
 
 
 def license_op(slug: str, action: str, args: dict | None = None) -> tuple[dict, int]:
@@ -593,7 +593,7 @@ const H={'Content-Type':'application/json','X-PANEL':'1'};
 const api=(m,u,b)=>fetch(u,{method:m,headers:H,body:b?JSON.stringify(b):undefined}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.status);return j});
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const rp=n=>n==null?'—':'Rp '+Number(n).toLocaleString('id-ID');const dt=s=>(s||'').slice(0,16).replace('T',' ');
-const LBL=k=>(D.engines.find(e=>e.key===k)||{label:k}).label;
+const LBL=k=>String(k).startsWith('tpl:')?'📑 Template: '+(((D.templates||[]).find(t=>'tpl:'+t.id===k)||{}).title||k.slice(4)):(D.engines.find(e=>e.key===k)||{label:k}).label;
 let TEN=[],D=null,slug='',tab='pesanan';
 const TABS=[['pesanan','📥 Pesanan'],['harga','💲 Harga'],['beri','🎁 Beri lisensi'],['lisensi','📄 Semua lisensi'],['mode','⚙ Mode']];
 async function boot(){TEN=(await api('GET','/api/tenants')).tenants;slug=(location.hash||'').slice(1)||(TEN[0]||{}).slug||'';
@@ -609,7 +609,7 @@ const call=async(a,b,ok)=>{try{await api('POST',`/api/tenants/${slug}/license/${
 function wa(o,paid){if(!o.contact_phone)return '';const code='LIC-'+String(o.id).padStart(5,'0');
  const t=paid?`Halo, pembayaran pesanan ${code} sudah kami konfirmasi dan lisensi Anda sudah AKTIF. Terima kasih.`:`Halo, pesanan ${code} (${rp(o.total)}) di Toko Alat Hitung masih menunggu pembayaran/verifikasi. Mohon bayar via QRIS dengan nominal persis lalu unggah bukti di Toko. Terima kasih.`;
  return `https://wa.me/${o.contact_phone}?text=${encodeURIComponent(t)}`}
-const itemsT=o=>o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>');
+const itemsT=o=>o.items.map(i=>`${esc(LBL(i.module_key))} — ${i.scope==='copy'?'sekali impor (1 dokumen)':i.scope==='report'?'sekali pakai: '+esc(i.doc_title||'#'+i.doc_id):i.months+' bln'} (${i.list_price&&i.list_price!==i.price?`<s>${rp(i.list_price)}</s> `:''}${rp(i.price)})`).join('<br>');
 function proofs(o){return (o.proofs||[]).map(p=>`<div><a href="/api/tenants/${slug}/license/proof/${o.id}/${p.id}" target=_blank><img class=thumb loading=lazy src="/api/tenants/${slug}/license/proof/${o.id}/${p.id}"></a>
  <small>#${p.attempt} ${p.verdict==='ok'?'✅':p.verdict==='manual'?'🔎':'⚠'} OCR ${p.amount_found!=null?rp(p.amount_found):'nominal ?'}${p.status_found?' · '+esc(p.status_found):''}${p.tx_at?' · '+esc(dt(p.tx_at)):''}${p.reason?' — '+esc(p.reason):''}</small></div>`).join('')}
 function vPesanan(){const pend=D.orders.filter(o=>o.status==='pending'),paid=D.orders.filter(o=>o.status==='paid').slice(0,10);
@@ -622,19 +622,23 @@ function vPesanan(){const pend=D.orders.filter(o=>o.status==='pending'),paid=D.o
  view.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>{if(confirm('Tolak/batalkan pesanan #'+b.dataset.no+'?'))call('cancel',{order_id:+b.dataset.no})})}
 function vHarga(){view.innerHTML=`<h3>Harga daftar (ORI) dalam Rupiah — kosong = belum dijual</h3><small>Ditagihkan = harga daftar − diskon. Pembeli melihat harga ORI dicoret dan label diskon.</small>
  <div class=sc><table><tr><th>Alat</th><th>Per laporan</th><th>6 bln</th><th>12 bln</th><th>24 bln</th><th>Diskon %</th></tr>${D.engines.map(e=>`<tr class=pr><td>${e.icon||''} ${esc(e.label)}</td>${['report','6','12','24'].map(k=>`<td><input type=number min=0 step=100 data-pk="${e.key}|${k}" value="${e.list_prices[k]??''}"></td>`).join('')}<td><input type=number min=0 max=90 style="width:64px" data-pd="${e.key}" value="${e.discount_pct||0}"></td></tr>`).join('')}</table></div>
- <div class=row><button class=p type=button id=sp>Simpan harga</button></div>`;
+ <h3 style="margin-top:18px">📑 Template outline — harga per impor</h3><small>Satu pembayaran = SATU kali impor satu template ke dokumen baru; impor berikutnya membayar lagi. Berlaku sama untuk semua ${(D.templates||[]).length} template.</small>
+ <div class=row><label>Harga per impor (Rp)<input type=number id=tp min=1000 step=500 value="${D.tpl_price}" style="width:140px"></label><button type=button class=p id=stp>Simpan harga template</button></div>
+ <div class=row><button class=p type=button id=sp>Simpan harga alat</button></div>`;
+ stp.onclick=()=>call('set_tpl_price',{price:+tp.value},'Harga template disimpan.');
  sp.onclick=()=>{const pr={};view.querySelectorAll('[data-pk]').forEach(i=>{const[k,p]=i.dataset.pk.split('|');(pr[k]=pr[k]||{})[p]=i.value===''?null:+i.value});view.querySelectorAll('[data-pd]').forEach(i=>{(pr[i.dataset.pd]=pr[i.dataset.pd]||{}).discount=+i.value||0});call('set_prices',{prices:pr},'Harga disimpan.')}}
 function vBeri(){view.innerHTML=`<h3>Beri lisensi langsung (tanpa pembayaran)</h3><small>Untuk penunjukan khusus ke seseorang atau kerja sama baru. Langsung aktif.</small>
- <form id=gf class="card" style="display:grid;gap:8px;max-width:640px;margin-top:8px"><label>Alat<select name=module>${D.engines.map(e=>`<option value="${e.key}">${esc(e.label)}</option>`).join('')}</select></label>
+ <form id=gf class="card" style="display:grid;gap:8px;max-width:640px;margin-top:8px"><label>Alat / template<select name=module><optgroup label="Alat hitung & simulasi">${D.engines.map(e=>`<option value="${e.key}">${esc(e.label)}</option>`).join('')}</optgroup><optgroup label="Template outline (satu kredit impor, untuk satu pengguna)">${(D.templates||[]).map(t=>`<option value="tpl:${esc(t.id)}">📑 ${esc(t.title)}</option>`).join('')}</optgroup></select></label>
  <label>Jenis<select name=scope><option value=time>Paket waktu (semua laporan)</option><option value=report>Sekali pakai per laporan</option></select></label>
  <label id=gm>Bulan<input type=number name=months min=1 max=60 value=12></label><label id=gd style="display:none">Laporan<select name=doc_id>${D.docs.map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join('')}</select></label>
  <label>Untuk<select name=ht><option value=user>Pengguna</option><option value=group>Grup (peran)</option><option value=tenant>Seluruh pengguna tenant</option></select></label>
  <label id=gw>Pilih<select name=hid></select></label><label>Catatan (mis. kerja sama X)<input name=note maxlength=255></label><button class=p>Terbitkan lisensi</button></form>`;
  const f=gf,fill=()=>{const t=f.ht.value;gw.style.display=t==='tenant'?'none':'';f.hid.innerHTML=(t==='group'?D.groups.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`):D.users.map(x=>`<option value="${x.id}">${esc((x.name||x.username)+' ('+x.username+')')}</option>`)).join('')};
- f.ht.onchange=fill;fill();f.scope.onchange=()=>{gm.style.display=f.scope.value==='report'?'none':'';gd.style.display=f.scope.value==='report'?'':'none'};
- f.onsubmit=e=>{e.preventDefault();call('grant',{module:f.module.value,scope:f.scope.value,months:+f.months.value,doc_id:f.scope.value==='report'?+f.doc_id.value:undefined,for:f.ht.value==='tenant'?{type:'tenant'}:{type:f.ht.value,id:+f.hid.value},note:f.note.value},'Lisensi diterbitkan.')}}
-function vLisensi(){const sc=l=>l.scope==='report'?'📄 '+esc(l.doc_title||'#'+l.doc_id):'s.d. '+esc((l.ends_at||'').slice(0,10));
- view.innerHTML=`<h3>Semua lisensi (${D.licenses.length})</h3><div class=sc><table><tr><th>Alat</th><th>Pemegang</th><th>Berlaku</th><th>Sumber</th><th>Status</th><th></th></tr>${D.licenses.map(l=>`<tr><td>${esc(LBL(l.module_key))}</td><td>${esc(l.holder_label)}</td><td>${sc(l)}</td><td>${esc(l.source==='purchase'?'beli #'+(l.order_id||''):'diberikan'+(l.note?' — '+l.note:''))}</td><td>${l.revoked_at?'dicabut':l.expired?'kedaluwarsa':l.active?'aktif':'—'}</td><td>${l.revoked_at?'':`<button class=bad type=button data-rv="${l.id}">Cabut</button>`}</td></tr>`).join('')}</table></div>`;
+ const sync=()=>{const tp_=f.module.value.startsWith('tpl:');f.scope.disabled=tp_;f.ht.disabled=tp_;if(tp_){f.ht.value='user';fill()}gm.style.display=(tp_||f.scope.value==='report')?'none':'';gd.style.display=(!tp_&&f.scope.value==='report')?'':'none'};
+ f.ht.onchange=fill;fill();f.scope.onchange=sync;f.module.onchange=sync;
+ f.onsubmit=e=>{e.preventDefault();call('grant',{module:f.module.value,scope:f.module.value.startsWith('tpl:')?'copy':f.scope.value,months:+f.months.value,doc_id:f.scope.value==='report'?+f.doc_id.value:undefined,for:f.ht.value==='tenant'?{type:'tenant'}:{type:f.ht.value,id:+f.hid.value},note:f.note.value},'Lisensi diterbitkan.')}}
+function vLisensi(){const sc=l=>l.scope==='copy'?(l.used?'🎟 terpakai → '+esc(l.doc_title||'dokumen #'+l.doc_id):'🎟 1× impor, belum dipakai'):l.scope==='report'?'📄 '+esc(l.doc_title||'#'+l.doc_id):'s.d. '+esc((l.ends_at||'').slice(0,10));
+ view.innerHTML=`<h3>Semua lisensi (${D.licenses.length})</h3><div class=sc><table><tr><th>Alat</th><th>Pemegang</th><th>Berlaku</th><th>Sumber</th><th>Status</th><th></th></tr>${D.licenses.map(l=>`<tr><td>${esc(LBL(l.module_key))}</td><td>${esc(l.holder_label)}</td><td>${sc(l)}</td><td>${esc(l.source==='purchase'?'beli #'+(l.order_id||''):'diberikan'+(l.note?' — '+l.note:''))}</td><td>${l.revoked_at?'dicabut':l.scope==='copy'&&l.used?'terpakai':l.expired?'kedaluwarsa':l.active?'aktif':'—'}</td><td>${l.revoked_at||(l.scope==='copy'&&l.used)?'':`<button class=bad type=button data-rv="${l.id}">Cabut</button>`}</td></tr>`).join('')}</table></div>`;
  view.querySelectorAll('[data-rv]').forEach(b=>b.onclick=()=>{if(confirm('Cabut lisensi ini? Pemegang langsung kehilangan akses.'))call('revoke',{id:+b.dataset.rv})})}
 function vMode(){view.innerHTML=`<h3>Mode lisensi</h3><p>Mode lisensi per-alat tenant ini: <b>${D.licensing?'AKTIF':'mati'}</b>${D.licensing_locked?' <span class="badge w">dikunci env CMS_LICENSING</span>':''}</p>
  <button type=button class=p id=mm ${D.licensing_locked?'disabled':''}>${D.licensing?'Matikan':'Nyalakan'} mode lisensi</button>`;

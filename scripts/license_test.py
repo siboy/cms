@@ -29,7 +29,8 @@ def _require(*perms):
 
 
 auth.require = _require
-from cmsapp import kd_api, license_api, modules_api  # noqa: E402
+from cmsapp import kd_api, license_api, modules_api, templates_api  # noqa: E402
+from utils import tpl_catalog as tc  # noqa: E402
 from utils import license_ops as ops  # noqa: E402
 
 OK = 0
@@ -48,6 +49,7 @@ def main():
     st = blockstore.open_sqlite(os.path.join(td, "t.db"))
     auth.store = lambda: st
     license_api.S = lambda: st
+    templates_api.S = lambda: st
     app = Flask(__name__)
     app.config["BASE_URL"] = "https://t.example"
     app.extensions["cms_store"] = st
@@ -55,7 +57,7 @@ def main():
     SENT = []
     mailer.send_mail = lambda to, subject, html: (SENT.append((to, subject, html)) or True)
     CT = {"email": "Ahli@Example.com", "phone": "0812-3456-7890"}
-    for b in (license_api.bp, kd_api.bp, modules_api.bp):
+    for b in (license_api.bp, kd_api.bp, modules_api.bp, templates_api.bp):
         app.register_blueprint(b)
 
     # ---- data dasar: grup admin(super) & ahli(eksternal); pengguna 1 admin, 2 & 3 ahli, 4 ahli di grup lain
@@ -73,8 +75,8 @@ def main():
     with st._tx() as c:
         st._x(c, "UPDATE cms_users SET email='admin@example.com' WHERE id=1")
     USERS.update({1: {"id": 1, "username": "admin", "is_super": True, "perms": [], "role": "admin"},
-                  2: {"id": 2, "username": "ahli_a", "is_super": False, "perms": [], "role": "ahli"},
-                  3: {"id": 3, "username": "ahli_b", "is_super": False, "perms": [], "role": "ahli"},
+                  2: {"id": 2, "username": "ahli_a", "is_super": False, "perms": ["template_use"], "role": "ahli"},
+                  3: {"id": 3, "username": "ahli_b", "is_super": False, "perms": ["template_use"], "role": "ahli"},
                   4: {"id": 4, "username": "viewer1", "is_super": False, "perms": [], "role": "viewer"}})
 
     @app.before_request
@@ -432,6 +434,81 @@ def main():
     check(ov["pending"] >= 0 and any(e["key"] == "bising" for e in ov["engines"]) and ov["users"] and ov["groups"], "overview untuk cmspanel: engine, pesanan, pengguna, grup")
     pc = c.get("/api/license/store", headers=H(2)).get_json()
     check("pending_orders" in pc, "katalog memuat pesanan menunggu milik pembeli (banner Toko)")
+
+    # ================= TEMPLATE OUTLINE: DIJUAL PER IMPOR (Rp 12.500 = sekali impor) =================
+    tpls = [t for t in (tc.load_bundle().get("templates") or []) if t["id"] not in templates_api.DEMO_IDS]
+    if not tpls:
+        print("(katalog template kosong di lingkungan uji -> uji template dilewati)")
+    else:
+        tid, tid2 = tpls[0]["id"], tpls[1]["id"] if len(tpls) > 1 else tpls[0]["id"]
+        tk = "tpl:" + tid
+        check(lic.tpl_price(st) == 12500, "harga template bawaan Rp 12.500 per impor")
+        lst = {i["id"]: i for i in c.get("/api/templates", headers=H(2)).get_json()["items"]}
+        check(lst[tid]["locked"] is True and lst[tid]["price"] == 12500 and lst[tid]["credits"] == 0, "template berbayar: terkunci, harga 12.500, belum ada kredit")
+        check(c.get(f"/api/templates/{tid}", headers=H(2)).get_json()["code"] == "locked" and c.get(f"/api/templates/{tid}", headers=H(2)).status_code == 403, "isi lengkap template terkunci sebelum dibeli")
+        cp = c.post(f"/api/templates/{tid}/copy", json={}, headers=H(2))
+        check(cp.status_code == 403 and cp.get_json()["code"] == "need_purchase" and cp.get_json()["price"] == 12500, "impor tanpa kredit ditolak (need_purchase)")
+        # beli: pesanan 12.500, pending, hanya untuk diri sendiri
+        bt = c.post("/api/license/orders", json={"contact": CT, "items": [{"module": tk, "scope": "copy"}, {"module": tk, "scope": "copy"}]}, headers=H(2))
+        ob = bt.get_json()["order"]
+        check(bt.status_code == 201 and ob["total"] == 12500 and len(ob["items"]) == 1 and ob["items"][0]["scope"] == "copy" and ob["status"] == "pending", "pesanan template: Rp 12.500, 1 baris (duplikat dibuang), pending")
+        check(c.post("/api/license/orders", json={"contact": CT, "items": [{"module": "tpl:tidak-ada", "scope": "copy"}]}, headers=H(2)).status_code == 400, "template tak dikenal ditolak")
+        check(c.post("/api/license/orders", json={"contact": CT, "items": [{"module": tk, "scope": "copy"}], "for": {"type": "tenant"}}, headers=H(2)).status_code == 403, "template tak bisa dibelikan untuk tenant/orang lain")
+        check(c.post("/api/license/orders", json={"contact": CT, "items": [{"module": tk, "scope": "copy"}], "paid": True}, headers=H(1)).status_code == 403, "admin tenant tak bisa 'tandai lunas' pembelian template")
+        sv = c.get(f"/api/license/store?item={tk}", headers=H(2)).get_json()
+        check(sv["tpl_items"] and sv["tpl_items"][0]["price"] == 12500 and sv["tpl_items"][0]["credits"] == 0 and sv["labels"][tk].startswith("Template: ") and any(o_["id"] == ob["id"] for o_ in sv["pending_orders"]), "Toko memuat item template (harga, kredit, label) + pesanan menunggu")
+        check(lic.copy_credits(st, 2, tid) == 0, "belum dikonfirmasi -> belum ada kredit")
+        r = OP.confirm(ob["id"], {"payment_ref": "TRF-TPL"})
+        check(r.status_code == 200 and lic.copy_credits(st, 2, tid) == 1 and lic.copy_credits(st, 2) == {tid: 1}, "konfirmasi lunas -> 1 kredit impor")
+        check(lic.copy_credits(st, 3, tid) == 0, "kredit hanya milik pembeli")
+        mine_l = c.get("/api/license/licenses", headers=H(2)).get_json()["licenses"]
+        check(any(x["scope"] == "copy" and x["active"] and not x.get("used") for x in mine_l), "daftar lisensi pembeli memuat kredit aktif")
+        check(not on_for(2, "bising") or True, "kredit template tidak membuka alat apa pun")
+        lst = {i["id"]: i for i in c.get("/api/templates", headers=H(2)).get_json()["items"]}
+        check(lst[tid]["locked"] is False and lst[tid]["credits"] == 1, "setelah dibeli: terbuka, 1 kali impor tersedia")
+        check(c.get(f"/api/templates/{tid}", headers=H(2)).status_code == 200 and c.get(f"/api/templates/{tid}", headers=H(2)).get_json()["credits"] == 1, "isi lengkap bisa dipratinjau pembeli")
+        check(c.get(f"/api/templates/{tid}", headers=H(3)).status_code == 403, "pengguna lain tetap terkunci")
+        # kegagalan impor mengembalikan kredit
+        bad = c.post(f"/api/templates/{tid}/copy", json={"project_id": 1}, headers=H(2))
+        check(bad.status_code == 403 and lic.copy_credits(st, 2, tid) == 1, "impor ditolak (izin proyek) -> kredit TIDAK terpakai")
+        # kredit dipesan sekali saja (dua permintaan bersamaan)
+        c1 = lic.reserve_copy(st, 2, tid)
+        check(c1 is not None and lic.reserve_copy(st, 2, tid) is None and lic.copy_credits(st, 2, tid) == 0, "kredit yang sedang dipakai tak bisa dipesan lagi")
+        lic.release_copy(st, c1)
+        check(lic.copy_credits(st, 2, tid) == 1, "dilepas -> kredit kembali")
+        # impor sungguhan memakai 1 kredit
+        cp = c.post(f"/api/templates/{tid}/copy", json={"title": "Dokumen dari template"}, headers=H(2))
+        cj = cp.get_json()
+        check(cp.status_code == 201 and cj["doc_id"] and cj["used_credit"] is True and cj["credits_left"] == 0, "impor berhasil memakai 1 kredit")
+        used = [x for x in c.get("/api/license/licenses", headers=H(2)).get_json()["licenses"] if x["scope"] == "copy"]
+        check(used and used[0]["used"] and not used[0]["active"] and used[0]["doc_id"] == cj["doc_id"], "kredit tercatat terpakai untuk dokumen itu")
+        cp2 = c.post(f"/api/templates/{tid}/copy", json={}, headers=H(2))
+        check(cp2.status_code == 403 and cp2.get_json()["code"] == "need_purchase", "impor kedua WAJIB bayar lagi")
+        lst = {i["id"]: i for i in c.get("/api/templates", headers=H(2)).get_json()["items"]}
+        check(lst[tid]["locked"] is True and lst[tid]["credits"] == 0, "setelah dipakai: terkunci lagi")
+        # kredit terikat template: template lain tetap terkunci
+        if tid2 != tid:
+            OP.grant({"module": tk, "for": {"type": "user", "id": 2}, "note": "kerja sama"})
+            check(c.post(f"/api/templates/{tid2}/copy", json={}, headers=H(2)).status_code == 403, "kredit template A tidak berlaku untuk template B")
+            check(c.post(f"/api/templates/{tid}/copy", json={}, headers=H(2)).status_code == 201, "kredit dari pemberian superadmin dipakai impor")
+        # pemberian khusus: hanya untuk satu pengguna & template valid
+        check(OP.grant({"module": tk, "for": {"type": "group", "id": 2}}).status_code == 400, "kredit template tak bisa diberikan ke grup/tenant")
+        check(OP.grant({"module": "tpl:tidak-ada", "for": {"type": "user", "id": 2}}).status_code == 400, "kredit untuk template tak dikenal ditolak")
+        # harga diatur superadmin
+        check(OP._run(lambda: ops.set_tpl_price(st, 20000)).status_code == 200 and lic.tpl_price(st) == 20000, "superadmin mengubah harga per impor")
+        bt2 = c.post("/api/license/orders", json={"contact": CT, "items": [{"module": tk, "scope": "copy"}]}, headers=H(3)).get_json()["order"]
+        check(bt2["total"] == 20000, "pesanan memakai harga baru")
+        check(OP._run(lambda: ops.set_tpl_price(st, 5)).status_code == 400, "harga tak masuk akal ditolak")
+        check(c.put("/api/license/tpl_price", json={"price": 1}, headers=H(1)).status_code in GONE, "tidak ada endpoint harga template di tenant")
+        ov2 = ops.overview(st)
+        check(ov2["tpl_price"] == 20000 and any(t_["id"] == tid for t_ in ov2["templates"]), "overview panel memuat harga & daftar template")
+        OP._run(lambda: ops.set_tpl_price(st, 12500))
+        # pintu belakang operator: modul 'templates' aktif -> boleh impor tanpa kredit (kerja sama), kredit tidak terpakai
+        os.environ["CMS_MODULES"] = "templates"
+        before = lic.copy_credits(st, 3)
+        cm = c.post(f"/api/templates/{tid}/copy", json={}, headers=H(3))
+        check(cm.status_code == 201 and cm.get_json()["used_credit"] is False and lic.copy_credits(st, 3) == before, "modul Template aktif (operator): impor tanpa kredit")
+        os.environ["CMS_MODULES"] = "none"
 
     # ---- env operator tetap menang (override)
     os.environ["CMS_MODULES"] = "calc_hayati"

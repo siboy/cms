@@ -48,7 +48,7 @@ args, payload = CALLS[-1]
 check(args[:4] == ["docker", "exec", "-i", "cms-cms-app"] and args[-1] == "scripts/license_op.py" and payload["action"] == "overview", f"perintah: {args}")
 r = c.post("/api/tenants/cms/license/confirm", json={"order_id": 5, "payment_ref": "TRF"}, headers=H)
 check(r.status_code == 200 and CALLS[-1][1] == {"order_id": 5, "payment_ref": "TRF", "action": "confirm"}, "konfirmasi meneruskan argumen")
-for act in ("set_prices", "grant", "revoke", "cancel", "mode"):
+for act in ("set_prices", "set_tpl_price", "grant", "revoke", "cancel", "mode"):
     check(c.post(f"/api/tenants/cms/license/{act}", json={}, headers=H).status_code == 200, f"aksi {act} diizinkan")
 for bad in ("overview", "eval", "proof_image", "../x"):
     check(c.post(f"/api/tenants/cms/license/{bad}", json={}, headers=H).status_code in (404, 405), f"aksi {bad!r} ditolak")
