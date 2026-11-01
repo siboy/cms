@@ -108,6 +108,11 @@ function viewToko(){
   if(!S.buy)h+=`<div class="row">
    <label class="fill small"><b>Laporan (utk paket per-laporan)</b><br><select id="docSel">${d.docs.length?d.docs.map(x=>`<option value="${x.id}" ${x.id===S.docSel?'selected':''}>${esc(x.title)}</option>`).join(''):'<option value="">(belum ada laporan)</option>'}</select></label></div>`;
   h+='<div class="grid">'+only.map(e=>{
+    if(e.feat)return `<div class="card hl" id="c_${esc(e.key)}"><div class="grp">${esc(e.group)}</div><h3>${e.icon} ${esc(e.label)}</h3>
+     <div>${e.active?`<span class="badge g">✅ Aktif s.d. ${esc(dt(e.ends_at))}</span>`:'<span class="badge l">🔒 Belum aktif</span>'}</div><p class="small mut">${esc(e.desc)}</p>
+     ${e.can_buy?`<label class="opt"><input type="radio" name="o_${esc(e.key)}" value="feat" checked><span>⭐ Langganan ${e.months} bulan — seluruh perusahaan</span><span class="pr">${rp(e.price)}</span></label>
+     <div class="small mut" style="margin:4px 0">Nominal besar: setelah bukti diunggah, aktivasi dikonfirmasi operator platform.</div>
+     <div class="row"><button type="button" class="p now" data-k="${esc(e.key)}">⚡ ${e.active?'Perpanjang':'Beli langsung'}</button></div>`:'<div class="note">Hanya admin dengan izin “Beli Fitur Premium Perusahaan” yang bisa membeli.</div>'}</div>`;
     if(e.tpl)return `<div class="card hl" id="c_${esc(e.key)}"><div class="grp">${esc(e.group)}</div><h3>${e.icon} ${esc(e.label)}</h3>
      <div>${e.credits?`<span class="badge g">🎟 ${e.credits} kali impor tersedia</span>`:'<span class="badge l">🔒 Belum dibeli</span>'}</div><p class="small mut">${esc(e.desc)}</p>
      <label class="opt"><input type="radio" name="o_${esc(e.key)}" value="copy" checked><span>📥 Sekali impor — 1 dokumen</span><span class="pr">${rp(e.price)}</span></label>
@@ -134,6 +139,8 @@ function addToCart(key){
   const r=document.querySelector(`input[name="o_${key}"]:checked`);
   if(!r)return note('Pilih paket dulu (sekali pakai per laporan, atau 6/12/24 bulan).',1);
   const e=ALLI().find(x=>x.key===key);
+  if(r.value==='feat'){if(S.cart.some(c=>c.module===key))return note('Sudah ada di keranjang.',1);
+    S.cart.push({module:key,scope:'time',months:e.months,label:`${e.label} — langganan ${e.months} bulan`,price:e.price,list:e.price});note('Ditambahkan ke keranjang.',0);return cartBar()}
   if(r.value==='copy'){if(S.cart.some(c=>c.module===key&&c.scope==='copy'))return note('Sudah ada di keranjang.',1);
     S.cart.push({module:key,scope:'copy',label:`${e.label} — sekali impor`,price:e.price,list:e.price});note('Ditambahkan ke keranjang.',0);return cartBar()}
   if(r.value==='report'){

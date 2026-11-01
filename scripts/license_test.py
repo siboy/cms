@@ -95,6 +95,7 @@ def main():
 
     def flag_reset():
         license_api._Resolver._flag = (0.0, False)
+        license_api._Resolver._feat.clear()
 
     class _R:                                   # respons mirip HTTP agar pemeriksaan lama tetap terbaca
         def __init__(self, code, data):
@@ -509,6 +510,87 @@ def main():
         cm = c.post(f"/api/templates/{tid}/copy", json={}, headers=H(3))
         check(cm.status_code == 201 and cm.get_json()["used_credit"] is False and lic.copy_credits(st, 3) == before, "modul Template aktif (operator): impor tanpa kredit")
         os.environ["CMS_MODULES"] = "none"
+
+    # ================= FITUR PREMIUM TENANT: Impor outline dari dokumen/proyek lain (Rp 2 juta / 1 tahun) =================
+    from PIL import Image
+    import io as _io
+
+    def feat_on():
+        with app.test_request_context("/", headers=H(1)):
+            g.user = USERS[1]
+            return mods.is_on("import_outline")
+    flag_reset()
+    check("import_outline" in mods.PREMIUM and any(m["key"] == "import_outline" and m["group"] == "Premium" for m in mods.MODULES), "modul premium import_outline terdaftar (grup Premium)")
+    check(not feat_on(), "BAWAAN: fitur impor outline TIDAK aktif (tersembunyi) bahkan untuk admin")
+    fs = lic.feature_state(st, "import_outline")
+    check(fs["active"] is False and fs["price"] == 2_000_000 and fs["months"] == 12 and fs["via"] is None, "status fitur: tidak aktif, tawaran Rp 2.000.000 / 12 bulan")
+    gd = modules_api.guard("import_outline")(lambda: "ok")
+    with app.test_request_context("/", headers=H(1)):
+        g.user = USERS[1]
+        rr = gd()
+        check(isinstance(rr, tuple) and rr[1] == 403 and rr[0].get_json()["code"] == "module_locked", "API (guard) menolak 403 module_locked saat fitur tidak aktif")
+    ffl = c.get("/api/license/features", headers=H(1)).get_json()
+    check(ffl["can_buy"] is True and ffl["features"][0]["key"] == "import_outline" and ffl["features"][0]["price"] == 2_000_000, "halaman admin: tawaran muncul untuk admin berizin (super)")
+    check(c.get("/api/license/features", headers=H(2)).get_json()["can_buy"] is False, "pengguna tanpa izin premium_buy: tawaran terlihat tapi tak bisa membeli")
+    check(any(p["key"] == "premium_buy" for p in auth.PERMISSIONS), "izin 'Beli Fitur Premium Perusahaan' ada di katalog privilege")
+    FI = {"module": "feat:import_outline"}
+    check(c.post("/api/license/orders", json={"contact": CT, "items": [FI]}, headers=H(2)).status_code == 403, "pengguna biasa tak bisa membeli fitur premium")
+    check(c.post("/api/license/orders", json={"contact": CT, "items": [FI], "paid": True}, headers=H(1)).status_code == 403, "bahkan admin tak bisa 'tandai lunas'")
+    check(c.post("/api/license/orders", json={"contact": CT, "items": [FI, {"module": "bising", "months": 12}]}, headers=H(1)).status_code == 400, "fitur premium tak boleh dicampur dengan alat di satu pesanan")
+    check(c.post("/api/license/orders", json={"contact": CT, "items": [{"module": "feat:tidak-ada"}]}, headers=H(1)).status_code in (400, 403), "fitur tak dikenal ditolak")
+    SENT.clear()
+    fo = c.post("/api/license/orders", json={"contact": CT, "items": [FI]}, headers=H(1))
+    fod = fo.get_json()["order"]
+    check(fo.status_code == 201 and fod["total"] == 2_000_000 and fod["holder_type"] == "tenant" and fod["items"][0]["months"] == 12 and fod["status"] == "pending", "admin membuat pesanan: Rp 2.000.000, 12 bulan, untuk seluruh tenant, pending")
+    check(not feat_on(), "pesanan belum dibayar -> fitur tetap tersembunyi")
+    sv = c.get("/api/license/store?item=feat:import_outline", headers=H(1)).get_json()
+    check(sv["tpl_items"] and sv["tpl_items"][0]["feat"] and sv["tpl_items"][0]["price"] == 2_000_000 and sv["tpl_items"][0]["can_buy"] is True and sv["labels"]["feat:import_outline"].startswith("Fitur premium"), "Toko memuat kartu fitur premium")
+    check(lic.feature_state(st, "import_outline")["pending_order"] == fod["id"], "tawaran menandai pesanan yang menunggu")
+    # OCR: nominal besar TIDAK diaktifkan otomatis walau bukti cocok
+    ok_png = _io.BytesIO(); Image.new("RGB", (300, 200), (7, 7, 7)).save(ok_png, "PNG")
+    now_ = lic._now()
+    txt = f"Transfer Berhasil\nNominal Rp 2.000.000\n{now_.strftime('%d %b %Y, %H:%M:%S')} WIB\nNo. Referensi: 9000000000777"
+    pr_ = lic.submit_proof(st, fod["id"], "admin", ok_png.getvalue(), now=now_, ocr=lambda _p: txt)
+    check(pr_["result"] == "manual" and "nominal besar" in " ".join(pr_["reasons"]) and pr_["order"]["status"] == "pending" and pr_["order"]["verify_state"] == "manual", "bukti cocok TAPI nominal > batas otomatis -> wajib konfirmasi superadmin")
+    check(not feat_on(), "OCR tidak mengaktifkan fitur bernilai besar")
+    r = OP.confirm(fod["id"], {"payment_ref": "TRF-FEAT"})
+    flag_reset()
+    fs = lic.feature_state(st, "import_outline")
+    check(r.status_code == 200 and fs["active"] and fs["via"] == "langganan" and fs["ends_at"], "superadmin konfirmasi -> fitur aktif (langganan)")
+    check(feat_on(), "mods.is_on('import_outline') true setelah langganan aktif")
+    with app.test_request_context("/", headers=H(2)):
+        g.user = USERS[2]
+        check(mods.is_on("import_outline"), "berlaku untuk seluruh pengguna tenant (bukan hanya pembeli)")
+        check(gd() == "ok", "API (guard) mengizinkan setelah aktif")
+    from datetime import datetime as _dt
+    e1 = _dt.strptime(fs["ends_at"], "%Y-%m-%d %H:%M:%S")
+    check(abs((e1 - lic.add_months(lic._now(), 12)).total_seconds()) < 5, "masa langganan 12 bulan")
+    # perpanjangan menambah dari akhir masa lama
+    fo2 = c.post("/api/license/orders", json={"contact": CT, "items": [FI]}, headers=H(1)).get_json()["order"]
+    OP.confirm(fo2["id"], {}); flag_reset()
+    e2 = _dt.strptime(lic.feature_state(st, "import_outline")["ends_at"], "%Y-%m-%d %H:%M:%S")
+    check((e2 - e1).days >= 360, "perpanjangan menambah 12 bulan dari akhir masa lama")
+    # pemberian langsung superadmin & pencabutan
+    gl = OP.grant({"module": "feat:import_outline", "months": 3, "for": {"type": "user", "id": 2}, "note": "kerja sama"})
+    check(gl.status_code == 201 and gl.get_json()["license"]["module_key"] == "feat:import_outline", "superadmin memberi langganan fitur (selalu untuk seluruh tenant)")
+    with st._tx() as c_:
+        for row in st._all(c_, "SELECT id FROM cms_licenses WHERE module_key='feat:import_outline'"):
+            lic.revoke(st, row["id"], "uji")
+    flag_reset()
+    check(not feat_on() and not lic.feature_state(st, "import_outline")["active"], "semua langganan dicabut -> fitur tersembunyi lagi")
+    os.environ["CMS_MODULES"] = "import_outline"
+    flag_reset()
+    check(feat_on() and lic.feature_state(st, "import_outline")["via"] == "operator", "diaktifkan operator (cmspanel/env): aktif tanpa batas waktu")
+    os.environ["CMS_MODULES"] = "none"
+    flag_reset()
+    check(not feat_on(), "operator mematikan -> tersembunyi")
+    check(OP.grant({"module": "feat:import_outline", "months": 0}).status_code == 400, "masa 0 bulan ditolak")
+    ovf = ops.overview(st)["features"]
+    check(ovf and ovf[0]["key"] == "import_outline" and ovf[0]["price"] == 2_000_000, "overview panel memuat status fitur premium")
+    # UI: tombol impor outline hanya dirender bila modul aktif
+    ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cmsapp", "ui", "index.html"), encoding="utf-8").read()
+    check("modOn('import_outline')?'<button type=button id=mco>" in ui and "modOn('import_outline')?'<button type=button id=lclone" in ui, "UI: kedua tombol 'Salin outline dari dokumen lain' dibungkus modOn('import_outline')")
+    check("/license/features" in ui and "premiumBox" in ui, "UI: tawaran fitur premium di halaman Admin")
 
     # ---- env operator tetap menang (override)
     os.environ["CMS_MODULES"] = "calc_hayati"

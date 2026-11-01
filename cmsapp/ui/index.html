@@ -353,6 +353,8 @@ body.jfab #ed{padding-bottom:84px}
 const $=(s,e=document)=>e.querySelector(s), H={'Content-Type':'application/json','X-CMS':'1'};
 let cmts={},openCm=new Set(),me=null,doc=null,chapter=null,section=null,es=null,outline=[],locks={},hb=null,shareTok=null;
 const assetUrl=s=>shareTok?`/api/shared/${shareTok}/asset/${s}`:`/api/docs/${doc}/asset/${s}`;
+let MODON=new Set();   /* modul fitur yang aktif untuk tenant/pengguna ini (GET /api/modules); fitur premium TERSEMBUNYI bila tak ada di sini */
+const modOn=k=>MODON.has(k);
 const hasPerm=k=>!!(me&&(me.is_super||(me.perms||[]).includes(k)));
 const view_restricted_client=()=>hasPerm('doc_view_assigned_only')&&!hasPerm('block_edit_all');
 function cellText(c){let n=0;return (c.blocks||[]).map(x=>{const d=x.data||{};if(x.kind==='list_item'){if(d.ordered){n=(d.restart||!n)?1:n+1;return n+(d.sep||')')+' '+x.text}n=0;return '• '+x.text}n=0;return x.text}).join('\n')}
@@ -439,7 +441,7 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
  const stok=qp.get('share');if(stok)return shareView(stok);
  try{me=(await api('GET','/me')).user;if(window.OFF)OFF.setUser(me.username)}catch(e){return loginView()}
  pruneDrafts();
- $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#balat').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;api('GET','/modules').then(r=>{$('#bstore').hidden=!r.licensing}).catch(()=>{});$('#bapk').hidden=false;
+ $('#who').textContent=(me.username)+' · '+me.role;$('#bout').hidden=false;$('#bmenu').hidden=false;$('#bkeb').hidden=false;$('#badm').hidden=!hasPerm('user_manage');$('#bpriv').hidden=!hasPerm('privilege_manage');$('#bact').hidden=!hasPerm('activity_view');$('#bdocs').hidden=false;$('#bproj').hidden=false;$('#bdata').hidden=false;$('#balat').hidden=false;$('#btpl').hidden=!hasPerm('template_use');$('#bfiles').hidden=false;try{const mr=await api('GET','/modules');$('#bstore').hidden=!mr.licensing;MODON=new Set((mr.modules||[]).filter(m=>m.on).map(m=>m.key))}catch(e){MODON=new Set()}$('#bapk').hidden=false;
  setNotif((me.unread_tags||0)+(me.unread_notifications||0)+(me.unread_projects||0));
  const dq=qp.get('doc');
  if(dq){await openDoc(+dq);const bq=qp.get('block');
@@ -448,6 +450,9 @@ async function boot(){const qp=new URLSearchParams(location.search);const rtok=q
   history.replaceState(null,'',location.pathname);
   if(bought==='ok')note('Pembelian berhasil — alat sudah aktif.');else if(bought==='wait')note('Pembayaran dilaporkan. Alat terbuka setelah admin memverifikasi.');
   if(tq&&bq){const h=(outline||[]).find(x=>x.id===+bq);if(h){const tl=toolsFor({kind:'heading',text:h.text,data:{tools:h.tools}});if(tl.length)toolDlg({id:h.id,text:h.text},tl)}}}
+
+ else if(qp.get('admin')==='1'&&hasPerm('user_manage')){const bt=qp.get('bought');history.replaceState(null,'',location.pathname);await adminView();
+  if(bt==='ok')note('Pembayaran terverifikasi — fitur premium aktif.');else if(bt==='wait')note('Pembayaran dilaporkan. Fitur aktif setelah operator memverifikasi bukti Anda.')}
  else projectsView()}
 function resetPasswordView(token){$('#app').innerHTML=`<form id=rp><h3>Atur password baru</h3>
  <input name=p1 type=password placeholder="password baru (min 8)" required minlength=8>
@@ -633,7 +638,7 @@ async function openOutline(docId){await openDoc(+docId);if(innerWidth<=800){cons
 function projectMenu(p,projects){const mg=hasPerm('project_manage');const m=document.createElement('div');m.className='mask';
  m.innerHTML=`<div class=dlg><b>${esc(p.name)}</b>
  <div id=mdocs></div>
- ${mg?`<button type=button id=mco>📑 Salin outline dokumen dari dokumen lain…</button>
+ ${mg?`${modOn('import_outline')?'<button type=button id=mco>📑 Salin outline dokumen dari dokumen lain…</button>':''}
  ${hasPerm('template_use')?`<button type=button id=mtp>🧩 Buat dari template AMDAL / UKL-UPL…</button>`:''}
  <button type=button id=mct>👥 Salin tim dari dokumen lain…</button>
  <button type=button id=mts>💰 Set tim sales…</button>
@@ -646,7 +651,7 @@ function projectMenu(p,projects){const mg=hasPerm('project_manage');const m=docu
   box.innerHTML='<div class=shdr>📑 Pintasan outline laporan</div>'+L.map(d=>`<button type=button class=jump data-doc="${d.doc_id}">📑 Outline ${esc(d.typeLabel)}<small> — ${esc(d.name.slice(0,40))}</small></button>`).join('');
   box.querySelectorAll('.jump').forEach(b=>b.onclick=()=>{m.remove();openOutline(b.dataset.doc).catch(e=>note(e.message,1))})}).catch(()=>{});
  if(!mg)return;
- m.querySelector('#mco').onclick=()=>{m.remove();cloneDocDlg(p,projects)};
+ if(m.querySelector('#mco'))m.querySelector('#mco').onclick=()=>{m.remove();cloneDocDlg(p,projects)};
  m.querySelector('#mtp')?.addEventListener('click',()=>{location.href='/templates?project='+p.id});
  m.querySelector('#mct').onclick=()=>{m.remove();cloneTeamDlg(p,projects)};
  m.querySelector('#mts').onclick=()=>{m.remove();setProjectFieldDlg(p,'sales_team','Tim sales')};
@@ -870,7 +875,7 @@ async function tabLaporan(){const canManage=hasPerm('project_manage');
  +`<div class=rc data-rt=dokumen><div class=rh><b>📂 Tambah Dokumen</b></div>`
  +(canManage?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
  ${hasPerm('template_use')?'<button type=button class=p id=ltpl title="Pilih template outline AMDAL / UKL-UPL, lalu salin jadi dokumen laporan proyek ini">🧩 Buat dari template</button>':''}
- <button type=button id=lclone title="Salin outline (judul bab/sub-bab) dari dokumen lain yang sudah ada">📑 Salin outline dari dokumen lain</button></div>
+ ${modOn('import_outline')?'<button type=button id=lclone title="Salin outline (judul bab/sub-bab) dari dokumen lain yang sudah ada">📑 Salin outline dari dokumen lain</button>':''}</div>
  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
  <input id=lq placeholder="Cari nama dokumen…" style="flex:1;min-width:160px">
  <select id=lex size=1 style="flex:1;min-width:160px"><option value="">— ${docsFree.length} dokumen, ketik untuk mencari —</option>${docsFree.map(d=>`<option value=${d.id}>${esc(d.filename)}</option>`).join('')}</select>
@@ -1549,10 +1554,22 @@ async function privilegeView(){closeDoc();
   $('#puserm').querySelectorAll('[data-ov]').forEach(sel=>sel.onchange=async()=>{
    const v=sel.value===''?null:sel.value==='1';
    try{await api('PATCH',`/admin/users/${uid}/perms`,{overrides:{[sel.dataset.ov]:v}})}catch(e){note(e.message,1)}})}}
-async function adminView(){closeDoc();const [{users},{docs},groups,adset]=await Promise.all([api('GET','/admin/users'),api('GET','/docs'),
+function premiumBox(F){
+ if(!F||!(F.features||[]).length)return '';
+ const rp=n=>'Rp '+Number(n||0).toLocaleString('id-ID');
+ return `<h3>⭐ Fitur premium perusahaan</h3>`+F.features.map(f=>`<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin:0 0 12px;max-width:760px">
+  <b>${esc(f.label)}</b> ${f.active?`<span class=badge style="background:#2da44e">✅ AKTIF${f.via==='operator'?' (diaktifkan operator)':' s.d. '+esc((f.ends_at||'').slice(0,10))}</span>`:'<span class=badge style="background:var(--mut)">belum aktif — tersembunyi</span>'}
+  <div style="font-size:12.5px;color:var(--mut);margin:4px 0 8px">${esc(f.desc)}</div>
+  ${f.active&&f.via==='operator'?'<div style="font-size:12.5px">Fitur sudah dibuka oleh penyedia layanan. Tombol “📑 Salin outline dari dokumen lain” tampil di menu proyek &amp; tab Laporan.</div>':
+   `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b style="font-size:16px">${rp(f.price)}</b><span style="color:var(--mut);font-size:12.5px">/ ${f.months} bulan, seluruh perusahaan${f.active?' · perpanjang dari akhir masa aktif':''}</span>
+    ${F.can_buy?(f.pending_order?`<span style="font-size:12.5px">⏳ Pesanan #${f.pending_order} menunggu pembayaran — <a href="/store?item=${encodeURIComponent('feat:'+f.key)}&buy=1&back=${encodeURIComponent('/?admin=1')}">lanjutkan</a></span>`:
+      `<a class=btnlink href="/store?item=${encodeURIComponent('feat:'+f.key)}&buy=1&back=${encodeURIComponent('/?admin=1')}">⚡ ${f.active?'Perpanjang':'Aktifkan'} ${f.months} bulan</a>`):'<span style="font-size:12.5px;color:var(--warn)">Pembelian hanya oleh admin dengan izin “Beli Fitur Premium Perusahaan”.</span>'}</div>
+   <div style="font-size:11.5px;color:var(--mut);margin-top:6px">Bayar via QRIS (bukti diverifikasi). Karena nominalnya besar, aktivasi dikonfirmasi operator platform setelah bukti diperiksa.</div>`}</div>`).join('')}
+async function adminView(){closeDoc();const [{users},{docs},groups,adset,prem]=await Promise.all([api('GET','/admin/users'),api('GET','/docs'),
  api('GET','/groups/names').then(r=>r.groups).catch(()=>[]),
- api('GET','/admin/settings').then(r=>r.settings).catch(()=>({}))]);
- $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p><h3>Pengguna</h3>${hasPerm('privilege_manage')?'<p><a href="#" id=gopriv>Atur grup &amp; privilege…</a></p>':''}
+ api('GET','/admin/settings').then(r=>r.settings).catch(()=>({})),
+ api('GET','/license/features').catch(()=>null)]);
+ $('#app').innerHTML=`<div id=docs><p><a href="#" id=ab>← Dokumen</a></p>${premiumBox(prem)}<h3>Pengguna</h3>${hasPerm('privilege_manage')?'<p><a href="#" id=gopriv>Atur grup &amp; privilege…</a></p>':''}
  <p><label style="display:inline-flex;gap:6px;align-items:center;font-size:13px;cursor:pointer">
   <input type=checkbox id=wldetail ${adset.workload_detail?'checked':''} style="width:auto">
   📊 Beban Tim: tampilkan angka detail (skor &amp; poin) ke semua yang membuka panel — tidak dicentang = note kualitatif saja</label></p>

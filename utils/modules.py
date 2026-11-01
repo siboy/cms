@@ -18,6 +18,8 @@ MODULES: list[dict] = [
     {"key": "proyek_lokasi", "group": "Platform", "label": "Proyek: lokasi & wilayah studi", "desc": "Layer koordinat (peta SVG, impor CSV) dan checklist wilayah studi kab/kota-kecamatan-desa."},
     {"key": "proyek_simulasi", "group": "Platform", "label": "Proyek: tugas & pelacakan simulasi", "desc": "Penugasan simulasi ke tenaga ahli dan status sudah/belum disimulasikan di detail proyek."},
     {"key": "panduan_blok", "group": "Platform", "label": "Panduan otomatis di kotak komentar blok", "desc": "Pertanyaan di kotak komentar sebuah blok dijawab otomatis di utas yang sama: petunjuk template, alat hitung, kutipan peraturan resmi, dan praktik dokumen contoh (butuh basis pengetahuan /data/tpl/kb)."},
+    # ---- fitur premium tenant (TERSEMBUNYI bawaan: tak tampil di UI & ditolak API sampai diaktifkan operator ATAU dibeli tenant 1 tahun)
+    {"key": "import_outline", "group": "Premium", "label": "Impor outline dari dokumen/proyek lain", "desc": "Menyalin outline (judul bab/sub-bab) dari dokumen lain, termasuk milik proyek lain, jadi dokumen laporan baru. Tersembunyi bawaan; aktif lewat cmspanel (operator) atau langganan 1 tahun yang dibeli admin tenant."},
     # ---- engine perhitungan & simulasi (per topik)
     {"key": "calc_survei", "group": "Engine", "label": "Kalkulator survei responden", "desc": "Jumlah responden (Cochran, Slovin, dst.), alokasi per desa/kecamatan; di proyek: responden otomatis per unit wilayah."},
     {"key": "calc_lalin", "group": "Engine", "label": "ANDAL lalu lintas", "desc": "Pertumbuhan kendaraan & kepemilikan, pelebaran jalan, sebelum vs sesudah, jam puncak, V/C, kepadatan, waktu tempuh."},
@@ -165,10 +167,23 @@ def sim_on(sim_id: str) -> bool:
     return any(tool_on(t) for t in ts) if ts else module_any_on(SIM_MODULE.get(sim_id, ""))
 
 
+PREMIUM = {m["key"] for m in MODULES if m["group"] == "Premium"}      # fitur premium tenant: env ATAU langganan tenant (lisensi 'feat:<kunci>')
+
+
+def feature_on(key: str) -> bool:
+    try:
+        return bool(_resolver and _resolver.feature_on(key))
+    except Exception:                                       # noqa: BLE001
+        return False
+
+
 def is_on(key: str) -> bool:
-    """Gerbang tingkat MODUL. Modul platform = env. Modul calc_* = env, atau (mode lisensi) pemegang salah satu alatnya."""
+    """Gerbang tingkat MODUL. Modul platform = env. Modul calc_* = env, atau (mode lisensi) pemegang salah satu alatnya.
+    Fitur premium (grup 'Premium') = env, atau tenant memegang langganan aktif (lisensi tenant 'feat:<kunci>')."""
     if key in enabled():
         return True
+    if key in PREMIUM:
+        return feature_on(key)
     if key.startswith("calc_"):
         return module_any_on(key)
     return False

@@ -9,6 +9,7 @@ from flask import Blueprint, abort, current_app, g, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
 from cmsapp import auth
+from cmsapp.modules_api import guard
 from utils.blockstore import ConflictError, LockedError
 
 bp = Blueprint("projects", __name__, url_prefix="/api")
@@ -516,6 +517,7 @@ def docs_index():
 
 @bp.post("/projects/<int:pid>/clone-document")
 @auth.require("project_manage")
+@guard("import_outline")                     # fitur premium: TERSEMBUNYI bawaan (UI tak menampilkan tombolnya), ditolak API sampai aktif
 def clone_document(pid):
     """Proyek yang SUDAH ada: salin HANYA outline SATU dokumen (dipilih langsung by nama, tak peduli dia
     tertaut ke proyek mana/tak tertaut sama sekali) jadi dokumen laporan BARU KOSONG di proyek ini.

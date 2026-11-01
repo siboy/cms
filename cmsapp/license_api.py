@@ -73,6 +73,20 @@ class _Resolver:
         type(self)._flag = (time.time(), val)      # di kelas (bukan instance) supaya bisa direset: _Resolver._flag = (0.0, False)
         return val
 
+    _feat: dict = {}
+
+    def feature_on(self, key: str) -> bool:
+        """Fitur premium tenant aktif lewat langganan (lisensi tenant 'feat:<key>' yang berlaku). Di-cache 20 dtk per kunci."""
+        ts, val = type(self)._feat.get(key, (0.0, False))
+        if time.time() - ts < 20:
+            return val
+        try:
+            val = bool(lic.FEATURES.get(key)) and bool(lic.feature_state(auth.store(), key)["ends_at"])
+        except Exception:                                   # noqa: BLE001
+            val = False
+        type(self)._feat[key] = (time.time(), val)
+        return val
+
     def allowed(self, key: str) -> bool:
         if not has_request_context():
             return False
@@ -107,7 +121,8 @@ def _items_html(o: dict) -> str:
         else:
             what = f"sekali pakai: {escape(i.get('doc_title') or '#' + str(i.get('doc_id')))}" if i["scope"] == "report" else f"paket {i['months']} bulan"
         lp = f" <s>{_rp(i['list_price'])}</s>" if i.get("list_price") and i["list_price"] != i["price"] else ""
-        label = ("Template: " + lic.tpl_title(lic.tpl_id(i["module_key"]))) if lic.is_tpl(i["module_key"]) else mods.tool_label(i["module_key"])
+        label = ("Template: " + lic.tpl_title(lic.tpl_id(i["module_key"]))) if lic.is_tpl(i["module_key"]) else (
+            ("Fitur premium: " + lic.FEATURES[lic.feat_id(i["module_key"])]["label"]) if lic.is_feat(i["module_key"]) else mods.tool_label(i["module_key"]))
         rows.append(f"<li>{escape(label)} — {what} ({lp} <b>{_rp(i['price'])}</b>)</li>")
     return "<ul>" + "".join(rows) + "</ul>"
 
@@ -198,11 +213,17 @@ def store_view():
                    "owned_here": bool(ctx_doc) and k in lic.active_keys(s, g.user["id"], doc_id=ctx_doc)})
     # template outline (dijual per impor): item yang diminta lewat ?item=tpl:<id> + label untuk item pesanan menunggu
     tpl_items, labels = [], {}
-    want = [request.args.get("item", "")] if lic.is_tpl(request.args.get("item")) else []
+    want = [request.args.get("item", "")] if (lic.is_tpl(request.args.get("item")) or lic.is_feat(request.args.get("item"))) else []
+    for fid, f in lic.FEATURES.items():                  # fitur premium: label untuk item pesanan menunggu + kartu bila diminta
+        labels[lic.FEAT + fid] = "Fitur premium: " + f["label"]
+        if lic.FEAT + fid in want:
+            st_ = lic.feature_state(s, fid)
+            tpl_items.append({"key": lic.FEAT + fid, "label": f["label"], "icon": "⭐", "group": "Fitur premium perusahaan", "feat": True, "price": f["price"], "months": f["months"],
+                              "desc": f["desc"], "active": st_["active"], "ends_at": st_["ends_at"], "can_buy": auth.has_perm(g.user, "premium_buy")})
     pend_orders = lic.list_orders(s, buyer_id=g.user["id"], status="pending")
     keys_ = set(want) | {it["module_key"] for o in pend_orders for it in o["items"] if lic.is_tpl(it["module_key"])}
     credits = lic.copy_credits(s, g.user["id"])
-    for k in sorted(keys_):
+    for k in sorted(k_ for k_ in keys_ if lic.is_tpl(k_)):
         tid = lic.tpl_id(k)
         if not lic.tpl_exists(tid):
             continue
@@ -220,6 +241,15 @@ def store_view():
     return jsonify(out)
 
 
+# ------------------------------------------------------------------------------------------- fitur premium (tawaran di halaman Admin)
+@bp.get("/features")
+@auth.require()
+def features_list():
+    """Tawaran fitur premium perusahaan + status (tersembunyi di UI sampai diaktifkan). Pembelian hanya oleh pemegang izin premium_buy."""
+    s = S()
+    return jsonify(features=[lic.feature_state(s, fid) for fid in lic.FEATURES], can_buy=auth.has_perm(g.user, "premium_buy"))
+
+
 # ------------------------------------------------------------------------------------------- pesanan
 @bp.post("/orders")
 @auth.require()
@@ -229,6 +259,16 @@ def order_create():
     atau konfirmasi superadmin di cmspanel). Tidak ada 'tandai lunas', 'beli untuk orang lain/grup/tenant' di sini."""
     d = body()
     tgt = d.get("for") or {"type": "user", "id": g.user["id"]}
+    feats = [it for it in (d.get("items") or []) if lic.is_feat(it.get("module"))]
+    if feats:                                            # langganan fitur premium = untuk SELURUH perusahaan, hanya admin berizin 'premium_buy'
+        if len(feats) != len(d.get("items") or []):
+            return jsonify(error="fitur premium dibeli terpisah dari alat/template"), 400
+        if d.get("paid") or not auth.has_perm(g.user, "premium_buy"):
+            return jsonify(error="hanya admin perusahaan (izin Beli Fitur Premium) yang bisa membeli fitur premium"), 403
+        o = lic.create_order(S(), g.user, [{"module": it["module"], "months": lic.FEATURES[lic.feat_id(it["module"])]["months"]} for it in feats], "tenant", None,
+                             paid=False, payment_ref="", note=str(d.get("note") or ""), contact=d.get("contact"))
+        S().log_activity(g.user["username"], "license.order", target_type="license_order", target_id=o["id"], summary=f'pesanan #{o["id"]} fitur premium total {o["total"]} menunggu')
+        return jsonify(order=o, payment=lic.payment_info(o), notify={"email_buyer": _mail_buyer_instructions(o), "email_admins": _mail_admins(S(), o, False)}), 201
     if d.get("paid") or tgt.get("type", "user") != "user" or int(tgt.get("id") or g.user["id"]) != g.user["id"]:
         return jsonify(error="pembelian hanya untuk akun Anda sendiri; pemberian lisensi dikelola operator platform"), 403
     for it in d.get("items") or []:

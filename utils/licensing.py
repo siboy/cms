@@ -27,6 +27,10 @@ import threading
 from datetime import datetime
 
 PERIODS = (6, 12, 24)
+FEAT = "feat:"                              # module_key lisensi fitur premium tenant = "feat:<kunci modul>", holder 'tenant', berjangka
+FEATURES = {"import_outline": {"label": "Impor outline dari dokumen/proyek lain", "price": 2_000_000, "months": 12,
+                               "desc": "Salin outline (judul bab/sub-bab) dari dokumen lain atau proyek lain jadi dokumen laporan baru. Langganan 1 tahun untuk seluruh perusahaan."}}
+AUTO_MAX = int(os.environ.get("LICENSE_AUTO_MAX_IDR") or 1_000_000)   # pesanan di atas ini TIDAK diaktifkan otomatis oleh OCR -> wajib konfirmasi superadmin
 TPL = "tpl:"                                # module_key lisensi template = "tpl:<id template>"; scope 'copy' = KREDIT IMPOR (sekali pakai)
 TPL_PRICE_DEFAULT = 12_500                  # Rp per outline dokumen (satu pembayaran = satu kali impor); superadmin bisa ubah di cmspanel
 REPORT_END = "2099-12-31 23:59:59"          # lisensi per laporan tidak kedaluwarsa (dicabut admin bila perlu)
@@ -96,6 +100,31 @@ def ensure(s) -> None:
                 with s._tx() as c:
                     s._x(c, f"ALTER TABLE {tbl} ADD COLUMN {col} {typ}")
         _ready_for.add(id(s))
+
+
+def is_feat(key) -> bool:
+    return str(key or "").startswith(FEAT) and str(key)[len(FEAT):] in FEATURES
+
+
+def feat_id(key: str) -> str:
+    return str(key)[len(FEAT):]
+
+
+def feature_state(s, fid: str) -> dict:
+    """Status fitur premium untuk tenant ini: via env (operator), via langganan (lisensi tenant aktif), atau mati."""
+    from utils import modules as mods
+    ensure(s)
+    f = FEATURES[fid]
+    now = _s(_now())
+    with s._tx() as c:
+        r = s._one(c, "SELECT MAX(ends_at) AS e FROM cms_licenses WHERE module_key=? AND holder_type='tenant' AND COALESCE(scope,'time')='time' "
+                      "AND revoked_at IS NULL AND starts_at<=? AND ends_at>=?", (FEAT + fid, now, now))
+        pend = s._one(c, "SELECT o.id FROM cms_license_orders o JOIN cms_license_items i ON i.order_id=o.id WHERE o.status='pending' AND i.module_key=? "
+                         "ORDER BY o.id DESC LIMIT 1", (FEAT + fid,))
+    via_env = fid in mods.enabled()
+    ends = r["e"] if r and r.get("e") else None
+    return {"key": fid, "label": f["label"], "desc": f["desc"], "price": f["price"], "months": f["months"], "active": bool(via_env or ends),
+            "via": "operator" if via_env else ("langganan" if ends else None), "ends_at": None if via_env else ends, "pending_order": pend["id"] if pend else None}
 
 
 def is_tpl(key) -> bool:
@@ -394,6 +423,8 @@ def submit_proof(s, oid: int, by: str, data: bytes, *, now: datetime | None = No
         verdict, why = "manual", ["mesin OCR tidak tersedia"]
     elif dup:
         verdict, why = "manual", ["bukti/nomor referensi yang sama sudah dipakai pada pesanan lain"]
+    elif j["ok"] and int(o["total"]) > AUTO_MAX:
+        verdict, why = "manual", [f"nominal besar (di atas Rp {AUTO_MAX:,}): bukti terbaca cocok, tetapi aktivasi wajib dikonfirmasi superadmin".replace(",", ".")]
     elif j["ok"]:
         verdict, why = "ok", []
     elif attempt >= MAX_AUTO_ATTEMPTS:
@@ -446,6 +477,15 @@ def create_order(s, buyer: dict, items: list[dict], htype: str, hid=None, *, pai
     lines, seen = [], set()
     for it in items:
         k = it.get("module")
+        if is_feat(k):                                        # fitur premium tenant: langganan berjangka, holder = seluruh tenant
+            if htype != "tenant":
+                raise ValueError("fitur premium dilanggan untuk seluruh perusahaan (tenant)")
+            f = FEATURES[feat_id(k)]
+            if (k, "time", f["months"]) in seen:
+                continue
+            seen.add((k, "time", f["months"]))
+            lines.append((k, f["months"], f["price"], "time", None, f["price"], 0))
+            continue
         if is_tpl(k):                                         # template outline: harga tunggal, satu pesanan-baris = satu kali impor
             if not tpl_exists(tpl_id(k)):
                 raise ValueError(f"template {tpl_id(k)} tidak dikenal")
@@ -591,6 +631,14 @@ def cancel_order(s, oid: int, by: str) -> dict:
 def grant(s, key: str, htype: str, hid, months: int, by: str, note: str = "", scope: str = "time", doc_id=None) -> dict:
     """Pemberian langsung admin (tanpa pesanan): untuk uji coba, kompensasi, atau lisensi yang dibayar di luar sistem."""
     ensure(s)
+    if is_feat(key):                                          # langganan fitur premium untuk seluruh tenant (kerja sama / kompensasi)
+        if htype != "tenant":
+            raise ValueError("fitur premium diberikan untuk seluruh tenant")
+        months = int(months)
+        if months < 1 or months > 60:
+            raise ValueError("masa berlaku 1-60 bulan")
+        with s._tx() as c:
+            return _grant_row(s, c, key, "tenant", None, months, "grant", by, None, note)
     if is_tpl(key):                                           # kredit impor template (kerja sama / penunjukan khusus): untuk satu pengguna
         if not tpl_exists(tpl_id(key)):
             raise ValueError(f"template {tpl_id(key)} tidak dikenal")

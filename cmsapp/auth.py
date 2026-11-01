@@ -75,6 +75,9 @@ PERMISSIONS = [
      "desc": "Menambah & mengubah task di tab Gantt proyek."},
     {"key": "project_tasks_admin", "label": "Kelola Task Lanjutan",
      "desc": "Menghapus task, menandai (tag) orang di task, serta menyinkronkan ulang PIC Gantt."},
+    {"key": "premium_buy", "label": "Beli Fitur Premium Perusahaan",
+     "desc": "Membeli langganan fitur premium untuk SELURUH perusahaan (mis. Impor outline dari dokumen/proyek lain, Rp 2 juta/tahun) di halaman Admin. "
+             "Pembayaran QRIS; pengaktifan oleh operator platform bila nominal besar. Bawaan hanya grup super-admin tenant."},
     {"key": "template_use", "label": "Pakai Template Laporan",
      "desc": "Membuka halaman Template, mencari template outline laporan AMDAL/UKL-UPL per jenis kegiatan, "
              "dan menyalinnya jadi dokumen baru (fitur berlisensi: aktifkan hanya untuk grup yang berhak)."},

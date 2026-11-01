@@ -31,7 +31,8 @@ def overview(s) -> dict:
     orders = lic.list_orders(s)
     from utils import tpl_catalog as tc
     tpls = [{"id": t["id"], "title": t["title"], "kind": t.get("kind")} for t in (tc.load_bundle().get("templates") or [])]
-    return {"tpl_price": lic.tpl_price(s), "templates": tpls, "licensing": lic.enabled(s), "licensing_locked": bool((os.environ.get("CMS_LICENSING") or "").strip()), "engines": engines,
+    feats = [lic.feature_state(s, fid) for fid in lic.FEATURES]
+    return {"features": feats, "tpl_price": lic.tpl_price(s), "templates": tpls, "licensing": lic.enabled(s), "licensing_locked": bool((os.environ.get("CMS_LICENSING") or "").strip()), "engines": engines,
             "orders": orders, "licenses": lic.list_licenses(s), "users": users, "groups": groups, "docs": docs,
             "pending": sum(1 for o in orders if o["status"] == "pending"), "manual": sum(1 for o in orders if o["status"] == "pending" and o.get("verify_state") == "manual")}
 
@@ -54,6 +55,8 @@ def grant(s, d: dict, by: str = BY) -> dict:
     """Beri lisensi langsung (kerja sama / penunjukan khusus) -- langsung aktif tanpa pembayaran.
     module 'tpl:<id>' = satu KREDIT IMPOR template untuk satu pengguna (scope 'copy')."""
     tgt = d.get("for") or {}
+    if lic.is_feat(d.get("module")):
+        tgt = {"type": "tenant"}                              # fitur premium = seluruh perusahaan
     scope = "copy" if lic.is_tpl(d.get("module")) else ("report" if d.get("scope") == "report" else "time")
     row = lic.grant(s, d.get("module", ""), tgt.get("type", "user"), tgt.get("id"), int(d.get("months") or 0), by, str(d.get("note") or ""),
                     scope=scope, doc_id=d.get("doc_id"))
