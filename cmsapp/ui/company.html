@@ -66,7 +66,7 @@ function mandiriView(m){
   h+=`<div class="card"><h3>Buat perusahaan sendiri</h3>
    <div class="mut">Dapatkan <b>tenant khusus</b> (alamat <code>kode.sdrive.team</code>) seperti chp/utama: data terpisah total, Anda jadi admin, dan bisa mendaftarkan anggota tim.</div>
    <ul class="small" style="padding-left:18px">
-    <li>Kode perusahaan: <b>${rp(m.corp.price)} / tahun</b> (sudah termasuk akun Anda sebagai admin pertama).</li>
+    <li>Kode perusahaan: <s>${rp(m.corp.list)}</s> <b>${rp(m.corp.price)} / tahun</b> <span class="badge">promo hemat ${m.corp.discount_pct}%</span> (sudah termasuk akun Anda sebagai admin pertama).</li>
     <li>Tiap akun anggota yang ditambahkan admin: ${m.seat.map(priceLine).join(' · ')} per akun.</li>
    </ul>
    <form id="f">

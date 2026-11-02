@@ -3,7 +3,7 @@
 JALUR 1 -- akun MANDIRI (`cms_users.reg_source='mandiri'`): daftar sendiri (email + HP + kota + pekerjaan + peruntukan), aktif setelah
 mengonfirmasi email. Semua akun mandiri tinggal di SATU tenant bersama (tenant dengan env CMS_SELF_REGISTER=1), tetapi TERISOLASI per proyek:
 akun hanya melihat proyek/laporan/orang yang berada di proyek yang sama dengannya (lihat cmsapp/projects_api.py `_isolated`).
-JALUR 2 -- KODE PERUSAHAAN: akun mandiri memesan kode (Rp 50.000 / tahun, QRIS+OCR seperti Toko) -> setelah lunas, operator (cmspanel)
+JALUR 2 -- KODE PERUSAHAAN: akun mandiri memesan kode (promo Rp 60.000 / tahun dari harga daftar Rp 250.000, QRIS+OCR seperti Toko) -> setelah lunas, operator (cmspanel)
 membuat tenant sendiri (stack Docker seperti chp/utama/cms) dan memindahkan akun pemesan sebagai admin pertama. Di tenant itu (env
 CMS_SEAT_BILLING=1) tiap akun yang ditambahkan admin wajib punya langganan akun (kursi): Rp 70.000/tahun; 12 bulan diskon 10%, 24 bulan
 diskon 45%. Kursi = lisensi `seat:<id pengguna>` di tabel lisensi biasa; tanpa kursi aktif akun tidak bisa login.
@@ -24,7 +24,9 @@ from utils import licensing as lic
 MANDIRI = "mandiri"
 CORP = "corp:"                              # module_key lisensi/item pesanan kode perusahaan = "corp:<kode>"
 SEAT = "seat:"                              # module_key lisensi kursi akun = "seat:<id pengguna>"
-CORP_PRICE = 50_000                         # Rp / tahun
+CORP_LIST = 250_000                         # harga daftar kode perusahaan / tahun (label coret)
+CORP_PRICE = 60_000                         # harga promo yang ditagihkan / tahun (diskon 76%)
+CORP_DISCOUNT = round((CORP_LIST - CORP_PRICE) * 100 / CORP_LIST)
 CORP_MONTHS = 12
 SEAT_YEAR_LIST = 70_000                     # harga daftar kursi per tahun
 SEAT_DISCOUNT = {12: 10, 24: 45}            # bulan -> persen diskon (24 bulan = "label" diskon 45%)

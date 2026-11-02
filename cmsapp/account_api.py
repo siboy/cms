@@ -88,7 +88,7 @@ def register_page():
 def register_info():
     on = _register_enabled()
     return jsonify(enabled=on, mail_ready=_smtp_ready(), purposes=[{"key": k, "label": v} for k, v in acc.PURPOSES.items()],
-                   corp={"price": acc.CORP_PRICE, "months": acc.CORP_MONTHS}, seat=acc.seat_prices())
+                   corp={"price": acc.CORP_PRICE, "list": acc.CORP_LIST, "discount_pct": acc.CORP_DISCOUNT, "months": acc.CORP_MONTHS}, seat=acc.seat_prices())
 
 
 @bp.post("/api/auth/register")
@@ -160,7 +160,7 @@ def company_me():
     return jsonify(isolated=iso, billing=billing, is_admin=bool(u.get("is_super")), can_manage_users=auth.has_perm(u, "user_manage"),
                    show_menu=iso or (billing and auth.has_perm(u, "user_manage")),
                    company=_company_view(mine), pending_order=pending,
-                   corp={"price": acc.CORP_PRICE, "months": acc.CORP_MONTHS}, seat=acc.seat_prices(),
+                   corp={"price": acc.CORP_PRICE, "list": acc.CORP_LIST, "discount_pct": acc.CORP_DISCOUNT, "months": acc.CORP_MONTHS}, seat=acc.seat_prices(),
                    tenant_name=s.get_setting("company_name", "") if billing else "")
 
 

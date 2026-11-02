@@ -124,7 +124,7 @@ def main():
 
     info = anon.get("/api/auth/register-info").get_json()
     check(info["enabled"] and info["mail_ready"] and len(info["purposes"]) == 5, "register-info")
-    check(info["corp"]["price"] == 50000 and [s["price"] for s in info["seat"]] == [63000, 77000], "harga tampil: kode 50.000; kursi 63.000 (12bln) & 77.000 (24bln)")
+    check(info["corp"]["price"] == 60000 and info["corp"]["list"] == 250000 and info["corp"]["discount_pct"] == 76 and [s["price"] for s in info["seat"]] == [63000, 77000], "harga tampil: kode promo 60.000 (daftar 250.000); kursi 63.000 (12bln) & 77.000 (24bln)")
     check(anon.get("/register").status_code == 200, "halaman /register terbuka")
 
     def reg(**kw):
@@ -288,12 +288,12 @@ def main():
     check(A.post("/api/company/check", json={"code": "-bad"}, headers=H).get_json()["ok"] is False, "kode tak boleh diawali strip")
     check(A.post("/api/company/check", json={"code": "pt-maju"}, headers=H).get_json()["ok"], "kode valid tersedia")
     mA = A.get("/api/company/me").get_json()
-    check(mA["isolated"] and mA["show_menu"] and mA["corp"]["price"] == 50000 and mA["company"] is None, "company/me untuk akun mandiri")
+    check(mA["isolated"] and mA["show_menu"] and mA["corp"]["price"] == 60000 and mA["company"] is None, "company/me untuk akun mandiri")
     r = A.post("/api/company/order", json={"code": "pt-maju", "name": "PT Maju Jaya"}, headers=H)
     check(r.status_code == 201, f"pesan kode: {r.get_data(as_text=True)[:150]}")
     j = r.get_json()
     o1 = j["order"]
-    check(o1["total"] == 50000 and o1["status"] == "pending" and o1["items"][0]["module_key"] == "corp:pt-maju" and o1["items"][0]["months"] == 12, "pesanan kode Rp 50.000 / 12 bulan")
+    check(o1["total"] == 60000 and o1["items"][0]["list_price"] == 250000 and o1["items"][0]["discount_pct"] == 76 and o1["status"] == "pending" and o1["items"][0]["module_key"] == "corp:pt-maju" and o1["items"][0]["months"] == 12, "pesanan kode promo Rp 60.000 (daftar 250.000, hemat 76%) / 12 bulan")
     check(j["pay_url"].startswith(f"/store?pay={o1['id']}") and j["company"]["status"] == "ordered", "arahan bayar + status ordered")
     check(A.get("/api/company/me").get_json()["pending_order"]["id"] == o1["id"], "pesanan menunggu tampil di company/me")
     r = A.post("/api/company/order", json={"code": "pt-baru", "name": "PT Baru"}, headers=H)

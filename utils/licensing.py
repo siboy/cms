@@ -487,14 +487,14 @@ def create_order(s, buyer: dict, items: list[dict], htype: str, hid=None, *, pai
             lines.append((k, f["months"], f["price"], "time", None, f["price"], 0))
             continue
         from utils import accounts as acc
-        if acc.is_corp(k):                                    # kode perusahaan (jalur 2): Rp 50.000 / tahun, hanya untuk akun pemesan
+        if acc.is_corp(k):                                    # kode perusahaan (jalur 2): promo Rp 60.000 / tahun (daftar 250.000), hanya untuk akun pemesan
             if htype != "user":
                 raise ValueError("kode perusahaan dipesan untuk akun sendiri")
             acc.check_code(s, acc.corp_code(k), buyer["id"])
             if (k, "time", acc.CORP_MONTHS) in seen:
                 continue
             seen.add((k, "time", acc.CORP_MONTHS))
-            lines.append((k, acc.CORP_MONTHS, acc.CORP_PRICE, "time", None, acc.CORP_PRICE, 0))
+            lines.append((k, acc.CORP_MONTHS, acc.CORP_PRICE, "time", None, acc.CORP_LIST, acc.CORP_DISCOUNT))
             continue
         if acc.is_seat(k):                                    # kursi akun tenant perusahaan: 12 bln diskon 10%, 24 bln diskon 45%; pembayar = admin tenant
             if htype != "tenant":

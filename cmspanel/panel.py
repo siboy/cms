@@ -529,7 +529,7 @@ def api_add_admin(slug):
 
 
 # ---------------------------------------------------------------- Kode perusahaan (jalur 2): buat tenant setelah pesanan lunas
-# Akun mandiri memesan kode (Rp 50 rb/tahun, QRIS+OCR di tenant mandiri). Setelah LUNAS, operator menekan "Buat tenant" (atau PANEL_AUTO_PROVISION=1
+# Akun mandiri memesan kode (promo Rp 60 rb/tahun, QRIS+OCR di tenant mandiri). Setelah LUNAS, operator menekan "Buat tenant" (atau PANEL_AUTO_PROVISION=1
 # agar otomatis): stack Docker baru <kode>.<PANEL_ROOT_DOMAIN>, CMS_SEAT_BILLING=1, pemesan dipasang sebagai admin pertama (hash sandi disalin).
 SELF_TENANT = os.environ.get("PANEL_SELF_TENANT", "cms")          # tenant tempat akun mandiri mendaftar
 ROOT_DOMAIN = os.environ.get("PANEL_ROOT_DOMAIN", "sdrive.team")
