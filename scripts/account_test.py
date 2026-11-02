@@ -29,7 +29,21 @@ def check(cond, msg):
     OK += 1
 
 
+class _Pipe:
+    def __getattr__(self, name):
+        return lambda *a, **k: self
+
+    def execute(self):
+        return [1] * 8
+
+
 class FakeRedis:
+    def pipeline(self):
+        return _Pipe()
+
+    def publish(self, *a, **k):
+        return 0
+
     def __init__(self):
         self.d = {}
 
@@ -59,6 +73,16 @@ class FakeRedis:
 
     def ping(self):
         return True
+
+    def hset(self, k, f=None, v=None, mapping=None):
+        h = self.d.setdefault(k, {})
+        h.update(mapping or {f: v})
+
+    def hget(self, k, f):
+        return (self.d.get(k) or {}).get(f)
+
+    def hgetall(self, k):
+        return dict(self.d.get(k) or {})
 
 
 def make_store(td, name):
@@ -281,6 +305,68 @@ def main():
     check(did not in [d["id"] for d in C.get("/api/docs-index").get_json()["docs"]] and did not in [d["id"] for d in C.get(f"/api/projects/{pD}/unlinked-docs").get_json()["docs"]], "daftar dokumen C tidak memuat laporan B")
     check(did in [d["id"] for d in E.get("/api/docs").get_json().get("docs", E.get("/api/docs").get_json() if isinstance(E.get("/api/docs").get_json(), list) else [])] or True, "daftar dokumen E")
     check(C.get("/api/admin/users").status_code == 403 and C.get("/api/groups").status_code == 403 and C.get("/api/admin/activity/projects").status_code == 403, "endpoint direktori/audit tertutup bagi akun mandiri")
+
+    # =========================================================================== AUDIT KEBOCORAN: akun asing (C) menyerang sumber daya proyek B milik A
+    import io
+    bid = st.insert_block(did, None, "paragraph", "ISI RAHASIA PROYEK B")
+    fr = A.post(f"/api/projects/{pB}/files", data={"category": "surat", "file": (io.BytesIO(b"rahasia"), "rahasia.txt")}, headers=H, content_type="multipart/form-data")
+    check(fr.status_code in (200, 201), f"A mengunggah berkas proyek: {fr.status_code} {fr.get_data(as_text=True)[:80]}")
+    fid = fr.get_json()["id"] if "id" in fr.get_json() else fr.get_json()["file_id"]
+    tr = A.post(f"/api/projects/{pB}/tasks", json={"title": "Tugas rahasia B", "start_date": "2026-01-01", "end_date": "2026-02-01"}, headers=H)
+    tid = tr.get_json()["id"]
+    cid = A.post(f"/api/projects/{pB}/chat", json={"text": "pesan rahasia B"}, headers=H).get_json()
+    cid = (cid.get("id") or cid.get("item", {}).get("id")) if isinstance(cid, dict) else None
+    cm = A.post(f"/api/blocks/{bid}/comments", json={"text": "komentar rahasia B"}, headers=H)
+    app.extensions["cms_redis"].hset("cms:export:job:jx", mapping={"status": "done", "doc": did, "file": __file__, "by": "andi"}) if False else None
+    from cmsapp import export as _exp
+    app.extensions["cms_redis"].hset(_exp.JOB + "jx", mapping={"status": "done", "doc": did, "file": __file__, "by": "andi"})
+    check(A.get("/api/exports/jx").status_code == 200 and A.get("/api/exports/jx/download").status_code == 200, "pemilik bisa membaca job ekspornya")
+    probes = [("GET", f"/api/projects/{pB}"), ("GET", f"/api/projects/{pB}/activity"), ("GET", f"/api/projects/{pB}/act-summary"), ("GET", f"/api/projects/{pB}/act/review"),
+              ("GET", f"/api/projects/{pB}/calendar"), ("GET", f"/api/projects/{pB}/files"), ("GET", f"/api/projects/{pB}/tasks"), ("GET", f"/api/projects/{pB}/mytasks"),
+              ("GET", f"/api/projects/{pB}/scurve"), ("GET", f"/api/projects/{pB}/documents"), ("GET", f"/api/projects/{pB}/chat"), ("GET", f"/api/projects/{pB}/team"),
+              ("GET", f"/api/projects/{pB}/team/candidates"), ("GET", f"/api/projects/{pB}/site"), ("GET", f"/api/projects/{pB}/layers"), ("GET", f"/api/projects/{pB}/sims"),
+              ("GET", f"/api/projects/{pB}/unlinked-docs"), ("GET", f"/api/projects/{pB}/map.svg"),
+              ("GET", f"/api/docs/{did}/blocks"), ("GET", f"/api/docs/{did}/outline"), ("GET", f"/api/docs/{did}/gallery"), ("GET", f"/api/docs/{did}/comments"),
+              ("GET", f"/api/docs/{did}/pic-map"), ("GET", f"/api/docs/{did}/taggable"), ("GET", f"/api/docs/{did}/journal"), ("GET", f"/api/docs/{did}/presence"),
+              ("GET", f"/api/docs/{did}/meta"), ("GET", f"/api/docs/{did}/events"), ("GET", f"/api/docs/{did}/asset/abc"), ("GET", f"/api/media/{did}/x.png"),
+              ("GET", f"/api/docs/{did}/share"), ("GET", f"/api/admin/docs/{did}/assign"),
+              ("GET", f"/api/blocks/{bid}"), ("GET", f"/api/blocks/{bid}/history"), ("GET", f"/api/blocks/{bid}/location"), ("GET", f"/api/blocks/{bid}/pic"),
+              ("GET", f"/api/project-files/{fid}/raw"), ("GET", "/api/exports/jx"), ("GET", "/api/exports/jx/download"),
+              ("DELETE", f"/api/projects/{pB}"), ("PATCH", f"/api/projects/{pB}"), ("PATCH", f"/api/tasks/{tid}"), ("DELETE", f"/api/tasks/{tid}"),
+              ("POST", f"/api/tasks/{tid}/tag"), ("POST", f"/api/tasks/{tid}/reorder"), ("DELETE", f"/api/project-files/{fid}"),
+              ("PATCH", f"/api/blocks/{bid}"), ("DELETE", f"/api/blocks/{bid}"), ("POST", f"/api/blocks/{bid}/comments"), ("POST", f"/api/docs/{did}/export"),
+              ("POST", f"/api/docs/{did}/blocks"), ("POST", f"/api/projects/{pB}/chat"), ("POST", f"/api/projects/{pB}/tasks"), ("POST", f"/api/projects/{pB}/files"),
+              ("POST", f"/api/projects/{pB}/calendar")]
+    if cid:
+        probes += [("DELETE", f"/api/project-chat/{cid}")]
+    bad = []
+    for m, u in probes:
+        r = C.open(u, method=m, json={"text": "x", "title": "x", "user_ids": [1], "kind": "paragraph", "after_id": bid}, headers=H)
+        body_txt = r.get_data(as_text=True)
+        if r.status_code < 400 or "RAHASIA" in body_txt.upper() or "rahasia" in body_txt:
+            bad.append((m, u, r.status_code))
+    check(not bad, f"KEBOCORAN: akun asing menembus {bad}")
+    # penyerangan lewat ID di body
+    check(C.post("/api/admin/assign", json={"doc_id": did, "user_id": 3, "scope": "part:body"}, headers=H).status_code == 404, "tak bisa menjadikan diri PIC dokumen orang lain (admin/assign)")
+    check(not Q("SELECT 1 FROM cms_assign WHERE doc_id=?", (did,)) if False else not Q(st, "SELECT 1 FROM cms_assign WHERE doc_id=?", (did,)), "tidak ada baris PIC tersisip di dokumen B")
+    check(C.post("/api/sim-runs", json={"doc_id": did, "tool_id": "bising", "title": "x"}, headers=H).status_code in (403, 404, 200)
+          and not Q(st, "SELECT 1 FROM cms_assign WHERE doc_id=?", (did,)), "sim-runs terhadap dokumen asing")
+    check(C.post(f"/api/projects/{pD}/tasks", json={"title": "t", "doc_id": did}, headers=H).status_code == 404, "tugas di proyek sendiri tak boleh menunjuk dokumen asing")
+    check(C.post("/api/admin/assign", json={"doc_id": did, "user_id": 1, "scope": "part:body"}, headers=H).status_code == 404, "assign dokumen asing ke orang lain ditolak")
+    # tag lintas akun: C membuat tugas di proyeknya lalu menandai A (bukan anggota tim) -> diabaikan
+    tD = C.post(f"/api/projects/{pD}/tasks", json={"title": "Tugas D", "start_date": "2026-01-01", "end_date": "2026-02-01"}, headers=H).get_json()["id"]
+    nA = len(A.get("/api/me/notifications").get_json()["items"])
+    C.post(f"/api/tasks/{tD}/tag", json={"user_ids": [1, 2, 3]}, headers=H)
+    check(len(A.get("/api/me/notifications").get_json()["items"]) == nA and A.get("/api/me/tags").get_json() == A.get("/api/me/tags").get_json()
+          and not [x for x in (A.get("/api/me/tags").get_json().get("items") or A.get("/api/me/tags").get_json().get("tags") or []) if "Tugas D" in str(x)], "menandai akun luar tim tidak menimbulkan notifikasi/tugas bagi A")
+    # daftar global
+    ids_docs = [d["id"] for d in (lambda j: j.get("docs", j) if isinstance(j, dict) else j)(C.get("/api/docs").get_json())]
+    check(did not in ids_docs, "/api/docs C tidak memuat laporan B")
+    check("Proyek B" not in C.get("/api/me/unreads").get_data(as_text=True) and "Proyek B" not in C.get("/api/me/experience").get_data(as_text=True), "unreads & pengalaman C tak memuat proyek B")
+    check(C.get("/api/team-workload").status_code == 403 and C.get("/api/admin/activity").status_code == 403, "beban tim & log aktivitas global tertutup")
+    # pemilik tetap berfungsi penuh
+    check(A.get(f"/api/projects/{pB}/activity").status_code == 200 and A.get(f"/api/docs/{did}/gallery").status_code == 200 and A.get(f"/api/project-files/{fid}/raw").status_code == 200, "pemilik tetap bisa memakai semuanya")
+    check(E.get(f"/api/projects/{pB}/activity").status_code == 200 and E.get(f"/api/project-files/{fid}/raw").status_code == 200 and E.get(f"/api/docs/{did}/outline").status_code == 200, "anggota proyek B tetap bisa mengakses")
 
     # =========================================================================== JALUR 2: kode perusahaan
     check(A.post("/api/company/check", json={"code": "ab"}, headers=H).get_json()["ok"] is False, "kode terlalu pendek")

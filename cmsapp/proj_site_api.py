@@ -476,6 +476,8 @@ def sim_run_record():
     doc_id = int(d.get("doc_id") or 0)
     if not doc_id:
         raise ValueError("doc_id wajib")
+    if not auth.can_view_doc(doc_id):                     # doc_id dari body: _doc_guard tak menjangkau
+        abort(404, description=f"dokumen {doc_id} tidak ada")
     ob = d.get("origin_block_id")
     if not (auth.has_perm(g.user, "block_edit_all") or (ob and auth.can_edit(doc_id, int(ob)))):
         abort(403, description="tidak berhak mengedit dokumen/bab ini")

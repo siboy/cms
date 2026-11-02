@@ -763,7 +763,7 @@ class BlockStore:
         except Exception:                               # noqa: BLE001
             pass
 
-    def project_unreads(self, user_id: int, username: str) -> list[dict]:
+    def project_unreads(self, user_id: int, username: str, only_projects: Optional[set] = None) -> list[dict]:
         """Per proyek (yang belum dihapus): jumlah pesan Diskusi belum terbaca (bukan tulisan sendiri,
         id > last_read) + task belum terbaca (pemberi bukan diri sendiri). Utk badge kartu proyek,
         total di lonceng 🔔, dan entri dropdown yang bisa diklik menuju diskusinya."""
@@ -784,6 +784,8 @@ class BlockStore:
                     e["tasks"] = r["n"]
         except Exception:                               # noqa: BLE001
             pass
+        if only_projects is not None:                   # pengguna tanpa project_view_all: HANYA proyek yang terlihat baginya (nama proyek & jumlah pesan lain tak boleh bocor)
+            out = {k: v for k, v in out.items() if k in only_projects}
         return sorted(out.values(), key=lambda x: -(x["chat"] + x["tasks"]))
 
     # ------------------------------------------------------------ task personal (dari Diskusi #task/#topik atau manual)

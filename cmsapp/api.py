@@ -12,7 +12,7 @@ from flask import (Blueprint, Response, abort, current_app, g, jsonify, request,
 from werkzeug.utils import secure_filename
 
 from cmsapp import auth, export, mailer, realtime
-from utils import blockbot
+from utils import accounts, blockbot
 from utils import modules as mods
 from utils.blockstore import ConflictError, KINDS, LockedError
 
@@ -287,7 +287,7 @@ def me():
     except Exception:                                     # noqa: BLE001
         u["unread_notifications"] = 0
     try:                                                  # pesan Diskusi + task belum terbaca (semua proyek)
-        u["unread_projects"] = sum(x["chat"] + x["tasks"] for x in S().project_unreads(u["id"], u["username"]))
+        u["unread_projects"] = sum(x["chat"] + x["tasks"] for x in __import__("cmsapp.projects_api", fromlist=["unreads_for"]).unreads_for(g.user))
     except Exception:                                     # noqa: BLE001
         u["unread_projects"] = 0
     return jsonify(user=u)
@@ -1355,6 +1355,11 @@ def admin_user_notify(uid):
 def admin_assign():
     d = body()
     doc_id, uid, scope, removing = int(d["doc_id"]), int(d["user_id"]), d["scope"], bool(d.get("remove"))
+    # doc_id datang dari body (bukan path) -> _doc_guard tak menjangkaunya: tanpa cek ini siapa pun berizin pic_assign bisa menjadikan dirinya PIC dokumen orang lain
+    if not auth.can_view_doc(doc_id):
+        return jsonify(error=f"dokumen {doc_id} tidak ada"), 404
+    if g.user.get("isolated") and uid != g.user["id"] and uid not in accounts.connection_ids(S(), g.user["id"]):
+        return jsonify(error="akun ini belum satu proyek dengan Anda"), 403
     (auth.unassign if removing else auth.assign)(doc_id, uid, scope)
     S().log_activity(g.user["username"], "pic.unassign" if removing else "pic.assign",
                      target_type="user", target_id=uid, doc_id=doc_id, summary=f'user #{uid}: {scope}')
@@ -1631,6 +1636,8 @@ def my_profile_update():
 @bp.get("/expertise-list")
 @auth.require()
 def expertise_list():
+    if g.user.get("isolated"):                       # akun mandiri tak boleh mengintip isi data akun lain, sekecil apa pun
+        return jsonify(expertise=[])
     return jsonify(expertise=S().list_distinct_expertise())
 
 

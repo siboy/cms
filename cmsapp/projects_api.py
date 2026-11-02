@@ -155,7 +155,12 @@ def get_project(pid):
 @auth.require()
 def my_unreads():
     """Pesan Diskusi & task belum terbaca per proyek — entri dropdown lonceng 🔔 (klik -> diskusi proyek)."""
-    return jsonify(items=S().project_unreads(g.user["id"], g.user["username"]))
+    return jsonify(items=unreads_for(g.user))
+
+
+def unreads_for(user: dict) -> list[dict]:
+    vis = None if auth.has_perm(user, "project_view_all") else S().visible_project_ids(user["id"])
+    return S().project_unreads(user["id"], user["username"], only_projects=vis)
 
 
 @bp.get("/projects/<int:pid>/activity")
@@ -313,6 +318,9 @@ def my_tasks_add(pid):
 def _tag_and_create_tasks(t: dict, uids: list[int]):
     """Tag pengguna di task Gantt + otomatis buat entri di section Task tiap orang (idempoten per
     gantt_task_id) + notifikasi — dipakai dialog Kalender/sub-task Gantt maupun endpoint tag lama."""
+    if _isolated():                                    # akun mandiri hanya boleh menandai anggota tim proyek ITU
+        team = {m["user_id"] for m in S().list_project_team(t["project_id"]) if m.get("user_id")}
+        uids = [u for u in uids if u in team]
     if not uids:
         return
     st = S()
@@ -923,6 +931,8 @@ def create_task(pid):
     _project_visible(pid)
     d = body()
     doc_id, chapter_block_id = d.get("doc_id"), d.get("chapter_block_id")
+    if doc_id and not auth.can_view_doc(int(doc_id)):
+        abort(404, description=f"dokumen {doc_id} tidak ada")
     if doc_id and chapter_block_id and not (auth.has_perm(g.user, "project_tasks_admin") or auth.can_edit(doc_id, chapter_block_id)):
         abort(403, description="tidak ditugaskan pada bab ini")
     if not doc_id and not auth.has_perm(g.user, "project_tasks_admin"):
