@@ -1,135 +1,207 @@
 <!DOCTYPE html>
 <html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Kenapa sdrive — laporan lingkungan yang ringan, murah, dan kompak</title>
-<meta name="description" content="Word membengkak puluhan MB dan sulit dikerjakan bersama. sdrive memecah laporan jadi blok: ringan di komputer apa pun, kolaboratif, biaya murah.">
+<title>Keunggulan sdrive — manajemen proyek, outline, simulasi, dan dokumen yang ringan</title>
+<meta name="description" content="Enam alasan tim penyusun dokumen lingkungan memakai sdrive: manajemen proyek dengan Kurva S, outline KA/Andal/UKL-UPL/Pertek, petunjuk pengisian, simulasi terintegrasi, sistem blok yang ringan, dan format otomatis.">
 <style>
-:root{--bg:#fff;--fg:#202124;--mut:#5f6368;--line:#dadce0;--soft:#f8f9fa;--blue:#1a73e8;--blue2:#e8f0fe;--green:#188038;--red:#d93025;--card:#fff}
-@media(prefers-color-scheme:dark){:root{--bg:#171a1f;--fg:#e8eaed;--mut:#9aa0a6;--line:#3c4043;--soft:#202327;--blue:#8ab4f8;--blue2:#243247;--green:#81c995;--red:#f28b82;--card:#1d2025}}
+:root{--bg:#fff;--fg:#202124;--mut:#5f6368;--line:#dadce0;--soft:#f8f9fa;--blue:#1a73e8;--blue2:#e8f0fe;--green:#188038;--amber:#f9ab00;--red:#d93025;--card:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#171a1f;--fg:#e8eaed;--mut:#9aa0a6;--line:#3c4043;--soft:#202327;--blue:#8ab4f8;--blue2:#243247;--green:#81c995;--amber:#fdd663;--red:#f28b82;--card:#1d2025}}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 "Google Sans",Roboto,system-ui,sans-serif}
 a{color:var(--blue);text-decoration:none}
-nav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:10px max(16px,calc(50% - 560px))}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:10px max(16px,calc(50% - 520px))}
 nav b{font-size:20px;margin-right:auto}nav a.l{color:var(--fg);padding:8px 12px;border-radius:8px;font-size:14px}nav a.l:hover{background:var(--soft)}
-.btn{display:inline-block;border-radius:999px;padding:10px 22px;font-weight:600;border:1px solid var(--blue)}
+@media(max-width:760px){nav a.l{display:none}}
+.btn{display:inline-block;border-radius:999px;padding:11px 24px;font-weight:600;border:1px solid var(--blue);cursor:pointer}
 .btn.p{background:var(--blue);color:#fff}.btn.o:hover{background:var(--blue2)}@media(prefers-color-scheme:dark){.btn.p{color:#0b1b33}}
-.w{max-width:1000px;margin:0 auto;padding:0 16px}
-header.h{padding:64px 0 40px;text-align:center}
+.w{max-width:1040px;margin:0 auto;padding:0 16px}
+header.h{padding:64px 0 36px;text-align:center}
 .tag{display:inline-block;background:var(--blue2);color:var(--blue);border-radius:999px;padding:3px 12px;font-size:13px;font-weight:600}
-h1{font-size:clamp(32px,5.2vw,56px);line-height:1.1;letter-spacing:-1.2px;margin:14px auto;max-width:820px}
-.lead{color:var(--mut);font-size:20px;max-width:680px;margin:0 auto 24px}
-section{padding:52px 0}section.alt{background:var(--soft)}
-h2{font-size:clamp(25px,3.4vw,34px);letter-spacing:-.5px;margin:0 0 8px}.sub{color:var(--mut);margin:0 0 28px;max-width:680px}
-.split{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:center}@media(max-width:820px){.split{grid-template-columns:1fr}}
-.c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}.c h3{margin:4px 0 6px}.c p{margin:0;color:var(--mut)}
-.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
-.bar{height:26px;border-radius:7px;margin:6px 0;display:flex;align-items:center;padding:0 10px;color:#fff;font-size:13px;font-weight:600;white-space:nowrap}
+h1{font-size:clamp(32px,5.2vw,54px);line-height:1.1;letter-spacing:-1.2px;margin:14px auto;max-width:860px}
+.lead{color:var(--mut);font-size:20px;max-width:700px;margin:0 auto 24px}
+.toc{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:22px}.toc a{border:1px solid var(--line);border-radius:999px;padding:5px 14px;color:var(--fg);font-size:14px}.toc a:hover{background:var(--blue2)}
+section{padding:56px 0}section.alt{background:var(--soft)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center}.row.rev>:first-child{order:2}
+@media(max-width:820px){.row{grid-template-columns:1fr}.row.rev>:first-child{order:0}}
+.kick{color:var(--blue);font-weight:700;font-size:14px;letter-spacing:.5px}
+h2{font-size:clamp(25px,3.4vw,36px);letter-spacing:-.5px;margin:4px 0 10px;line-height:1.2}
+.row p{color:var(--mut);margin:0 0 12px}
+ul.ck{list-style:none;padding:0;margin:12px 0 0}ul.ck li{padding-left:26px;position:relative;margin:7px 0}ul.ck li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:700}
+.vis{background:var(--soft);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 26px rgba(60,64,67,.13)}
+section.alt .vis{background:var(--card)}
+.vis svg{width:100%;height:auto;display:block}
+.line{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:7px 0;font-size:13px}
+section.alt .line{background:var(--soft)}
+.line i{width:9px;height:9px;border-radius:50%;flex:none}.line small{margin-left:auto;color:var(--mut)}
+.tree{font-size:13.5px}.tree div{padding:4px 8px;border-radius:6px;display:flex;gap:6px}.tree .i1{margin-left:16px}.tree .i2{margin-left:32px}.tree .hl{background:var(--blue2);color:var(--blue);font-weight:600}
+.hint{background:#fef7e0;color:#7a5200;border-left:3px solid var(--amber);border-radius:0 8px 8px 0;padding:8px 12px;font-size:13px;margin-top:8px}
+@media(prefers-color-scheme:dark){.hint{background:#3a2e10;color:#fdd663}}
 .blk{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;margin:8px 0}.blk i{height:26px;border-radius:5px;background:var(--line)}.blk i.o{background:var(--blue)}
+.bar2{height:26px;border-radius:7px;margin:6px 0;display:flex;align-items:center;padding:0 10px;color:#fff;font-size:13px;font-weight:600}
 table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);font-size:15px;vertical-align:top}th{background:var(--soft)}tr:last-child td{border:0}
-.y{color:var(--green);font-weight:700}.n{color:var(--red);font-weight:700}
-.steps{counter-reset:s;display:grid;gap:12px}.steps .c{display:flex;gap:16px;align-items:flex-start}
-.steps .c::before{counter-increment:s;content:counter(s);flex:none;width:34px;height:34px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:700}
-@media(prefers-color-scheme:dark){.steps .c::before{color:#0b1b33}}
+.y{color:var(--green);font-weight:600}.n{color:var(--red)}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:10px}.c.star{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue2)}
+.c ul{margin:0;padding-left:20px;color:var(--mut)}.c li{margin:4px 0}
+.price{font-size:32px;font-weight:700;line-height:1.1}.price s{font-size:17px;color:var(--mut);font-weight:400}.price small{font-size:15px;color:var(--mut);font-weight:400}
+.promo{background:var(--blue);color:#fff;border-radius:999px;padding:2px 12px;font-size:12px;font-weight:700;align-self:flex-start}@media(prefers-color-scheme:dark){.promo{color:#0b1b33}}
 details{border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:8px 0;background:var(--card)}summary{cursor:pointer;font-weight:600}details p{color:var(--mut);margin:8px 0 0}
-.cta{text-align:center;padding:64px 16px}
+.center{text-align:center}.center .sub{color:var(--mut);margin:0 auto 28px;max-width:640px}
+.final{background:var(--blue2);text-align:center;padding:64px 16px}
 footer{padding:26px 16px;text-align:center;color:var(--mut);font-size:14px;border-top:1px solid var(--line)}
 .note{color:var(--mut);font-size:13px;margin-top:10px}
 </style></head><body>
-<nav><b><a href="/" style="color:inherit">sdrive</a></b><a class="l" href="#masalah">Masalah</a><a class="l" href="#blok">Sistem blok</a><a class="l" href="#fitur">Fitur</a><a class="l" href="#biaya">Biaya</a><a class="l" href="#faq">FAQ</a><a class="btn p" href="/register">Daftar gratis</a></nav>
+<nav><b><a href="/" style="color:inherit">sdrive</a></b><a class="l" href="#pm">Manajemen proyek</a><a class="l" href="#outline">Outline</a><a class="l" href="#simulasi">Simulasi</a><a class="l" href="#blok">Sistem blok</a><a class="l" href="#harga">Harga</a><a class="btn p" href="/register">Daftar gratis</a></nav>
 
 <header class="h w">
- <span class="tag">Kenapa sdrive</span>
- <h1>Satu laporan, banyak penulis, tanpa file 60 MB yang tak bisa dibuka.</h1>
- <p class="lead">Tools di sdrive dibuat khusus untuk dokumen lingkungan: AMDAL, UKL-UPL, RKL-RPL, Andalalin. Outline sudah sesuai pakem, petunjuk pengisian tersedia, tabel seragam. Biaya murah, produktivitas tim naik.</p>
- <a class="btn p" href="/register">Mulai gratis</a> <a class="btn o" href="#blok">Lihat cara kerjanya</a>
+ <span class="tag">Keunggulan sdrive</span>
+ <h1>Satu platform untuk memimpin tim dan menyelesaikan dokumen lingkungan.</h1>
+ <p class="lead">Dari memantau progres sampai menyerahkan dokumen yang rapi, enam keunggulan ini memangkas pekerjaan teknis yang biasanya memakan berhari-hari.</p>
+ <a class="btn p" href="/register">Daftar gratis</a>
+ <div class="toc"><a href="#pm">1 Manajemen proyek</a><a href="#outline">2 Outline</a><a href="#petunjuk">3 Petunjuk</a><a href="#simulasi">4 Simulasi &amp; hitung dampak</a><a href="#blok">5 Sistem blok</a><a href="#format">6 Format otomatis</a></div>
 </header>
 
-<section class="alt" id="masalah"><div class="w">
- <h2>Anda mengenal masalah ini</h2><p class="sub">Laporan lingkungan penuh tabel, peta, dan foto. Di Word, semuanya menumpuk di satu file.</p>
- <div class="g3">
-  <div class="c"><h3>🐘 File makin gemuk</h3><p>Gambar dan tabel membuat file membengkak sampai puluhan MB. Word jadi lambat, macet, bahkan gagal dibuka di komputer biasa.</p></div>
-  <div class="c"><h3>📧 Versi berserakan</h3><p>laporan_final_v7_revisi_BARU.docx. Siapa yang memegang versi terakhir? Menggabungkan bab dari lima penulis memakan waktu berhari-hari.</p></div>
-  <div class="c"><h3>🔒 Satu orang mengedit</h3><p>File hanya bisa dipegang satu orang pada satu waktu, sementara tenggat tidak menunggu.</p></div>
-  <div class="c"><h3>📏 Format tidak seragam</h3><p>Outline, heading, dan tabel berbeda-beda di tiap penyusun. Merapikannya sebelum diserahkan memakan waktu berhari-hari.</p></div>
+<section class="alt" id="pm"><div class="w"><div class="row">
+ <div>
+  <div class="kick">KEUNGGULAN 1</div>
+  <h2>Manajemen proyek terbaik untuk tim penyusun dokumen</h2>
+  <p>Kebanyakan konsultan memantau tim lewat grup chat dan rapat. Di sdrive, progres terlihat sendiri.</p>
+  <ul class="ck">
+   <li><b>Kurva S</b> rencana lawan realisasi: langsung tampak bila proyek tertinggal.</li>
+   <li><b>Gantt</b> per proyek, lengkap dengan tugas dan penanggung jawab.</li>
+   <li><b>Progres per proyek dan per tema</b>: tahu bagian mana yang sudah beres dan mana yang masih terbuka.</li>
+   <li><b>Rekap aktivitas harian</b> per anggota: siapa mengerjakan apa, tanpa harus bertanya.</li>
+   <li>Diskusi, tag tugas, dan berkas proyek di satu tempat.</li>
+  </ul>
  </div>
-</div></section>
+ <div class="vis">
+  <svg viewBox="0 0 320 130"><g stroke="currentColor" stroke-opacity=".12"><path d="M20 20H310M20 55H310M20 90H310"/></g>
+   <path d="M20 112C80 110 110 85 160 60S260 26 300 20" fill="none" stroke="#9aa0a6" stroke-width="3" stroke-dasharray="6 5"/>
+   <path d="M20 112C75 111 112 82 165 58S215 44 215 44" fill="none" stroke="#1a73e8" stroke-width="3.5"/><circle cx="215" cy="44" r="5" fill="#1a73e8"/>
+   <text x="24" y="14" font-size="9" fill="#9aa0a6">rencana (putus-putus) vs realisasi (biru)</text></svg>
+  <div class="line"><i style="background:var(--blue)"></i><b>Andi</b> menulis Bab II<small>hari ini</small></div>
+  <div class="line"><i style="background:var(--green)"></i><b>Sari</b> menghitung dampak kebisingan<small>hari ini</small></div>
+  <div class="line"><i style="background:var(--amber)"></i><b>Budi</b> mereview Bab IV<small>kemarin</small></div>
+ </div>
+</div></div></section>
 
-<section id="blok"><div class="w">
- <div class="split">
-  <div>
-   <h2>Dipecah jadi blok, dimuat seperlunya</h2>
-   <p class="sub" style="margin-bottom:14px">sdrive memecah laporan jadi blok (paragraf, tabel, gambar) yang disimpan di database. Layar Anda hanya memuat bab yang sedang dibuka.</p>
-   <p style="color:var(--mut)">Laporan setebal apa pun terasa sama ringan, karena komputer Anda tidak pernah memegang seluruh dokumen sekaligus. Spesifikasi laptop tidak lagi jadi penghalang.</p>
-  </div>
-  <div class="c">
-   <b>Word</b><div class="bar" style="background:#d93025;width:100%">seluruh dokumen dimuat sekaligus</div>
-   <b style="display:block;margin-top:12px">sdrive</b><div class="blk"><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i></div>
-   <div class="note">Ilustrasi: hanya bab yang dibuka (biru) yang dimuat.</div>
-  </div>
+<section id="outline"><div class="w"><div class="row rev">
+ <div>
+  <div class="kick">KEUNGGULAN 2</div>
+  <h2>Outline KA, Andal, UKL-UPL, dan Pertek sudah siap</h2>
+  <p>Tidak ada lagi membuka dokumen lama untuk menyalin kerangka, atau menebak apakah susunan bab sudah benar.</p>
+  <ul class="ck">
+   <li>Outline <b>KA, Andal, RKL-RPL, UKL-UPL</b>, dan <b>Pertek</b>, ditambah <b>Andalalin</b>.</li>
+   <li>Mengikuti <b>PP yang berlaku</b> (PP 22/2021), disesuaikan dengan beberapa dokumen yang sudah diterima penilai.</li>
+   <li>Tersedia per jenis kegiatan: pilih, salin, mulai menulis.</li>
+  </ul>
  </div>
- <div class="g3" style="margin-top:36px">
-  <div class="c"><h3>🪶 Ringan di perangkat apa pun</h3><p>Memuat per bab, bukan per dokumen. Ekspor Word yang berat dikerjakan server, bukan laptop Anda.</p></div>
-  <div class="c"><h3>🤝 Kerja bersamaan</h3><p>PIC per bab, kunci blok saat diedit, komentar, riwayat perubahan, dan pembaruan langsung ke seluruh tim.</p></div>
-  <div class="c"><h3>📄 Word rapi, saat dibutuhkan</h3><p>Heading bernomor, daftar isi, dan halaman tersusun otomatis. Anda mengekspor DOCX hanya saat perlu menyerahkan.</p></div>
- </div>
-</div></section>
+ <div class="vis"><div class="tree">
+  <div class="hl">📄 UKL-UPL — Pertambangan</div>
+  <div class="i1">BAB I Pendahuluan</div><div class="i2">1.1 Latar belakang</div><div class="i2">1.2 Tujuan dan manfaat</div>
+  <div class="i1">BAB II Deskripsi Rencana Usaha</div><div class="i2">2.1 Identitas pemrakarsa</div>
+  <div class="i1">BAB III Rona Lingkungan Awal</div><div class="i1">BAB IV Dampak &amp; Pengelolaan</div></div></div>
+</div></div></section>
 
-<section id="fitur"><div class="w">
- <h2>Bukan sekadar editor: pekerjaan berat sudah dikerjakan</h2>
- <p class="sub">Dari memantau tim sampai menyusun isi, urusan teknis sudah ditangani. Penyusun fokus pada kajian.</p>
- <div class="g3">
-  <div class="c"><div class="ic">📊</div><h3>Manajemen proyek: pantau tim tanpa rapat tambahan</h3><p>Kurva S rencana lawan realisasi, Gantt, dan pelacakan progres per proyek dan per tema. Terlihat siapa sedang mengerjakan apa, dengan rekap aktivitas harian per anggota dan perkembangan jadwal dari minggu ke minggu.</p></div>
-  <div class="c"><div class="ic">📐</div><h3>Outline KA, Andal, UKL-UPL, dan Pertek</h3><p>Kerangka mengikuti PP yang berlaku, dilengkapi penyesuaian dari beberapa dokumen yang sudah diterima penilai. Penyusun tidak perlu menyusun kerangka dari nol atau menebak format yang benar.</p></div>
-  <div class="c"><div class="ic">💡</div><h3>Petunjuk pengisian di setiap bagian</h3><p>Setiap bagian memuat petunjuk apa yang harus ditulis. Penyusun baru bisa belajar sambil mengerjakan, tidak lagi menatap halaman kosong.</p></div>
-  <div class="c"><div class="ic">🧮</div><h3>Dokumen terintegrasi dengan simulasi &amp; perhitungan dampak</h3><p>Rumus umum yang lazim dipakai tenaga ahli dan model simulasi pencemaran air, udara, dan kebisingan tersedia langsung dari editor. Hasil hitung disisipkan ke laporan, tanpa berpindah-pindah aplikasi.</p></div>
-  <div class="c"><div class="ic">📑</div><h3>Heading dan halaman otomatis</h3><p>Penomoran heading, daftar isi, footer, dan pemisah halaman disusun saat ekspor. Tidak ada lagi berhari-hari mengutak-atik paging di Word.</p></div>
-  <div class="c"><div class="ic">▦</div><h3>Tabel seragam</h3><p>Tabel diisi per kolom dan baris dengan struktur yang sama untuk semua penyusun, sehingga gabungan karya banyak orang tetap konsisten.</p></div>
+<section class="alt" id="petunjuk"><div class="w"><div class="row">
+ <div>
+  <div class="kick">KEUNGGULAN 3</div>
+  <h2>Petunjuk pengisian di setiap bagian</h2>
+  <p>Penyusun baru tidak perlu menatap halaman kosong. Setiap bagian memuat panduan apa yang harus ditulis, sehingga mereka belajar langsung sambil bekerja.</p>
+  <ul class="ck"><li>Onboarding anggota baru jauh lebih singkat.</li><li>Isi dokumen lebih seragam antar penyusun.</li></ul>
  </div>
- <p class="note">Template dan alat hitung tertentu berbayar per pemakaian atau per paket; rinciannya ada di halaman Toko setelah masuk.</p>
-</div></section>
+ <div class="vis"><div class="tree"><div class="hl">2.1 Identitas pemrakarsa</div></div>
+  <div class="hint">💡 Tuliskan nama, alamat, dan penanggung jawab kegiatan sesuai akta atau perizinan yang berlaku.</div>
+  <div class="line" style="margin-top:10px;color:var(--mut)">Ketik isi bagian ini di sini…</div></div>
+</div></div></section>
+
+<section id="simulasi"><div class="w"><div class="row rev">
+ <div>
+  <div class="kick">KEUNGGULAN 4</div>
+  <h2>Dokumen terintegrasi dengan simulasi dan perhitungan dampak</h2>
+  <p>Tenaga ahli tidak perlu berpindah antara aplikasi hitung, aplikasi simulasi, dan Word, lalu menyalin hasilnya. Semuanya dikerjakan dari editor yang sama.</p>
+  <ul class="ck">
+   <li><b>Pustaka rumus umum</b> yang lazim dipakai tenaga ahli, dengan variabel yang jelas.</li>
+   <li><b>Simulasi</b> pencemaran air, udara, dan kebisingan, lengkap dengan peta panas.</li>
+   <li>Hasil hitung disisipkan ke laporan, tanpa salin-tempel manual.</li>
+  </ul>
+ </div>
+ <div class="vis"><svg viewBox="0 0 320 150"><rect width="320" height="150" rx="10" fill="#e8f0fe" fill-opacity=".5"/>
+  <circle cx="110" cy="75" r="62" fill="#d93025" fill-opacity=".18"/><circle cx="110" cy="75" r="42" fill="#f9ab00" fill-opacity=".3"/><circle cx="110" cy="75" r="20" fill="#188038" fill-opacity=".4"/>
+  <circle cx="110" cy="75" r="5" fill="#202124"/><text x="190" y="62" font-size="11" fill="currentColor">Sumber bising</text><text x="190" y="80" font-size="11" fill="currentColor" fill-opacity=".7">Sebaran dampak</text></svg>
+  <div class="line"><i style="background:var(--blue)"></i>Hasil: tingkat kebisingan di receptor<small>→ disisipkan ke Bab IV</small></div></div>
+</div></div></section>
+
+<section class="alt" id="blok"><div class="w"><div class="row">
+ <div>
+  <div class="kick">KEUNGGULAN 5</div>
+  <h2>Sistem blok: ringan di komputer apa pun, tak ada lagi file Word membengkak</h2>
+  <p>Dokumen dipecah menjadi blok (paragraf, tabel, gambar) dan hanya bab yang Anda buka yang dimuat. Komputer Anda tidak pernah memegang seluruh dokumen sekaligus.</p>
+  <ul class="ck">
+   <li>Laptop spek biasa tetap lancar, bahkan untuk laporan tebal penuh gambar.</li>
+   <li>Tidak ada file puluhan MB yang macet atau gagal dibuka.</li>
+   <li>Banyak penulis bekerja bersamaan: PIC per bab, kunci blok, komentar, dan riwayat perubahan.</li>
+   <li>Telah diuji dengan 1.000 koneksi bersamaan dan 100 penulis aktif.</li>
+  </ul>
+ </div>
+ <div class="vis"><b>Word</b><div class="bar2" style="background:#d93025">seluruh dokumen dimuat sekaligus</div>
+  <b style="display:block;margin-top:12px">sdrive</b><div class="blk"><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="note">Ilustrasi: hanya bab yang dibuka (biru) yang dimuat.</div></div>
+</div></div></section>
+
+<section id="format"><div class="w"><div class="row rev">
+ <div>
+  <div class="kick">KEUNGGULAN 6</div>
+  <h2>Heading, halaman, dan tabel otomatis seragam</h2>
+  <p>Berhari-hari merapikan heading, header halaman, dan tabel menjelang penyerahan tidak perlu terjadi lagi.</p>
+  <ul class="ck">
+   <li>Penomoran heading, daftar isi, footer, dan pemisah halaman tersusun otomatis saat ekspor DOCX.</li>
+   <li>Tabel diisi dengan struktur yang sama untuk semua penyusun, jadi gabungan karya banyak orang tetap konsisten.</li>
+  </ul>
+ </div>
+ <div class="vis"><table style="font-size:13px"><tr><th>Parameter</th><th>Satuan</th><th>Baku mutu</th></tr><tr><td>Parameter A</td><td>mg/L</td><td>—</td></tr><tr><td>Parameter B</td><td>µg/m³</td><td>—</td></tr></table>
+  <div class="note">Contoh tampilan. Semua tabel memakai bentuk yang sama, siapa pun penyusunnya.</div></div>
+</div></div></section>
 
 <section class="alt"><div class="w">
- <h2>Alur kerja yang lebih singkat</h2><p class="sub">Dari dokumen lama ke laporan kolaboratif dalam beberapa langkah.</p>
- <div class="steps">
-  <div class="c"><div><h3>Unggah atau mulai dari template</h3><p>Impor DOCX yang ada, atau salin outline dari template AMDAL/UKL-UPL per jenis kegiatan.</p></div></div>
-  <div class="c"><div><h3>Bagi tugas per bab</h3><p>Tandai PIC, undang anggota tim ke proyek, dan pantau progres di Gantt.</p></div></div>
-  <div class="c"><div><h3>Tulis bersama, hitung di tempat</h3><p>Kalkulator rumus dan simulasi lingkungan tersedia dari editor, hasilnya langsung disisipkan ke laporan.</p></div></div>
-  <div class="c"><div><h3>Ekspor</h3><p>Satu klik menghasilkan DOCX utuh dan konsisten.</p></div></div>
- </div>
-</div></section>
-
-<section id="biaya"><div class="w">
- <h2>Biaya murah, tanpa lisensi per komputer</h2><p class="sub">Tarif jelas dan dibayar lewat QRIS.</p>
+ <div class="center"><h2>Sebelum dan sesudah memakai sdrive</h2><p class="sub">Pekerjaan yang biasanya menyita waktu, kini dikerjakan sistem.</p></div>
  <table>
-  <tr><th></th><th>Cara lama</th><th>sdrive</th></tr>
-  <tr><td>Mulai</td><td>Beli atau langganan perangkat lunak per komputer</td><td class="y">Gratis: akun mandiri, proyek dan tim sendiri</td></tr>
-  <tr><td>Tim di perusahaan</td><td>Beli lisensi per orang, atur server berkas sendiri</td><td><s>Rp 250.000</s> <b>Rp 60.000/tahun</b> (promo hemat 76%) kode perusahaan, lalu <b>Rp 63.000/tahun</b> per akun (hemat 10%)</td></tr>
-  <tr><td>Paket 2 tahun</td><td>—</td><td><s>Rp 140.000</s> <b class="y">Rp 77.000</b> per akun (hemat 45%)</td></tr>
+  <tr><th>Pekerjaan</th><th>Tanpa sdrive</th><th>Dengan sdrive</th></tr>
+  <tr><td>Memantau tim</td><td class="n">Tanya satu per satu, tunggu laporan manual</td><td class="y">Kurva S, Gantt, dan aktivitas harian terlihat sendiri</td></tr>
+  <tr><td>Menyusun kerangka</td><td class="n">Salin dari dokumen lama, rawan beda format</td><td class="y">Outline sesuai pakem tinggal dipilih</td></tr>
+  <tr><td>Melatih penyusun baru</td><td class="n">Dibimbing manual</td><td class="y">Petunjuk pengisian di tiap bagian</td></tr>
+  <tr><td>Hitung &amp; simulasi dampak</td><td class="n">Banyak aplikasi, salin-tempel hasil</td><td class="y">Terintegrasi di editor</td></tr>
+  <tr><td>Kerja bersamaan</td><td class="n">Satu file satu pengedit, versi bertebaran</td><td class="y">Per bab, banyak penulis sekaligus</td></tr>
+  <tr><td>Merapikan format</td><td class="n">Berhari-hari mengatur heading, halaman, tabel</td><td class="y">Otomatis saat ekspor</td></tr>
   <tr><td>Spesifikasi komputer</td><td class="n">Perlu RAM besar untuk file berat</td><td class="y">Cukup browser</td></tr>
-  <tr><td>Kerja bersamaan</td><td class="n">Satu pengedit, satu file</td><td class="y">Banyak penulis, per bab</td></tr>
-  <tr><td>Privasi antar proyek</td><td>Bergantung folder bersama</td><td class="y">Setiap proyek terpisah; hanya anggotanya yang melihat</td></tr>
  </table>
- <p class="note">Akun mandiri terisolasi per proyek: orang di proyek lain tidak bisa melihat, menandai, atau menghubungi Anda.</p>
+</div></section>
+
+<section id="harga"><div class="w">
+ <div class="center"><h2>Mulai gratis. Tingkatkan saat tim Anda siap.</h2><p class="sub">Tanpa kontrak. Pembayaran lewat QRIS.</p></div>
+ <div class="g">
+  <div class="c"><span class="tag" style="align-self:flex-start">Akun mandiri</span><div class="price">Gratis</div>
+   <ul><li>Manajemen proyek, Kurva S, dan Gantt</li><li>Proyek, laporan, dan tim sendiri</li><li>Privat: hanya anggota proyek yang melihat</li></ul>
+   <a class="btn p" href="/register" style="align-self:flex-start">Daftar gratis</a></div>
+  <div class="c star"><span class="promo">PROMO hemat 76%</span><span class="tag" style="align-self:flex-start">Perusahaan sendiri</span>
+   <div class="price"><s>Rp 250.000</s> Rp 60.000 <small>/ tahun</small></div>
+   <ul><li>Alamat dan data terpisah: <code>namaanda.sdrive.team</code></li><li>Anda admin dan boleh mengangkat admin lain</li><li>Akun anggota <b>Rp 63.000</b>/tahun, atau <b>Rp 77.000</b> untuk 2 tahun (hemat 45%)</li></ul>
+   <a class="btn p" href="/register" style="align-self:flex-start">Daftar lalu pesan kode</a></div>
+ </div>
+ <p class="note center">Sebagian template dan alat hitung dijual per pemakaian atau per paket; rinciannya ada di Toko setelah masuk.</p>
 </div></section>
 
 <section class="alt"><div class="w">
- <h2>Dua jalur pendaftaran</h2>
- <div class="g3" style="grid-template-columns:1fr 1fr">
-  <div class="c"><h3>Jalur 1 · Mandiri</h3><p>Daftar dengan email dan HP, konfirmasi email, lalu langsung buat proyek, laporan, dan tim Anda sendiri.</p></div>
-  <div class="c"><h3>Jalur 2 · Perusahaan</h3><p>Pesan kode perusahaan untuk mendapat tenant sendiri (<code>kode.sdrive.team</code>). Pendaftar pertama menjadi admin dan dapat mengangkat admin lain.</p></div>
- </div>
-</div></section>
-
-<section id="faq"><div class="w">
- <h2>Pertanyaan umum</h2>
+ <div class="center"><h2>Pertanyaan umum</h2></div>
  <details><summary>Apakah laporan lama saya bisa dipakai?</summary><p>Ya. Unggah berkas DOCX; sistem mengekstraknya menjadi blok lengkap dengan tabel dan gambar.</p></details>
- <details><summary>Apakah hasilnya tetap berupa Word?</summary><p>Ya. Ekspor menghasilkan DOCX dengan heading bernomor, daftar isi, dan footer yang tersusun otomatis.</p></details>
- <details><summary>Siapa yang bisa melihat proyek saya?</summary><p>Hanya orang yang Anda undang ke proyek itu. Akun di proyek lain tidak dapat melihat proyek, laporan, atau chat Anda.</p></details>
+ <details><summary>Hasil akhirnya tetap Word?</summary><p>Ya. Ekspor menghasilkan DOCX dengan heading bernomor, daftar isi, dan footer yang tersusun otomatis.</p></details>
+ <details><summary>Siapa yang bisa melihat proyek saya?</summary><p>Hanya orang yang Anda undang ke proyek itu. Akun di proyek lain tidak dapat melihat proyek, laporan, atau diskusi Anda.</p></details>
+ <details><summary>Bagaimana mengundang rekan yang belum punya akun?</summary><p>Masukkan emailnya. Ia menerima ajakan daftar dan otomatis masuk ke proyek setelah akunnya aktif.</p></details>
  <details><summary>Bisa dipakai di HP?</summary><p>Bisa lewat browser, dan tersedia aplikasi Android dengan mode offline.</p></details>
- <details><summary>Bagaimana cara membayar?</summary><p>Lewat QRIS. Unggah bukti pembayaran, dan sistem memverifikasinya otomatis; bila perlu, operator memeriksa manual.</p></details>
+ <details><summary>Bagaimana cara membayar?</summary><p>Lewat QRIS. Unggah bukti pembayaran; sistem memverifikasinya otomatis, dan bila perlu operator memeriksa manual.</p></details>
 </div></section>
 
-<div class="cta"><h2>Mulai dari laporan berikutnya</h2><p class="sub" style="margin:0 auto 20px">Daftar dalam satu menit.</p><a class="btn p" href="/register">Daftar gratis</a></div>
+<div class="final"><h2>Mulai dari proyek dokumen berikutnya</h2><p style="color:var(--mut);margin:0 auto 22px">Daftar dalam satu menit. Gratis untuk memulai.</p><a class="btn p" href="/register">Daftar gratis</a></div>
 <footer>© sdrive · <a href="/">Beranda</a> · <a href="/register">Daftar</a></footer>
 </body></html>

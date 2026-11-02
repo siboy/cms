@@ -1,88 +1,127 @@
 <!DOCTYPE html>
 <html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>sdrive — tulis laporan lingkungan bersama tim, tanpa Word yang membengkak</title>
-<meta name="description" content="sdrive memecah laporan AMDAL/UKL-UPL jadi blok. Tim menulis bersamaan, laptop apa pun lancar, Word dibuat hanya saat diekspor.">
+<title>sdrive — manajemen proyek terbaik untuk penyusun dokumen lingkungan</title>
+<meta name="description" content="Pantau progres tim dengan Kurva S dan Gantt, susun AMDAL, UKL-UPL, dan Pertek dari outline siap pakai, lengkap dengan simulasi dan hitung dampak. Mulai gratis.">
 <style>
-:root{--bg:#fff;--fg:#202124;--mut:#5f6368;--line:#dadce0;--soft:#f8f9fa;--blue:#1a73e8;--blue2:#e8f0fe;--green:#188038;--card:#fff}
-@media(prefers-color-scheme:dark){:root{--bg:#171a1f;--fg:#e8eaed;--mut:#9aa0a6;--line:#3c4043;--soft:#202327;--blue:#8ab4f8;--blue2:#243247;--green:#81c995;--card:#1d2025}}
+:root{--bg:#fff;--fg:#202124;--mut:#5f6368;--line:#dadce0;--soft:#f8f9fa;--blue:#1a73e8;--blue2:#e8f0fe;--green:#188038;--amber:#f9ab00;--red:#d93025;--card:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#171a1f;--fg:#e8eaed;--mut:#9aa0a6;--line:#3c4043;--soft:#202327;--blue:#8ab4f8;--blue2:#243247;--green:#81c995;--amber:#fdd663;--red:#f28b82;--card:#1d2025}}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 "Google Sans",Roboto,system-ui,sans-serif}
 a{color:var(--blue);text-decoration:none}
 nav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:10px max(16px,calc(50% - 560px))}
 nav b{font-size:20px;letter-spacing:-.3px;margin-right:auto}nav a.l{color:var(--fg);padding:8px 12px;border-radius:8px;font-size:14px}nav a.l:hover{background:var(--soft)}
-.btn{display:inline-block;border-radius:999px;padding:10px 22px;font-weight:600;font-size:15px;border:1px solid var(--blue)}
-.btn.p{background:var(--blue);color:#fff}.btn.p:hover{filter:brightness(1.08)}.btn.o:hover{background:var(--blue2)}
+@media(max-width:620px){nav a.l{display:none}}
+.btn{display:inline-block;border-radius:999px;padding:11px 24px;font-weight:600;font-size:15px;border:1px solid var(--blue);cursor:pointer;font-family:inherit}
+.btn.p{background:var(--blue);color:#fff}.btn.p:hover{filter:brightness(1.08)}.btn.o{background:transparent}.btn.o:hover{background:var(--blue2)}
 @media(prefers-color-scheme:dark){.btn.p{color:#0b1b33}}
 .w{max-width:1120px;margin:0 auto;padding:0 16px}
-.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center;padding:64px 0 48px}
-@media(max-width:860px){.hero{grid-template-columns:1fr;padding-top:36px}}
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;padding:64px 0 52px}
+@media(max-width:900px){.hero{grid-template-columns:1fr;padding-top:36px}}
 .tag{display:inline-block;background:var(--blue2);color:var(--blue);border-radius:999px;padding:3px 12px;font-size:13px;font-weight:600}
 h1{font-size:clamp(32px,5vw,52px);line-height:1.12;letter-spacing:-1px;margin:14px 0}
-.lead{color:var(--mut);font-size:19px;margin:0 0 24px}.cta{display:flex;gap:10px;flex-wrap:wrap}
-.mock{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 8px 28px rgba(60,64,67,.15)}
-.mock .row{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin:7px 0;font-size:13px}
-.mock .row i{width:9px;height:9px;border-radius:50%;flex:none}.mock small{margin-left:auto;color:var(--mut)}
-.mock .on{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue2)}
-section{padding:56px 0}section.alt{background:var(--soft)}
-h2{font-size:clamp(26px,3.5vw,36px);letter-spacing:-.5px;margin:0 0 8px}.sub{color:var(--mut);margin:0 0 32px;max-width:640px}
-.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
-.c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}.c h3{margin:6px 0}.c p{color:var(--mut);margin:0}.ic{font-size:28px}
+.lead{color:var(--mut);font-size:19px;margin:0 0 22px}.cta{display:flex;gap:10px;flex-wrap:wrap}
+.trust{margin-top:16px;color:var(--mut);font-size:14px;display:flex;gap:16px;flex-wrap:wrap}.trust span::before{content:"✓ ";color:var(--green);font-weight:700}
+.mock{background:var(--soft);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 10px 30px rgba(60,64,67,.16)}
+.mock h4{margin:0 0 6px;font-size:13px;color:var(--mut);font-weight:600;display:flex;justify-content:space-between}
+.mock svg{width:100%;height:auto;display:block;background:var(--card);border:1px solid var(--line);border-radius:12px}
+.act{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-top:8px;font-size:13px}
+.act i{width:9px;height:9px;border-radius:50%;flex:none}.act small{margin-left:auto;color:var(--mut)}
+.bar{height:6px;border-radius:9px;background:var(--line);overflow:hidden;width:70px;margin-left:auto}.bar b{display:block;height:100%}
+section{padding:60px 0}section.alt{background:var(--soft)}
+h2{font-size:clamp(26px,3.5vw,38px);letter-spacing:-.6px;margin:0 0 8px;line-height:1.2}.sub{color:var(--mut);margin:0 0 32px;max-width:680px;font-size:17px}
+.center{text-align:center}.center .sub{margin-left:auto;margin-right:auto}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;position:relative}
+.c .n{position:absolute;top:16px;right:18px;font-size:13px;font-weight:700;color:var(--blue);background:var(--blue2);border-radius:99px;padding:1px 10px}
+.c h3{margin:6px 0;font-size:19px;padding-right:44px}.c p{color:var(--mut);margin:0}.ic{font-size:28px}.c.star{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue2)}
+.c a.m{display:inline-block;margin-top:10px;font-weight:600;font-size:14px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;counter-reset:s}
+.steps .c::before{counter-increment:s;content:counter(s);display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--blue);color:#fff;font-weight:700;margin-bottom:8px}
+@media(prefers-color-scheme:dark){.steps .c::before{color:#0b1b33}}
 .paths{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:760px){.paths{grid-template-columns:1fr}}
-.paths .c{display:flex;flex-direction:column;gap:10px}.paths ul{margin:0;padding-left:20px;color:var(--mut)}.price{font-size:30px;font-weight:700}.price s{font-size:16px;color:var(--mut);font-weight:400}
-form.code{display:flex;gap:8px;flex-wrap:wrap}form.code input{flex:1;min-width:160px;padding:11px 14px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--fg);font:inherit}
-#err{color:#d93025;min-height:22px;font-size:14px;margin-top:6px}
-footer{padding:28px 16px;text-align:center;color:var(--mut);font-size:14px;border-top:1px solid var(--line)}
+.paths .c{display:flex;flex-direction:column;gap:10px}.paths ul{margin:0;padding-left:20px;color:var(--mut)}.paths li{margin:4px 0}
+.price{font-size:32px;font-weight:700;line-height:1.1}.price s{font-size:17px;color:var(--mut);font-weight:400}.price small{font-size:15px;color:var(--mut);font-weight:400}
+.promo{background:var(--blue);color:#fff;border-radius:999px;padding:2px 12px;font-size:12px;font-weight:700;align-self:flex-start}@media(prefers-color-scheme:dark){.promo{color:#0b1b33}}
+form.code{display:flex;gap:8px;flex-wrap:wrap}form.code input{flex:1;min-width:170px;padding:12px 16px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--fg);font:inherit}
+#err{color:var(--red);min-height:22px;font-size:14px;margin-top:6px}
+.final{background:var(--blue2);text-align:center;padding:64px 16px}
+footer{padding:26px 16px;text-align:center;color:var(--mut);font-size:14px;border-top:1px solid var(--line)}
 </style></head><body>
-<nav><b>sdrive</b><a class="l" href="/howto">Kenapa sdrive</a><a class="l" href="#jalur">Harga</a><a class="l" href="#masuk">Masuk</a><a class="btn p" href="/register">Daftar gratis</a></nav>
+<nav><b>sdrive</b><a class="l" href="#fitur">Keunggulan</a><a class="l" href="#harga">Harga</a><a class="l" href="/howto">Selengkapnya</a><a class="l" href="#masuk">Masuk</a><a class="btn p" href="/register">Daftar gratis</a></nav>
 
 <div class="w hero">
  <div>
-  <span class="tag">Untuk konsultan &amp; tim penyusun dokumen lingkungan</span>
-  <h1>Laporan AMDAL ditulis bersama, tanpa Word yang membengkak.</h1>
-  <p class="lead">sdrive memecah laporan jadi blok. Tim menulis bersamaan di bab masing-masing, laptop apa pun tetap lancar, dan file Word dibuat rapi hanya saat Anda menekan Ekspor.</p>
-  <div class="cta"><a class="btn p" href="/register">Daftar gratis</a><a class="btn o" href="/howto">Lihat cara kerjanya</a></div>
+  <span class="tag">Manajemen proyek untuk penyusun dokumen lingkungan</span>
+  <h1>Tahu persis tim Anda mengerjakan apa, dan kapan dokumen selesai.</h1>
+  <p class="lead">Kurva S, Gantt, dan progres per tema dalam satu layar. Lalu tim menyusun AMDAL, UKL-UPL, dan Pertek di tempat yang sama, dari outline yang sudah sesuai pakem.</p>
+  <div class="cta"><a class="btn p" href="/register">Daftar gratis</a><a class="btn o" href="/howto">Lihat keunggulannya</a></div>
+  <div class="trust"><span>Gratis untuk mulai</span><span>Tanpa instal</span><span>Jalan di HP &amp; laptop biasa</span></div>
  </div>
  <div class="mock" aria-hidden="true">
-  <div class="row"><i style="background:#1a73e8"></i><b>BAB I — Pendahuluan</b><small>Andi · menulis</small></div>
-  <div class="row on"><i style="background:#188038"></i><b>BAB II — Deskripsi Rencana Kegiatan</b><small>Anda</small></div>
-  <div class="row"><i style="background:#f9ab00"></i><b>BAB III — Rona Lingkungan Awal</b><small>Sari · PIC</small></div>
-  <div class="row"><i style="background:#d93025"></i><b>BAB IV — Prakiraan Dampak</b><small>Budi · review</small></div>
-  <div class="row"><i style="background:#9aa0a6"></i><b>Lampiran</b><small>5 berkas</small></div>
+  <h4><span>Kurva S — rencana vs realisasi</span><span style="color:var(--green)">● sesuai jadwal</span></h4>
+  <svg viewBox="0 0 320 130"><g stroke="currentColor" stroke-opacity=".12"><path d="M20 20H310M20 55H310M20 90H310"/></g>
+   <path d="M20 112C80 110 110 85 160 60S260 26 300 20" fill="none" stroke="#9aa0a6" stroke-width="3" stroke-dasharray="6 5"/>
+   <path d="M20 112C75 111 112 82 165 58S215 44 215 44" fill="none" stroke="#1a73e8" stroke-width="3.5"/><circle cx="215" cy="44" r="5" fill="#1a73e8"/>
+   <text x="24" y="14" font-size="9" fill="#9aa0a6">100%</text><text x="222" y="40" font-size="9" fill="#1a73e8">hari ini</text></svg>
+  <div class="act"><i style="background:var(--blue)"></i><b>Andi</b> menulis Bab II — Deskripsi Kegiatan<div class="bar"><b style="width:70%;background:var(--blue)"></b></div></div>
+  <div class="act"><i style="background:var(--green)"></i><b>Sari</b> menghitung dampak kebisingan<div class="bar"><b style="width:90%;background:var(--green)"></b></div></div>
+  <div class="act"><i style="background:var(--amber)"></i><b>Budi</b> mereview Bab IV — Prakiraan Dampak<div class="bar"><b style="width:35%;background:var(--amber)"></b></div></div>
  </div>
 </div>
 
-<section class="alt"><div class="w">
- <h2>Tiga alasan tim berpindah ke sdrive</h2><p class="sub">Dibuat untuk cara kerja nyata penyusun dokumen lingkungan.</p>
- <div class="g3">
-  <div class="c"><div class="ic">🧩</div><h3>Sistem blok</h3><p>Hanya bab yang sedang dikerjakan yang dimuat. Tidak ada file raksasa yang harus dibuka utuh.</p></div>
-  <div class="c"><div class="ic">👥</div><h3>Tulis bersamaan</h3><p>Pembagian PIC per bab, komentar, riwayat perubahan, dan penguncian blok agar tidak saling menimpa.</p></div>
-  <div class="c"><div class="ic">📊</div><h3>Pantau proyek &amp; tim</h3><p>Kurva S, Gantt, dan progres per proyek dan tema: terlihat siapa mengerjakan apa.</p></div>
-  <div class="c"><div class="ic">📐</div><h3>Outline sesuai PP, petunjuk, simulasi</h3><p>Outline KA, Andal, UKL-UPL, dan Pertek; petunjuk pengisian di tiap bagian; rumus dan simulasi dampak terintegrasi; heading, halaman, dan tabel otomatis seragam.</p></div>
-  <div class="c"><div class="ic">💸</div><h3>Biaya terjangkau</h3><p>Mulai gratis untuk akun mandiri. Tim berbayar Rp 63.000 per akun per tahun.</p></div>
+<section class="alt" id="fitur"><div class="w">
+ <div class="center"><h2>Satu tempat untuk memimpin proyek dan menyusun dokumennya</h2><p class="sub">Enam keunggulan yang saling melengkapi, dari memantau tim sampai menyerahkan dokumen.</p></div>
+ <div class="g">
+  <div class="c star"><span class="n">1</span><div class="ic">📊</div><h3>Manajemen proyek terbaik untuk tim dokumen</h3><p>Kurva S rencana lawan realisasi, Gantt, dan progres per proyek dan per tema. Lihat siapa sedang mengerjakan apa lewat rekap aktivitas harian, tugas, dan diskusi per proyek.</p></div>
+  <div class="c star"><span class="n">2</span><div class="ic">📐</div><h3>Outline KA, Andal, UKL-UPL, dan Pertek</h3><p>Kerangka mengikuti PP yang berlaku, dengan penyesuaian dari dokumen yang sudah diterima penilai. Tidak perlu menyusun kerangka dari nol.</p></div>
+  <div class="c"><span class="n">3</span><div class="ic">💡</div><h3>Petunjuk pengisian di tiap bagian</h3><p>Penyusun baru langsung tahu apa yang harus ditulis. Belajar sambil bekerja, bukan menatap halaman kosong.</p></div>
+  <div class="c"><span class="n">4</span><div class="ic">🧮</div><h3>Terintegrasi dengan simulasi &amp; hitung dampak</h3><p>Rumus umum tenaga ahli serta simulasi air, udara, dan kebisingan langsung dari editor. Hasilnya masuk ke laporan.</p></div>
+  <div class="c"><span class="n">5</span><div class="ic">🧩</div><h3>Sistem blok: ringan dan tanpa tabrakan</h3><p>Hanya bab yang dibuka yang dimuat, jadi laptop spek biasa tetap lancar dan tak ada lagi file Word puluhan MB. Banyak penulis mengerjakan bersamaan.</p></div>
+  <div class="c"><span class="n">6</span><div class="ic">📑</div><h3>Heading, halaman, dan tabel otomatis seragam</h3><p>Penomoran, daftar isi, dan paging tersusun saat ekspor. Tabel antar penyusun seragam, tanpa berhari-hari merapikan.</p></div>
  </div>
- <p style="margin-top:24px"><a href="/howto">Baca selengkapnya →</a></p>
+ <p class="center" style="margin:28px 0 0"><a class="btn o" href="/howto">Baca penjelasan lengkap →</a></p>
 </div></section>
 
-<section id="jalur"><div class="w">
- <h2>Pilih cara memulai</h2><p class="sub">Dua jalur, satu platform.</p>
+<section><div class="w">
+ <div class="center"><h2>Dibuat untuk tiga peran</h2><p class="sub">Siapa pun yang terlibat dalam dokumen lingkungan mendapat manfaat yang berbeda.</p></div>
+ <div class="g">
+  <div class="c"><h3>Konsultan &amp; penyusun</h3><p>Pimpin banyak proyek sekaligus, bagi tugas per bab, dan serahkan dokumen yang rapi tanpa lembur merapikan format.</p></div>
+  <div class="c"><h3>Pemrakarsa kegiatan</h3><p>Pantau kemajuan penyusunan dokumen Anda sendiri lewat Kurva S, tanpa menunggu laporan manual dari konsultan.</p></div>
+  <div class="c"><h3>Instansi &amp; dinas</h3><p>Standarkan outline dan format dokumen dari banyak penyusun, dan lacak progres beberapa dokumen dalam satu tempat.</p></div>
+ </div>
+</div></section>
+
+<section class="alt"><div class="w">
+ <div class="center"><h2>Mulai dalam tiga langkah</h2></div><br>
+ <div class="steps">
+  <div class="c"><h3>Daftar gratis</h3><p>Cukup email dan nomor HP. Aktif setelah konfirmasi email.</p></div>
+  <div class="c"><h3>Buat proyek &amp; undang tim</h3><p>Atur jadwal, bagi PIC per bab, dan undang anggota lewat email.</p></div>
+  <div class="c"><h3>Pilih outline, mulai menulis</h3><p>Salin outline KA, Andal, UKL-UPL, atau Pertek, lalu ikuti petunjuk di tiap bagian.</p></div>
+ </div>
+</div></section>
+
+<section id="harga"><div class="w">
+ <div class="center"><h2>Mulai gratis, upgrade saat tim Anda siap</h2><p class="sub">Tanpa kontrak. Pembayaran lewat QRIS.</p></div>
  <div class="paths">
-  <div class="c"><span class="tag">Jalur 1 · Mandiri</span><div class="price">Gratis</div>
-   <ul><li>Daftar dengan email &amp; nomor HP</li><li>Buat proyek, laporan, dan tim sendiri</li><li>Proyek Anda privat: hanya anggota proyek yang melihat</li></ul>
-   <a class="btn p" href="/register" style="align-self:flex-start">Daftar sekarang</a></div>
-  <div class="c"><span class="tag">Jalur 2 · Perusahaan · Promo hemat 76%</span><div class="price"><s>Rp 250.000</s> Rp 60.000 <small style="font-size:15px;color:var(--mut);font-weight:400">/ tahun</small></div>
-   <ul><li>Kode perusahaan &amp; tenant sendiri (<code>kode.sdrive.team</code>)</li><li>Anda jadi admin; boleh mengangkat admin lain</li><li>Akun anggota: <s>Rp 70.000</s> <b>63.000</b>/tahun, atau <b>77.000</b> untuk 2 tahun (hemat 45%)</li></ul>
-   <a class="btn o" href="/register" style="align-self:flex-start">Daftar, lalu pesan kode</a></div>
+  <div class="c"><span class="tag" style="align-self:flex-start">Akun mandiri</span><div class="price">Gratis</div>
+   <ul><li>Manajemen proyek, Kurva S, dan Gantt</li><li>Buat proyek, laporan, dan tim sendiri</li><li>Proyek privat: hanya anggota yang melihat</li><li>Undang rekan lewat email</li></ul>
+   <a class="btn p" href="/register" style="align-self:flex-start">Daftar gratis</a></div>
+  <div class="c star"><span class="promo">PROMO hemat 76%</span><span class="tag" style="align-self:flex-start">Perusahaan sendiri</span>
+   <div class="price"><s>Rp 250.000</s> Rp 60.000 <small>/ tahun</small></div>
+   <ul><li>Alamat sendiri <code>namaanda.sdrive.team</code> dengan data terpisah</li><li>Anda admin, dan bisa mengangkat admin lain</li><li>Akun anggota mulai <b>Rp 63.000</b>/tahun, atau <b>Rp 77.000</b> untuk 2 tahun (hemat 45%)</li></ul>
+   <a class="btn p" href="/register" style="align-self:flex-start">Daftar lalu pesan kode</a></div>
  </div>
 </div></section>
 
 <section class="alt" id="masuk"><div class="w">
  <h2>Sudah punya akun?</h2><p class="sub">Masukkan kode perusahaan Anda, atau masuk sebagai akun mandiri.</p>
- <form class="code" id="f"><input id="c" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="kode perusahaan, mis. chp"><button class="btn p" style="cursor:pointer">Masuk perusahaan</button><a class="btn o" href="__SELF_URL__">Masuk akun mandiri</a></form>
+ <form class="code" id="f"><input id="c" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="kode perusahaan, mis. chp"><button class="btn p">Masuk perusahaan</button><a class="btn o" href="__SELF_URL__">Masuk akun mandiri</a></form>
  <div id="err"></div>
 </div></section>
 
-<footer>© sdrive · <a href="/howto">Kenapa sdrive</a> · <a href="/register">Daftar</a></footer>
+<div class="final"><h2>Pimpin proyek dokumen lingkungan berikutnya dengan lebih tenang</h2><p class="sub" style="margin:0 auto 22px">Daftar dalam satu menit. Gratis untuk memulai.</p><a class="btn p" href="/register">Daftar gratis</a></div>
+<footer>© sdrive · <a href="/howto">Keunggulan lengkap</a> · <a href="/register">Daftar</a></footer>
 <script>
 const f=document.getElementById('f'),c=document.getElementById('c'),e=document.getElementById('err');
 f.onsubmit=async ev=>{ev.preventDefault();e.textContent='';
